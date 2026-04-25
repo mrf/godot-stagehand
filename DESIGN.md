@@ -1,4 +1,4 @@
-# Godot Playwright — Design Document
+# Godot Stagehand — Design Document
 
 An MCP server + Godot addon that lets AI agents (and humans) automate and test running Godot games from outside the process, the way Playwright does for web browsers.
 
@@ -12,28 +12,28 @@ An MCP server + Godot addon that lets AI agents (and humans) automate and test r
 | **Godot 4.5+ AccessKit** | Screen reader support for Control nodes | No external API to query the accessibility tree |
 | **Playwright MCP** | Full browser automation via Chrome DevTools Protocol | Nothing equivalent exists for game engines |
 
-**The gap:** There is no way for an external process (Claude, a test runner, a CI pipeline) to connect to a running Godot game and interact with it programmatically — navigate scenes, click buttons, read node properties, take screenshots, wait for conditions.
+**The gap:** there is no way for an external process (Claude, a test runner, a CI pipeline) to connect to a running Godot game and interact with it programmatically — navigate scenes, click buttons, read node properties, take screenshots, wait for conditions.
 
 ## Architecture
 
 ```
                     MCP Protocol (JSON-RPC over stdio)
                     ===================================
-Claude / AI Agent  <------>  godot-playwright (Go binary)
+Claude / AI Agent  <------>  godot-stagehand (Go binary)
                                       |
                                       | WebSocket (JSON-RPC 2.0)
                                       | ws://localhost:26700
                                       |
                               Running Godot Game
-                              with playwright addon
+                              with stagehand addon
                               (GDScript WebSocket server)
 ```
 
 Three layers:
 
 1. **MCP Client** (Claude, any AI agent) — sends tool calls like `godot_click`, `godot_screenshot`, `godot_get_tree`
-2. **Go MCP Server** (`godot-playwright`) — translates MCP tool calls into Godot Wire Protocol messages over WebSocket
-3. **Godot Addon** (`addons/playwright/`) — GDScript WebSocket server embedded in the game, executes commands against the scene tree
+2. **Go MCP Server** (`godot-stagehand`) — translates MCP tool calls into Godot Wire Protocol messages over WebSocket
+3. **Godot Addon** (`addons/stagehand/`) — GDScript WebSocket server embedded in the game, executes commands against the scene tree
 
 ## Communication Protocol: Godot Wire Protocol (GWP)
 
@@ -323,11 +323,11 @@ Returns: `{ pid, port, connected }`
 ## GDScript Addon Structure
 
 ```
-addons/playwright/
+addons/stagehand/
   plugin.cfg                    # Editor plugin metadata
   plugin.gd                     # Editor plugin (toolbar button to start/stop server)
   autoload/
-    playwright_server.gd        # WebSocket server — the core autoload
+    stagehand_server.gd         # WebSocket server — the core autoload
   core/
     command_router.gd           # Routes JSON-RPC methods to handlers
     selector_engine.gd          # Parses and resolves selector expressions
@@ -344,8 +344,8 @@ addons/playwright/
 
 The WebSocket server only starts when explicitly enabled:
 
-- Environment variable `PLAYWRIGHT_ENABLED=1`, or
-- Command-line flag `--playwright`
+- Environment variable `STAGEHAND_ENABLED=1`, or
+- Command-line flag `--stagehand`
 
 The autoload checks on `_ready()` and disables itself otherwise. This prevents the server from running in production builds.
 
@@ -385,7 +385,7 @@ For `wait_for_signal`, a one-shot signal connection with a timer-based timeout i
 ## Go MCP Server Structure
 
 ```
-godot-playwright/
+godot-stagehand/
   go.mod
   go.sum
   main.go                        # Entry point, CLI flags
@@ -411,12 +411,12 @@ godot-playwright/
   testdata/
     test_project/                # Minimal Godot project for integration tests
       project.godot
-      addons/playwright/         # Symlink to the addon
+      addons/stagehand/          # Symlink to the addon
       scenes/
         test_scene.tscn
         test_ui.tscn
   addons/
-    playwright/                  # The GDScript addon (distributed from here)
+    stagehand/                   # The GDScript addon (distributed from here)
 ```
 
 ### Connection Multiplexing
@@ -457,7 +457,7 @@ func (c *Connection) Call(ctx context.Context, method string, params any) (*Resp
 
 1. MCP server starts, listens on stdio
 2. Agent calls `godot_connect` (attach to running game) or `godot_launch` (start Godot)
-3. If launching: Go server starts Godot with `--playwright` flag, polls WebSocket until ready
+3. If launching: Go server starts Godot with `--stagehand` flag, polls WebSocket until ready
 4. Go server sends `ping`, gets engine info
 5. All subsequent tool calls use this connection
 
@@ -547,7 +547,7 @@ In-memory MCP transports with a mock Godot WebSocket server to test the full Cla
 | **JSON-RPC 2.0** | Same protocol MCP uses — consistent, `id`-based correlation for multiplexing |
 | **Polling for waits** | Simpler than signal-based. At 60fps, 16ms polling is fast enough for automation |
 | **Go for MCP server** | User's preferred backend language, strong concurrency primitives, single binary distribution |
-| **Port 26700** | Distinct from Godot's debugger (6007). "PW" on phone keypad. Configurable via flag/env var |
+| **Port 26700** | Distinct from Godot's debugger (6007). Configurable via flag/env var |
 | **Autoload over editor-plugin-only** | Addon must run inside the *game* process, not just the editor. Autoload is the simplest mechanism |
-| **Env var activation guard** | `PLAYWRIGHT_ENABLED=1` or `--playwright` flag. WebSocket server must never run in production builds |
-| **Selector prefix grammar** | Mirrors Playwright's locator strategies but adapted for Godot's node tree (paths, groups, classes instead of CSS/ARIA) |
+| **Env var activation guard** | `STAGEHAND_ENABLED=1` or `--stagehand` flag. WebSocket server must never run in production builds |
+| **Selector prefix grammar** | Inspired by Playwright's locator strategies but adapted for Godot's node tree (paths, groups, classes instead of CSS/ARIA) |

@@ -1,0 +1,13 @@
+[gd_scene format=3 uid="uid://test_scene"]
+
+[node name="TestScene" type="Node2D"]
+
+[node name="Label" type="Label" parent="."]
+text = "Stagehand Test Scene"
+
+[node name="StartButton" type="Button" parent="."]
+offset_left = 100.0
+offset_top = 100.0
+offset_right = 250.0
+offset_bottom = 140.0
+text = "Start Game"

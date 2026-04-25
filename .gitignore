@@ -3,3 +3,27 @@
 .dolt/
 *.db
 .beads-credential-key
+
+# Go
+/godot-stagehand
+*.exe
+*.test
+*.out
+
+# Godot
+.godot/
+*.import
+export_presets.cfg
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test artifacts
+testdata/test_project/.godot/
