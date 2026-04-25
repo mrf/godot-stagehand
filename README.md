@@ -57,4 +57,4 @@ See [DESIGN.md](DESIGN.md) for the full architecture, protocol spec, and API sur
 
 ## License
 
-TBD
+MIT — same as Godot itself. See [LICENSE](LICENSE).
