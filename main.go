@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/mrf/godot-stagehand/internal/mcpserver"
 )
 
 func main() {
@@ -13,7 +15,6 @@ func main() {
 }
 
 func run() error {
-	// TODO: CLI flags, MCP server startup
-	fmt.Println("godot-stagehand MCP server")
-	return nil
+	srv := mcpserver.New()
+	return srv.Serve()
 }
