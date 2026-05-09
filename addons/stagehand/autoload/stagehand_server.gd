@@ -109,7 +109,8 @@ func _handle_message(peer_id: int, text: String) -> void:
 		))
 		return
 
-	var result: Variant = _router.dispatch(method, params)
+	# Await so async handlers (e.g. screenshot) resolve before responding.
+	var result: Variant = await _router.dispatch(method, params)
 	# Notifications (no id) get no response per JSON-RPC 2.0 spec.
 	if id != null:
 		_send_to_peer(peer_id, StagehandJsonRpc.make_response(id, result))
@@ -130,6 +131,30 @@ func _register_builtin_handlers() -> void:
 	_router.register("get_property", _handle_get_property)
 	_router.register("set_property", _handle_set_property)
 	_router.register("get_game_state", _handle_get_game_state)
+	_router.register("input_mouse", _handle_input_mouse)
+	_router.register("input_action", _handle_input_action)
+	_router.register("input_key", _handle_input_key)
+	_router.register("screenshot", _handle_screenshot)
+
+
+func _handle_input_mouse(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	return StagehandInputSimulator.input_mouse(get_tree(), p)
+
+
+func _handle_input_action(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	return StagehandInputSimulator.input_action(get_tree(), p)
+
+
+func _handle_input_key(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	return StagehandInputSimulator.input_key(get_tree(), p)
+
+
+func _handle_screenshot(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	return await StagehandScreenshotCapture.capture(get_tree(), p)
 
 
 func _handle_ping(_params: Variant) -> Dictionary:

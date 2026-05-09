@@ -61,10 +61,12 @@ static func _has_property(node: Node, property: String) -> bool:
 			if not current.get_property_list().any(
 				func(info: Dictionary) -> bool: return info.get("name", "") == part
 			):
-				# For built-in properties that may not show up in get_property_list
-				var _test: Variant = current.get(part)
-				return false
-			current = current.get(part)
+				# For built-in properties that may not show up in get_property_list,
+				# fall through to get() if we haven't reached the last part.
+				var _tmp: Variant = current.get(part)
+				if _tmp == null:
+					return false
+				current = _tmp
 		else:
 			return false
 	return true
@@ -104,9 +106,8 @@ static func _set_property_deep(node: Node, property: String, value: Variant) -> 
 static func _do_set(obj: Object, property: String, value: Variant) -> bool:
 	if obj == null:
 		return false
-	# Try set() first
-	var err := obj.set(property, value)
-	if err == OK:
+	# set() returns bool in Godot 4, not Error.
+	if obj.set(property, value):
 		return true
 	# For some built-ins, try set_indexed
 	if obj.has_method("set_indexed"):
