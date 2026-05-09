@@ -125,6 +125,11 @@ func _send_to_peer(peer_id: int, text: String) -> void:
 
 func _register_builtin_handlers() -> void:
 	_router.register("ping", _handle_ping)
+	_router.register("get_tree", _handle_get_tree)
+	_router.register("query_nodes", _handle_query_nodes)
+	_router.register("get_property", _handle_get_property)
+	_router.register("set_property", _handle_set_property)
+	_router.register("get_game_state", _handle_get_game_state)
 
 
 func _handle_ping(_params: Variant) -> Dictionary:
@@ -133,6 +138,58 @@ func _handle_ping(_params: Variant) -> Dictionary:
 		"engine": "godot",
 		"engine_version": Engine.get_version_info()["string"],
 		"stagehand_version": VERSION,
+	}
+
+
+func _handle_get_tree(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	var root_path: String = p.get("root_path", "/root")
+	var max_depth: int = p.get("max_depth", 10)
+	var include_properties: Array[String] = []
+	if p.has("properties"):
+		for item: Variant in p["properties"]:
+			include_properties.append(String(item))
+
+	var root: Node = get_tree().root.get_node_or_null(NodePath(root_path))
+	if root == null:
+		return {"error": "Root node not found: %s" % root_path}
+
+	return StagehandTreeSerializer.serialize_tree(root, max_depth, include_properties)
+
+
+func _handle_query_nodes(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	var selector: String = p.get("selector", "")
+	if selector.is_empty():
+		return {"error": "Missing selector"}
+	var properties: Array[String] = []
+	if p.has("properties"):
+		for item: Variant in p["properties"]:
+			properties.append(String(item))
+	var limit: int = p.get("limit", 50)
+	return StagehandTreeSerializer.query_nodes(get_tree(), selector, properties, limit)
+
+
+func _handle_get_property(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	return StagehandPropertyHandler.get_property(get_tree(), p)
+
+
+func _handle_set_property(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	return StagehandPropertyHandler.set_property(get_tree(), p)
+
+
+func _handle_get_game_state(_params: Variant) -> Dictionary:
+	var viewport: Viewport = get_viewport()
+	var size: Vector2i = viewport.size if viewport != null else Vector2i.ZERO
+	return {
+		"current_scene": str(get_tree().current_scene.scene_file_path) if get_tree().current_scene != null else null,
+		"fps": Engine.get_frames_per_second(),
+		"physics_ticks": Engine.get_physics_frames(),
+		"window_size": {"x": size.x, "y": size.y},
+		"connected": true,
+		"engine_version": Engine.get_version_info()["string"],
 	}
 
 
