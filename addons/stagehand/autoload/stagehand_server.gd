@@ -7,6 +7,13 @@ extends Node
 const DEFAULT_PORT := 26700
 const VERSION := "0.1.0"
 
+const StagehandCommandRouter := preload("res://addons/stagehand/core/command_router.gd")
+const StagehandInputSimulator := preload("res://addons/stagehand/core/input_simulator.gd")
+const StagehandJsonRpc := preload("res://addons/stagehand/protocol/json_rpc.gd")
+const StagehandPropertyHandler := preload("res://addons/stagehand/core/property_handler.gd")
+const StagehandScreenshotCapture := preload("res://addons/stagehand/core/screenshot_capture.gd")
+const StagehandTreeSerializer := preload("res://addons/stagehand/core/tree_serializer.gd")
+
 var _tcp_server: TCPServer
 var _clients: Dictionary = {}  # int -> WebSocketPeer
 var _next_peer_id: int = 0

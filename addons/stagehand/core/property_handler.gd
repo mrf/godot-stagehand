@@ -2,6 +2,9 @@
 class_name StagehandPropertyHandler
 extends RefCounted
 
+const SelectorEngine := preload("res://addons/stagehand/core/selector_engine.gd")
+const StagehandTreeSerializer := preload("res://addons/stagehand/core/tree_serializer.gd")
+
 
 ## Get a property from a node matched by a selector.
 ## Supports dot notation (e.g. "position.x").
@@ -106,11 +109,14 @@ static func _set_property_deep(node: Node, property: String, value: Variant) -> 
 static func _do_set(obj: Object, property: String, value: Variant) -> bool:
 	if obj == null:
 		return false
-	# set() returns bool in Godot 4, not Error.
-	if obj.set(property, value):
+	var has_property := obj.get_property_list().any(
+		func(info: Dictionary) -> bool: return info.get("name", "") == property
+	)
+	if has_property:
+		obj.set(property, value)
 		return true
-	# For some built-ins, try set_indexed
+	# For indexed built-ins (for example position:x), try set_indexed as a best effort.
 	if obj.has_method("set_indexed"):
-		obj.set_indexed(property, value)
+		obj.set_indexed(NodePath(property), value)
 		return true
 	return false

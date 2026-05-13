@@ -2,6 +2,8 @@ class_name StagehandTreeSerializer
 extends RefCounted
 ## Serializes the scene tree and node properties into JSON-safe dictionaries.
 
+const SelectorEngine := preload("res://addons/stagehand/core/selector_engine.gd")
+
 
 ## Serialize a snapshot of the scene tree starting at [param root_node].
 ## [param max_depth] limits recursion. Roots at the node do not count against depth.

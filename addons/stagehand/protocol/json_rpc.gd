@@ -39,7 +39,7 @@ static func parse_request(text: String) -> Dictionary:
 static func make_response(id: Variant, result: Variant) -> String:
 	return JSON.stringify({
 		"jsonrpc": "2.0",
-		"id": id,
+		"id": _normalize_id(id),
 		"result": result,
 	})
 
@@ -53,6 +53,15 @@ static func make_error_response(
 		error_obj["data"] = data
 	return JSON.stringify({
 		"jsonrpc": "2.0",
-		"id": id,
+		"id": _normalize_id(id),
 		"error": error_obj,
 	})
+
+
+static func _normalize_id(id: Variant) -> Variant:
+	if typeof(id) == TYPE_FLOAT:
+		var f: float = id
+		var i: int = int(f)
+		if is_equal_approx(f, float(i)):
+			return i
+	return id

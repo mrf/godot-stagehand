@@ -2,6 +2,8 @@
 class_name StagehandInputSimulator
 extends RefCounted
 
+const SelectorEngine := preload("res://addons/stagehand/core/selector_engine.gd")
+
 const BUTTON_MAP: Dictionary = {
 	"left": MOUSE_BUTTON_LEFT,
 	"right": MOUSE_BUTTON_RIGHT,

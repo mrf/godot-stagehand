@@ -2,6 +2,8 @@
 class_name StagehandScreenshotCapture
 extends RefCounted
 
+const SelectorEngine := preload("res://addons/stagehand/core/selector_engine.gd")
+
 
 ## Capture the viewport as a PNG base64 string.
 ## Optionally crops to a node's bounding rect if [param selector] is provided.
