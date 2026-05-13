@@ -10,7 +10,17 @@ BUILD_DIR="build"
 BINARY_PREFIX="godot-stagehand"
 
 # Create build directory
-mkdir -p $BUILD_DIR
+mkdir -p "$BUILD_DIR"
+
+# Update plugin.cfg version if a version was specified
+if [ "$VERSION" != "latest" ]; then
+    for cfg in addons/stagehand/plugin.cfg examples/minimal-game/addons/stagehand/plugin.cfg; do
+        if [ -f "$cfg" ]; then
+            sed -i "s/^version=\".*\"/version=\"$VERSION\"/" "$cfg"
+            echo "Updated $cfg to v$VERSION"
+        fi
+    done
+fi
 
 echo "Building Stagehand v$VERSION..."
 
@@ -38,7 +48,7 @@ fi
 
 echo ""
 echo "Build completed! Binaries are in the $BUILD_DIR directory:"
-ls -la $BUILD_DIR/
+ls -la "$BUILD_DIR/"
 
 echo ""
 echo "To create archives for distribution, run:"

@@ -100,17 +100,11 @@ func wait_for_node(selector: String, timeout_ms: int = 10000, poll_interval_ms: 
 	    Dictionary: Result dictionary with 'found' boolean and additional info
 	"""
 	var condition = func() -> bool:
-		var engine_instance = SELECTOR_ENGINE.new()
-		var result = engine_instance.query_selector(selector)
-		engine_instance.free()
-		
-		if result.has("error") or not result.has("nodes"):
-			return false
-		
-		return result.nodes.size() > 0
-	
+		var nodes := SELECTOR_ENGINE.query(get_tree(), selector)
+		return nodes.size() > 0
+
 	var success = wait_condition(condition, timeout_ms, poll_interval_ms)
-	
+
 	var final_result = {}
 	if success:
 		final_result["success"] = true
@@ -120,14 +114,14 @@ func wait_for_node(selector: String, timeout_ms: int = 10000, poll_interval_ms: 
 		final_result["success"] = false
 		final_result["found"] = false
 		final_result["error"] = "Node did not appear before timeout (selector: %s, timeout: %dms)" % [selector, timeout_ms]
-	
+
 	return final_result
 
 
 func wait_for_property(selector: String, property: String, operator: String, expected_value, timeout_ms: int = 10000, poll_interval_ms: int = 100):
 	"""
 	Wait for a node's property to satisfy a condition.
-	
+
 	Args:
 	    selector: Node selector expression
 	    property: Name of the property to monitor
@@ -135,19 +129,16 @@ func wait_for_property(selector: String, property: String, operator: String, exp
 	    expected_value: Value to compare against
 	    timeout_ms: Maximum time to wait in milliseconds
 	    poll_interval_ms: Interval between polls in milliseconds
-	
+
 	Returns:
 	    Dictionary: Result dictionary with status information
 	"""
 	var condition = func() -> bool:
-		var engine_instance = SELECTOR_ENGINE.new()
-		var result = engine_instance.query_selector(selector)
-		engine_instance.free()
-		
-		if result.has("error") or not result.has("nodes") or result.nodes.is_empty():
+		var nodes := SELECTOR_ENGINE.query(get_tree(), selector)
+		if nodes.is_empty():
 			return false
-		
-		var node = result.nodes[0]
+
+		var node := nodes[0]
 		return evaluate_property_condition(node, property, operator, expected_value)
 	
 	var success = wait_condition(condition, timeout_ms, poll_interval_ms)

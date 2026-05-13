@@ -7,11 +7,11 @@ OUTPUT_NAME=${1:-"godot-stagehand"}
 
 echo "Building Stagehand for current platform..."
 
-go build -o $OUTPUT_NAME .
+go build -o "$OUTPUT_NAME" .
 
 if [ $? -eq 0 ]; then
     echo "Build successful! Created: $OUTPUT_NAME"
-    ls -la $OUTPUT_NAME
+    ls -la "$OUTPUT_NAME"
 else
     echo "Build failed!"
     exit 1
