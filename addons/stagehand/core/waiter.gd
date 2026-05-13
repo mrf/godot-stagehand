@@ -44,17 +44,14 @@ func evaluate_property_condition(node, property_name: String, operator: String, 
 	Returns:
 	    bool: Result of the property comparison
 	"""
-	if not node.has_meta(property_name) and not node.has_method("get_" + property_name) and not node.property_exists(property_name):
-		# Handle the case where property doesn't exist based on operator
-		if operator == "exists":
-			return false
+	if not node.has_meta(property_name) and not node.has_method("get_" + property_name) and not (property_name in node):
 		return false
 	
 	# Get the actual value of the property
 	var actual_value = null
 	if node.has_method("get_" + property_name):
 		actual_value = node.call("get_" + property_name)
-	elif node.property_exists(property_name):
+	elif property_name in node:
 		actual_value = node.get(property_name)
 	elif node.has_meta(property_name):
 		actual_value = node.get_meta(property_name)
@@ -72,10 +69,8 @@ func evaluate_property_condition(node, property_name: String, operator: String, 
 				return actual_value.contains(expected_value)
 			elif actual_value is Array:
 				return actual_value.has(expected_value)
-			elif actual_value is Dictionary or actual_value is CallableBuiltIn:
-				# For dictionaries, check if expected_value exists as key
-				if typeof(actual_value) == TYPE_DICTIONARY:
-					return actual_value.has(expected_value)
+			elif actual_value is Dictionary:
+				return actual_value.has(expected_value)
 			return false
 		"greater_than":
 			if actual_value is float or actual_value is int:
