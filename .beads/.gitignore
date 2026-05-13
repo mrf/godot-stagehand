@@ -38,7 +38,7 @@ sync-state.json
 # Worktree redirect file
 redirect
 
-# Backup data (legacy bd exports)
+# Backup data (legacy br exports)
 backup/
 
 # Interactions log (runtime)

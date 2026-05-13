@@ -1,15 +1,15 @@
 # Agent Instructions
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+This project uses **br** (beads_rust) for issue tracking. Run `br robot-docs guide` to get started.
 
 ## Quick Reference
 
 ```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work atomically
-bd close <id>         # Complete work
-bd dolt push          # Push beads data to remote
+br ready              # Find available work
+br show <id>          # View issue details
+br update <id> --claim  # Claim work atomically
+br close <id>         # Complete work
+br sync --flush-only  # Push beads data to remote
 ```
 
 ## Non-Interactive Shell Commands
@@ -39,22 +39,22 @@ cp -rf source dest          # NOT: cp -r source dest
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
 ## Beads Issue Tracker
 
-This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
+This project uses **br (beads_rust)** for issue tracking. Run `br robot-docs guide` to see workflow context and commands.
 
 ### Quick Reference
 
 ```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work
-bd close <id>         # Complete work
+br ready              # Find available work
+br show <id>          # View issue details
+br update <id> --claim  # Claim work
+br close <id>         # Complete work
 ```
 
 ### Rules
 
-- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
-- Run `bd prime` for detailed command reference and session close protocol
-- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
+- Use `br` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
+- Run `br robot-docs guide` for detailed command reference and session close protocol
+- Use `br comments` or `br create` for persistent knowledge — do NOT use MEMORY.md files
 
 ## Session Completion
 
@@ -68,7 +68,7 @@ bd close <id>         # Complete work
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
    git pull --rebase
-   bd dolt push
+   br sync --flush-only
    git push
    git status  # MUST show "up to date with origin"
    ```
