@@ -303,11 +303,7 @@ func TestE2E_DisconnectMidSession(t *testing.T) {
 }
 
 func toolReq(args map[string]any) mcp.CallToolRequest {
-	return mcp.CallToolRequest{Params: struct {
-		Name      string         `json:"name,omitempty"`
-		Arguments map[string]any `json:"arguments,omitempty"`
-		Meta      map[string]any `json:"_meta,omitempty"`
-	}{Arguments: args}}
+	return mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: args}}
 }
 
 func mustText(t *testing.T, result *mcp.CallToolResult) string {

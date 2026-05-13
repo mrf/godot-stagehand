@@ -1,5 +1,5 @@
 // Package selector parses and validates Stagehand selector strings on the Go side
-type before they are sent to the Godot addon.
+// before they are sent to the Godot addon.
 package selector
 
 import (
@@ -46,8 +46,8 @@ func Parse(s string) (*Selector, error) {
 	}
 
 	for _, prefix := range []struct {
-		str  string
-		typ  Type
+		str string
+		typ Type
 	}{
 		{"name:", Name},
 		{"class:", Class},
