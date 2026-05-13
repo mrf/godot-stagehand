@@ -1,88 +1,94 @@
-# Stagehand Selector System - Phase 2 Enhancement Guide
+# Stagehand Selector Guide
 
-## Overview
+This document describes the selector syntax supported by Stagehand for identifying UI elements in Godot scenes.
 
-This document outlines the enhanced selector grammar implemented in Stagehand, adding new capabilities like `text:`, `meta:`, `unique:` selectors, and `>>` chaining functionality. This enhancement allows for Playwright-like locators that enable more flexible UI element targeting.
+## Basic Selectors
 
-## New Selector Types
+These are the original selectors that were available from the start.
 
-### 1. Text-based Selection (`text:`)
-Finds UI elements by their visible text content.
-- Format: `text:The Button Text`
-- Searches for nodes that display the specified text (labels, buttons, etc.)
-- Useful for buttons, labels, headers with known text content
+### Path: `"/root/UI/MyButton"`
+Selects a specific node by its absolute path in the scene tree.
 
-### 2. Metadata-based Selection (`meta:`)
-Finds UI elements by metadata attributes similar to HTML `data-*` attributes.
-- Format: `meta:key=value` for exact match
-- Format: `meta:key` for existence check only  
-- Looks for nodes that have the specified metadata key and optionally the value
+Example: `/root/MainPanel/LoginForm/UsernameInput`
 
-### 3. Unique Element Identification (`unique:`)
-Identifies semantically unique elements within their context.
-- Format: `unique:some-unique-id`
-- Finds elements that may have unique characteristics like:
-  - Custom identifiers (UID, data-testid, etc.)
-  - Elements that are semantically unique in their parent container
+### Name: `"name:*pattern*"`
+Finds nodes whose names match a given pattern (supports globbing with `*` and `?`).
 
-## Selector Chaining with `>>`
+Examples:
+- `name:Button` - finds nodes named exactly "Button"
+- `name:*Button*` - finds nodes containing "Button" in the name
+- `name:?Button` - finds nodes with a single character followed by "Button"
 
-Elements can now be selected with chained queries using `>>`:
-- Format: `selector1 >> selector2 >> selector3 ...`
-- Each subsequent selector scopes its search to descendants of the previous results
-- Allows for nested/relative selection patterns
-- Example: `name:dialog >> text:Close` finds elements with text "Close" within a dialog named "dialog"
+### Class: `"class:Button"`
+Finds nodes that inherit from the specified class name.
+
+Example: `class:Button` matches Button, BaseButton, MarginContainer, etc.
+
+### Group: `"group:interactable"`
+Finds nodes that are members of the specified group.
+
+Example: `group:buttons` finds all nodes in the "buttons" group.
+
+## Enhanced Phase 2 Selectors 
+
+Additional selectors added in Phase 2 to better target dynamic content.
+
+### Text: `"text:Hello"`
+Finds nodes that display the specified text content. This works with any control that shows text labels, such as Label, Button, TextEdit, LineEdit, etc.
+
+Examples:
+- `text:Login` - finds elements showing the word "Login"
+- `text:*Save*` - finds elements with text containing "Save"
+- `text:Continue?` - finds elements showing "Continue?" (with question mark)
+
+### Meta: `"meta:key=value"` or `"meta:someKey"`
+Finds nodes based on metadata values attached to them. This includes exported variables, custom properties, or Godot's built-in metadata.
+
+Examples:
+- `meta:id=login_button` - finds element with id property equal to "login_button"
+- `meta:role=primary` - finds elements with role property equal to "primary"
+- `meta:itemId` - finds elements that have itemId property (any value)
+
+### Unique: `"unique:submit-btn"`
+Finds unique UI elements using heuristic matching of distinctive identifiers that should appear only once per screen.
+
+Examples:
+- `unique:logout-link` - targets a logout link typically unique on the page
+- `unique:header-logo` - finds the site logo in header
+- `unique:navigation-menu` - identifies the main navigation
+
+## Chained Selectors: `"selector >> selector >> ..."`
+
+The `>>` operator allows chaining selectors to narrow down the search scope. Each subsequent selector applies only to elements found by the previous selector.
+
+Example chain breakdown:
+1. First selector applies to the entire scene tree
+2. Second selector searches only within elements found by the first
+3. Third selector searches only within elements found by the second
+4. And so on...
+
+### Chaining Examples:
+
+`"group:menu >> class:Button >> text:Settings"`
+- First find all nodes in the "menu" group
+- Then among those nodes and their children, find Button class instances  
+- Finally among those and their children, find ones displaying the text "Settings"
+
+`"class:VBoxContainer >> group:buttons >> name:*Submit*"`
+- First find all VBoxContainers in the scene
+- Then within each container, find members of the "buttons" group
+- Finally match elements with names that contain "Submit"
+
+`"text:Profile >> unique:avatar-container"`
+- Find elements displaying text "Profile" 
+- Then within their child trees, locate the unique avatar container
+
+### Notes:
+
+1. Chained selectors support all the individual selector types mixed together
+2. Path selectors in chains are interpreted relative to the parent selection when not absolute (not starting with "/")
+3. The chain produces the final set of matched nodes after applying all constraints in sequence
 
 ## Backwards Compatibility
 
-All original selector types continue to work without changes:
-- `name:` - Node name with optional wildcard matching
-- `class:` - Node class/type matching  
-- `group:` - Nodes within a specific group
-- Absolute paths like `/root/MainUI/Button`
-
-## Usage Examples
-
-### Simple Selectors
-```go
-result, _ := ParseChain("text:Submit")        // Find by text
-result, _ := ParseChain("meta:testId=loginBtn") // Find by metadata
-result, _ := ParseChain("unique:primary-submit") // Find unique element
-result, _ := ParseChain("class:Button")        // Original - by class
-```
-
-### Chained Selectors
-```go
-result, _ := ParseChain("name:form-container >> text:Submit")                // Form button
-result, _ := ParseChain("group:menu-items >> class:MenuItem >> text:About")  // Nested menu item
-result, _ := ParseChain("group:forms >> meta:purpose=search >> class:LineEdit") // Search field by metadata
-```
-
-## Implementation Details
-
-### Go-side Parsing
-- New functions: `ParseChain()` for multi-selector chains, `Parse()` for legacy backwards compatibility
-- New selector types added: `Text`, `Meta`, `Unique`
-- Maintains full backwards compatibility with existing selector formats
-
-### GDScript Implementation (addons/stagehand/core/selector_engine.gd)
-- Updated `query()`, `parse_chain()`, `_resolve_chain()` methods
-- Added support for `_resolve_text()`, `_resolve_meta()`, `_resolve_unique()` 
-- Implemented scoped chaining resolution (`_resolve_X_from()` variants)
-- Text extraction implemented for common UI controls (Label, Button, etc.)
-
-## Supported Node Types
-
-### Text Extraction Targets
-- Nodes with `get_text()` method (Label, Button, etc.)
-- Nodes with text-related properties
-- Placeholder text, tooltips included in search
-
-### Metadata Support
-- Any node property stored in Godot's metadata system accessible via `.has_meta()` and `.get_meta()`
-- Commonly used for custom identifiers like data-testids
-
-### Unique Element Recognition
-- Nodes identified by specific metadata keys
-- Semantically unique nodes in their parent context
-- Custom unique identifier properties if present
+All original selectors continue to work exactly as before. Phase 2 enhancements are additive and do not break existing functionality.
