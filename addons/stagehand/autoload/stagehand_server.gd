@@ -13,6 +13,7 @@ const StagehandJsonRpc := preload("res://addons/stagehand/protocol/json_rpc.gd")
 const StagehandPropertyHandler := preload("res://addons/stagehand/core/property_handler.gd")
 const StagehandScreenshotCapture := preload("res://addons/stagehand/core/screenshot_capture.gd")
 const StagehandTreeSerializer := preload("res://addons/stagehand/core/tree_serializer.gd")
+const StagehandWaiter := preload("res://addons/stagehand/core/waiter.gd")
 
 var _tcp_server: TCPServer
 var _clients: Dictionary = {}  # int -> WebSocketPeer
@@ -142,6 +143,8 @@ func _register_builtin_handlers() -> void:
 	_router.register("input_action", _handle_input_action)
 	_router.register("input_key", _handle_input_key)
 	_router.register("screenshot", _handle_screenshot)
+	_router.register("wait_for_node", _handle_wait_for_node)
+	_router.register("wait_for_property", _handle_wait_for_property)
 
 
 func _handle_input_mouse(params: Variant) -> Dictionary:
@@ -223,6 +226,41 @@ func _handle_get_game_state(_params: Variant) -> Dictionary:
 		"connected": true,
 		"engine_version": Engine.get_version_info()["string"],
 	}
+
+
+func _handle_wait_for_node(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	var selector: String = p.get("selector", "")
+	if selector.is_empty():
+		return {"error": "Missing selector"}
+	var timeout_ms: int = p.get("timeout_ms", 10000)
+	var poll_interval_ms: int = p.get("poll_interval_ms", 100)
+	
+	var waiter = StagehandWaiter.new()
+	var result = await waiter.wait_for_node(selector, timeout_ms, poll_interval_ms)
+	waiter.free()
+	return result
+
+
+func _handle_wait_for_property(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	var selector: String = p.get("selector", "")
+	if selector.is_empty():
+		return {"error": "Missing selector"}
+	var property: String = p.get("property", "")
+	if property.is_empty():
+		return {"error": "Missing property"}
+	var operator: String = p.get("operator", "")
+	if operator.is_empty():
+		return {"error": "Missing operator"}
+	var timeout_ms: int = p.get("timeout_ms", 10000)
+	var poll_interval_ms: int = p.get("poll_interval_ms", 100)
+	var expected_value = p.get("expected_value")
+	
+	var waiter = StagehandWaiter.new()
+	var result = await waiter.wait_for_property(selector, property, operator, expected_value, timeout_ms, poll_interval_ms)
+	waiter.free()
+	return result
 
 
 func _stop() -> void:

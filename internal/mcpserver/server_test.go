@@ -23,6 +23,8 @@ func TestNew_RegistersAllTools(t *testing.T) {
 		"godot_press_key",
 		"godot_press_action",
 		"godot_screenshot",
+		"godot_wait_for_node",
+		"godot_wait_for_property",
 	}
 
 	for _, name := range expected {
@@ -54,6 +56,8 @@ func TestToolsReturnErrorWhenNotConnected(t *testing.T) {
 		{"godot_press_key", s.handlePressKey, map[string]any{"key": "Enter"}},
 		{"godot_press_action", s.handlePressAction, map[string]any{"action": "ui_accept"}},
 		{"godot_screenshot", s.handleScreenshot, nil},
+		{"godot_wait_for_node", s.handleWaitForNode, map[string]any{"selector": "class:Node"}},
+		{"godot_wait_for_property", s.handleWaitForProperty, map[string]any{"selector": "/root", "property": "name", "operator": "exists"}},
 	}
 
 	for _, tt := range tests {
@@ -75,9 +79,9 @@ func TestToolsReturnErrorWhenNotConnected(t *testing.T) {
 			}
 			if text.Text != "Not connected. Call godot_connect or godot_launch first." {
 				t.Errorf("unexpected error text: %s", text.Text)
-			}
-		})
-	}
+		}
+	})
+}
 }
 
 func TestConnectReturnsErrorForUnreachableHost(t *testing.T) {
