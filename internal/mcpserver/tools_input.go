@@ -131,3 +131,80 @@ func (s *Server) handlePressAction(ctx context.Context, req mcp.CallToolRequest)
 	}
 	return mcp.NewToolResultText(string(result)), nil
 }
+
+var typeTextTool = mcp.NewTool("godot_type_text",
+	mcp.WithDescription("Send text input to the focused control in the Godot game"),
+	mcp.WithString("text",
+		mcp.Required(),
+		mcp.Description("Text to type"),
+	),
+	mcp.WithNumber("delay_ms",
+		mcp.Description("Delay between characters in milliseconds"),
+		mcp.DefaultNumber(50),
+		mcp.Min(0),
+	),
+	mcp.WithString("selector",
+		mcp.Description("Optional node to click first to gain focus"),
+	),
+)
+
+func (s *Server) handleTypeText(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	text, err := req.RequireString("text")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	params := map[string]any{
+		"text":     text,
+		"delay_ms": req.GetInt("delay_ms", 50),
+	}
+	
+	if selector, hasSelector := req.GetArguments()["selector"]; hasSelector {
+		params["selector"] = selector
+	}
+
+	result, errResult := s.callGodot(ctx, "input_text", params)
+	if errResult != nil {
+		return errResult, nil
+	}
+	return mcp.NewToolResultText(string(result)), nil
+}
+
+var mouseMoveTool = mcp.NewTool("godot_mouse_move",
+	mcp.WithDescription("Move mouse cursor to a specific position without clicking"),
+	mcp.WithString("selector",
+		mcp.Description("Node whose center to move mouse to"),
+	),
+	mcp.WithObject("coordinates",
+		mcp.Description("Absolute screen coordinates {x, y} to move mouse to"),
+		mcp.Properties(map[string]any{
+			"x": map[string]interface{}{"type": "number", "description": "X coordinate"},
+			"y": map[string]interface{}{"type": "number", "description": "Y coordinate"},
+		}),
+	),
+)
+
+func (s *Server) handleMouseMove(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	selector, hasSelector := args["selector"]
+	coords, hasCoords := args["coordinates"]
+
+	if !hasSelector && !hasCoords {
+		return mcp.NewToolResultError("one of 'selector' or 'coordinates' is required"), nil
+	}
+	
+	params := map[string]interface{}{}
+	
+	if hasSelector {
+		params["selector"] = selector
+	}
+	if hasCoords {
+		params["coordinates"] = coords
+	}
+
+	result, errResult := s.callGodot(ctx, "input_mouse_move", params)
+	if errResult != nil {
+		return errResult, nil
+	}
+	return mcp.NewToolResultText(string(result)), nil
+}

@@ -136,6 +136,8 @@ func (s *Server) registerTools() {
 	s.mcp.AddTool(clickTool, s.handleClick)
 	s.mcp.AddTool(pressKeyTool, s.handlePressKey)
 	s.mcp.AddTool(pressActionTool, s.handlePressAction)
+	s.mcp.AddTool(typeTextTool, s.handleTypeText)
+	s.mcp.AddTool(mouseMoveTool, s.handleMouseMove)
 	s.mcp.AddTool(screenshotTool, s.handleScreenshot)
 	s.mcp.AddTool(waitForNodeTool, s.handleWaitForNode)
 	s.mcp.AddTool(waitForPropertyTool, s.handleWaitForProperty)
