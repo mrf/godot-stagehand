@@ -1,0 +1,8 @@
+[application]
+
+config/name="Minimal Stagehand Example"
+config/main_scene="res://Main.tscn"
+
+[rendering]
+
+threads/thread_model=2
