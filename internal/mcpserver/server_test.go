@@ -25,6 +25,9 @@ func TestNew_RegistersAllTools(t *testing.T) {
 		"godot_screenshot",
 		"godot_wait_for_node",
 		"godot_wait_for_property",
+		"godot_change_scene",
+		"godot_call_method",
+		"godot_evaluate",
 	}
 
 	for _, name := range expected {
@@ -58,6 +61,9 @@ func TestToolsReturnErrorWhenNotConnected(t *testing.T) {
 		{"godot_screenshot", s.handleScreenshot, nil},
 		{"godot_wait_for_node", s.handleWaitForNode, map[string]any{"selector": "class:Node"}},
 		{"godot_wait_for_property", s.handleWaitForProperty, map[string]any{"selector": "/root", "property": "name", "operator": "exists"}},
+		{"godot_change_scene", s.handleChangeScene, map[string]any{"scene_path": "res://scenes/test.tscn"}},
+		{"godot_call_method", s.handleCallMethod, map[string]any{"selector": "/root", "method": "show"}},
+		{"godot_evaluate", s.handleEvaluate, map[string]any{"expression": "1 + 1"}},
 	}
 
 	for _, tt := range tests {

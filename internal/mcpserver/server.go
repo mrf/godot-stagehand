@@ -139,4 +139,7 @@ func (s *Server) registerTools() {
 	s.mcp.AddTool(screenshotTool, s.handleScreenshot)
 	s.mcp.AddTool(waitForNodeTool, s.handleWaitForNode)
 	s.mcp.AddTool(waitForPropertyTool, s.handleWaitForProperty)
+	s.mcp.AddTool(changeSceneTool, s.handleChangeScene)
+	s.mcp.AddTool(callMethodTool, s.handleCallMethod)
+	s.mcp.AddTool(evaluateTool, s.handleEvaluate)
 }
