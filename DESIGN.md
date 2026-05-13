@@ -137,12 +137,19 @@ This finds all nodes named `*Button*` that are descendants of any `Panel`.
 
 ### Navigation & Scene Management
 
-**`godot_change_scene`**
+**`godot_change_scene`** - *Phase 2 PENDING*
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `scene_path` | string | yes | Resource path, e.g. `"res://scenes/main_menu.tscn"` |
 
 Returns: `{ success, current_scene }`
+
+**`godot_get_game_state`** - ✅ IMPLEMENTED ✅
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| *(none)* | | | |
+
+Returns: `{ current_scene, fps, physics_ticks, window_size, connected, engine_version }
 
 **`godot_get_game_state`**
 | Parameter | Type | Required | Description |
@@ -153,7 +160,7 @@ Returns: `{ current_scene, fps, physics_ticks, window_size, connected, engine_ve
 
 ### Node Querying
 
-**`godot_get_tree`**
+**`godot_get_tree`** - ✅ IMPLEMENTED ✅
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `root_path` | string | no | `"/root"` | Subtree root |
@@ -162,7 +169,7 @@ Returns: `{ current_scene, fps, physics_ticks, window_size, connected, engine_ve
 
 Returns: Recursive `{ name, class, path, children, properties }` tree.
 
-**`godot_find_nodes`**
+**`godot_find_nodes`** - ✅ IMPLEMENTED ✅
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `selector` | string | yes | | Selector expression |
@@ -173,7 +180,7 @@ Returns: `{ nodes: NodeInfo[], count }`
 
 ### Property Access
 
-**`godot_get_property`**
+**`godot_get_property`** - ✅ IMPLEMENTED ✅
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `selector` | string | yes | Target node |
@@ -181,7 +188,7 @@ Returns: `{ nodes: NodeInfo[], count }`
 
 Returns: `{ value, type }`
 
-**`godot_set_property`**
+**`godot_set_property`** - ✅ IMPLEMENTED ✅
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `selector` | string | yes | Target node |
@@ -192,7 +199,7 @@ Returns: `{ success, previous_value }`
 
 ### Method Calling
 
-**`godot_call_method`**
+**`godot_call_method`** - *Phase 2 PENDING*
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `selector` | string | yes | Target node |
@@ -201,7 +208,7 @@ Returns: `{ success, previous_value }`
 
 Returns: `{ result }`
 
-**`godot_evaluate`**
+**`godot_evaluate`** - *Phase 2 PENDING*
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `expression` | string | yes | GDScript expression |
@@ -211,7 +218,7 @@ Returns: `{ result, type }`
 
 ### Input Simulation
 
-**`godot_click`**
+**`godot_click`** - ✅ IMPLEMENTED ✅
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `selector` | string | no* | | Node to click (uses center) |
@@ -223,7 +230,7 @@ Returns: `{ result, type }`
 
 Returns: `{ clicked_at, node_path }`
 
-**`godot_type_text`**
+**`godot_type_text`** - *Phase 2 PENDING*
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `selector` | string | no | | Target input node |
@@ -232,7 +239,7 @@ Returns: `{ clicked_at, node_path }`
 
 Returns: `{ success }`
 
-**`godot_press_key`**
+**`godot_press_key`** - ✅ IMPLEMENTED ✅
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `key` | string | yes | | Key name (`"Enter"`, `"Space"`, `"W"`, `"Escape"`) |
@@ -241,7 +248,7 @@ Returns: `{ success }`
 
 Returns: `{ success }`
 
-**`godot_press_action`**
+**`godot_press_action`** - ✅ IMPLEMENTED ✅
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `action` | string | yes | | Input action name (`"ui_accept"`, `"move_left"`) |
@@ -250,7 +257,7 @@ Returns: `{ success }`
 
 Returns: `{ success }`
 
-**`godot_mouse_move`**
+**`godot_mouse_move`** - *Phase 2 PENDING*
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `position` | `{x, y}` | yes | | Target position |
@@ -260,7 +267,7 @@ Returns: `{ success }`
 
 ### Visual Inspection
 
-**`godot_screenshot`**
+**`godot_screenshot`** - ✅ IMPLEMENTED ✅
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `selector` | string | no | | Crop to this node's rect |
@@ -270,7 +277,7 @@ Returns: MCP `ImageContent` (base64 PNG)
 
 ### Waiting
 
-**`godot_wait_for_node`**
+**`godot_wait_for_node`** - *Phase 2 PENDING*
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `selector` | string | yes | | Node to wait for |
@@ -279,7 +286,7 @@ Returns: MCP `ImageContent` (base64 PNG)
 
 Returns: `{ found, elapsed_ms, node }`
 
-**`godot_wait_for_signal`**
+**`godot_wait_for_signal`** - *Phase 3 PENDING*
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `selector` | string | yes | | Node that emits the signal |
@@ -288,7 +295,7 @@ Returns: `{ found, elapsed_ms, node }`
 
 Returns: `{ received, elapsed_ms, args }`
 
-**`godot_wait_for_property`**
+**`godot_wait_for_property`** - *Phase 2 PENDING*
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `selector` | string | yes | | Target node |
@@ -301,7 +308,7 @@ Returns: `{ matched, elapsed_ms, actual_value }`
 
 ### Lifecycle
 
-**`godot_connect`**
+**`godot_connect`** - ✅ IMPLEMENTED ✅
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `host` | string | no | `"localhost"` | |
@@ -309,7 +316,7 @@ Returns: `{ matched, elapsed_ms, actual_value }`
 
 Returns: `{ connected, engine_version, game_title }`
 
-**`godot_launch`**
+**`godot_launch`** - *Phase 2 PENDING*
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `project_path` | string | yes | | Path to Godot project directory |
@@ -512,22 +519,22 @@ In-memory MCP transports with a mock Godot WebSocket server to test the full Cla
 
 ## Phased Delivery
 
-### MVP (Phase 1)
+### MVP (Phase 1) - ✅ IMPLEMENTED ✅
 
 - GDScript addon: WebSocket server, `ping`, `get_tree`, `query_nodes`, `get_property`, `set_property`, `screenshot`, `input_action`, `input_mouse`, `input_key`
 - Go MCP server: `godot_connect`, `godot_get_tree`, `godot_find_nodes`, `godot_get_property`, `godot_set_property`, `godot_screenshot`, `godot_click`, `godot_press_key`, `godot_press_action`, `godot_get_game_state`
 - Selectors: path, name, class, group
-- Connection: manual connect only
+- Connection: manual connect only (auto-launch in Phase 2+)
 - Tests: unit tests for selectors, one integration test
 
-### Phase 2
+### Phase 2 - 💻 IN DEVELOPMENT 💻
 
-- `godot_launch` (auto-start Godot)
-- `godot_wait_for_node`, `godot_wait_for_property`
-- `godot_call_method`, `godot_evaluate`
-- `godot_change_scene`
-- `text:` and `meta:` selectors, `>>` chaining
-- `godot_type_text`, `godot_mouse_move`
+- `godot_launch` (auto-start Godot) - *PENDING IMPLEMENTATION*
+- `godot_wait_for_node`, `godot_wait_for_property` - *PENDING IMPLEMENTATION*
+- `godot_call_method`, `godot_evaluate` - *PENDING IMPLEMENTATION*
+- `godot_change_scene` - *PENDING IMPLEMENTATION*
+- `text:` and `meta:` selectors, `>>` chaining - *PARTIALLY IMPLEMENTED*
+- `godot_type_text`, `godot_mouse_move` - *PENDING IMPLEMENTATION*
 
 ### Phase 3
 
@@ -551,3 +558,34 @@ In-memory MCP transports with a mock Godot WebSocket server to test the full Cla
 | **Autoload over editor-plugin-only** | Addon must run inside the *game* process, not just the editor. Autoload is the simplest mechanism |
 | **Env var activation guard** | `STAGEHAND_ENABLED=1` or `--stagehand` flag. WebSocket server must never run in production builds |
 | **Selector prefix grammar** | Inspired by Playwright's locator strategies but adapted for Godot's node tree (paths, groups, classes instead of CSS/ARIA) |
+
+## Current Troubleshooting Guide
+
+### Common Issues and Solutions:
+
+1. **Connection fails immediately after connecting:**
+   - Ensure the Godot project has the stagehand addon installed and enabled
+   - Verify the addon is enabled in the Godot editor plugins panel
+   - Make sure you launched Godot with `STAGEHAND_ENABLED=1` or `--stagehand` flag
+   - Check that no other apps are using port 26700 (default) or specified port
+
+2. **Addon not detected or "not enabled" error:**
+   - Verify the `addons/stagehand/` folder structure exists in your Godot project
+   - Check that the addon is activated in Project Settings > Plugins
+   - Ensure you're running Godot with the environment variable or flag to enable it
+
+3. **Headless Godot doesn't work as expected:**
+   - Godot Stagehand works best with visible GUI elements in headed mode
+   - Some input simulations may behave unexpectedly in headless mode
+   - Recommended: primarily test with GUI-enabled Godot sessions
+
+4. **Port conflict with multiple instances:**
+   - By default, Godot Stagehand uses port 26700
+   - Use environment variable `STAGEHAND_PORT=XXXX` to specify different port
+   - Or use command line: `godot --stagehand --stagehand-port=XXXX`
+
+5. **No response when using automation commands:**
+   - Ensure scene is loaded before attempting automation
+   - Verify target nodes exist before referencing them
+   - Check Godot console for errors (the addon prints server status messages)
+
