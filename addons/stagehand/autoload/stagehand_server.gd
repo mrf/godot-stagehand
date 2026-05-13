@@ -10,6 +10,8 @@ const VERSION := "0.1.0"
 const StagehandCommandRouter := preload("res://addons/stagehand/core/command_router.gd")
 const StagehandInputSimulator := preload("res://addons/stagehand/core/input_simulator.gd")
 const StagehandJsonRpc := preload("res://addons/stagehand/protocol/json_rpc.gd")
+const StagehandExpressionEvaluator := preload("res://addons/stagehand/core/expression_evaluator.gd")
+const StagehandMethodHandler := preload("res://addons/stagehand/core/method_handler.gd")
 const StagehandPropertyHandler := preload("res://addons/stagehand/core/property_handler.gd")
 const StagehandScreenshotCapture := preload("res://addons/stagehand/core/screenshot_capture.gd")
 const StagehandTreeSerializer := preload("res://addons/stagehand/core/tree_serializer.gd")
@@ -142,6 +144,8 @@ func _register_builtin_handlers() -> void:
 	_router.register("input_action", _handle_input_action)
 	_router.register("input_key", _handle_input_key)
 	_router.register("screenshot", _handle_screenshot)
+	_router.register("call_method", _handle_call_method)
+	_router.register("evaluate", _handle_evaluate)
 
 
 func _handle_input_mouse(params: Variant) -> Dictionary:
@@ -210,6 +214,16 @@ func _handle_get_property(params: Variant) -> Dictionary:
 func _handle_set_property(params: Variant) -> Dictionary:
 	var p: Dictionary = {} if params == null else params
 	return StagehandPropertyHandler.set_property(get_tree(), p)
+
+
+func _handle_call_method(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	return StagehandMethodHandler.call_method(get_tree(), p)
+
+
+func _handle_evaluate(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	return StagehandExpressionEvaluator.evaluate(get_tree(), p)
 
 
 func _handle_get_game_state(_params: Variant) -> Dictionary:

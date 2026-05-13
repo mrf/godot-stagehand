@@ -22,6 +22,8 @@ func TestNew_RegistersAllTools(t *testing.T) {
 		"godot_press_key",
 		"godot_press_action",
 		"godot_screenshot",
+		"godot_call_method",
+		"godot_evaluate",
 	}
 
 	for _, name := range expected {
@@ -53,6 +55,8 @@ func TestToolsReturnErrorWhenNotConnected(t *testing.T) {
 		{"godot_press_key", s.handlePressKey, map[string]any{"key": "Enter"}},
 		{"godot_press_action", s.handlePressAction, map[string]any{"action": "ui_accept"}},
 		{"godot_screenshot", s.handleScreenshot, nil},
+		{"godot_call_method", s.handleCallMethod, map[string]any{"selector": "/root", "method": "get_name"}},
+		{"godot_evaluate", s.handleEvaluate, map[string]any{"expression": "1+1"}},
 	}
 
 	for _, tt := range tests {
