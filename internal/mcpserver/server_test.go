@@ -13,6 +13,7 @@ func TestNew_RegistersAllTools(t *testing.T) {
 
 	expected := []string{
 		"godot_connect",
+		"godot_launch",
 		"godot_get_game_state",
 		"godot_get_tree",
 		"godot_find_nodes",
@@ -94,5 +95,34 @@ func TestConnectReturnsErrorForUnreachableHost(t *testing.T) {
 	}
 	if !result.IsError {
 		t.Fatal("expected isError=true for unreachable host")
+	}
+}
+
+func TestLaunchValidation(t *testing.T) {
+	s := New()
+	ctx := context.Background()
+
+	// Missing project_path should error.
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{}
+	result, err := s.handleLaunch(ctx, req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected isError=true for missing project_path")
+	}
+	// Extra test: invalid godot_bin path should also error.
+	req.Params.Arguments = map[string]any{
+		"project_path": "/nonexistent",
+		"godot_bin": "/nonexistent/godot",
+		"timeout_ms": 1000,
+	}
+	result, err = s.handleLaunch(ctx, req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected isError=true for invalid godot_bin")
 	}
 }
