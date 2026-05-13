@@ -31,6 +31,24 @@ An MCP server (Go) + Godot addon (GDScript) that lets AI agents, test runners, a
 
 Follow these steps to get started with Godot Stagehand:
 
+### Building Release Artifacts
+You can build binaries for common platforms using the provided build script:
+```bash
+# Build for multiple platforms at once
+./build-release.sh v0.2.0  # Replace with desired version
+
+# Or build just for your current platform
+./build.sh
+```
+
+Binaries will be created with consistent naming: `godot-stagehand-{version}-{platform}-{arch}`
+
+### Alternative: Direct Install with Go
+You can also install directly if you have Go installed:
+```bash
+go install github.com/mrf/godot-stagehand@latest
+```
+
 ### Prerequisites
 - **Godot 4.x** installed (developed/tested with 4.2+)
 - **Go 1.21+** installed for building the MCP server
@@ -49,9 +67,19 @@ go install .
 ```
 
 ### Step 2: Install Addon in Your Godot Project
+
+There are several ways to install the Stagehand addon in your Godot project:
+
+**Option A: Manual copy from this repository**
 1. Copy the `addons/stagehand/` directory to your Godot project's `addons/` directory
 2. In Godot editor, go to Project > Project Settings > Plugins tab
 3. Find "Stagehand" in the list and change its status from "Inactive" to "Active"
+
+**Option B: Using the provided tool script**
+To easily copy the addon to another Godot project, run the copy-addon.sh script:
+```bash
+./copy-addon.sh /path/to/your/godot/project
+```
 
 **Alternative manual installation**: Copy the entire `addons/` folder from this repository to your Godot project root.
 
