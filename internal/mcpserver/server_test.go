@@ -13,7 +13,6 @@ func TestNew_RegistersAllTools(t *testing.T) {
 
 	expected := []string{
 		"godot_connect",
-		"godot_launch",
 		"godot_get_game_state",
 		"godot_get_tree",
 		"godot_find_nodes",
@@ -22,12 +21,7 @@ func TestNew_RegistersAllTools(t *testing.T) {
 		"godot_click",
 		"godot_press_key",
 		"godot_press_action",
-		"godot_type_text",
-		"godot_mouse_move",
 		"godot_screenshot",
-		"godot_wait_for_node",
-		"godot_wait_for_property",
-		"godot_change_scene",
 		"godot_call_method",
 		"godot_evaluate",
 	}
@@ -61,11 +55,8 @@ func TestToolsReturnErrorWhenNotConnected(t *testing.T) {
 		{"godot_press_key", s.handlePressKey, map[string]any{"key": "Enter"}},
 		{"godot_press_action", s.handlePressAction, map[string]any{"action": "ui_accept"}},
 		{"godot_screenshot", s.handleScreenshot, nil},
-		{"godot_wait_for_node", s.handleWaitForNode, map[string]any{"selector": "class:Node"}},
-		{"godot_wait_for_property", s.handleWaitForProperty, map[string]any{"selector": "/root", "property": "name", "operator": "exists"}},
-		{"godot_change_scene", s.handleChangeScene, map[string]any{"scene_path": "res://scenes/test.tscn"}},
-		{"godot_call_method", s.handleCallMethod, map[string]any{"selector": "/root", "method": "show"}},
-		{"godot_evaluate", s.handleEvaluate, map[string]any{"expression": "1 + 1"}},
+		{"godot_call_method", s.handleCallMethod, map[string]any{"selector": "/root", "method": "get_name"}},
+		{"godot_evaluate", s.handleEvaluate, map[string]any{"expression": "1+1"}},
 	}
 
 	for _, tt := range tests {
@@ -87,9 +78,9 @@ func TestToolsReturnErrorWhenNotConnected(t *testing.T) {
 			}
 			if text.Text != "Not connected. Call godot_connect or godot_launch first." {
 				t.Errorf("unexpected error text: %s", text.Text)
-		}
-	})
-}
+			}
+		})
+	}
 }
 
 func TestConnectReturnsErrorForUnreachableHost(t *testing.T) {
@@ -107,34 +98,5 @@ func TestConnectReturnsErrorForUnreachableHost(t *testing.T) {
 	}
 	if !result.IsError {
 		t.Fatal("expected isError=true for unreachable host")
-	}
-}
-
-func TestLaunchValidation(t *testing.T) {
-	s := New()
-	ctx := context.Background()
-
-	// Missing project_path should error.
-	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{}
-	result, err := s.handleLaunch(ctx, req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !result.IsError {
-		t.Fatal("expected isError=true for missing project_path")
-	}
-	// Extra test: invalid godot_bin path should also error.
-	req.Params.Arguments = map[string]any{
-		"project_path": "/nonexistent",
-		"godot_bin": "/nonexistent/godot",
-		"timeout_ms": 1000,
-	}
-	result, err = s.handleLaunch(ctx, req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !result.IsError {
-		t.Fatal("expected isError=true for invalid godot_bin")
 	}
 }

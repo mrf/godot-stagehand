@@ -10,13 +10,11 @@ const VERSION := "0.1.0"
 const StagehandCommandRouter := preload("res://addons/stagehand/core/command_router.gd")
 const StagehandInputSimulator := preload("res://addons/stagehand/core/input_simulator.gd")
 const StagehandJsonRpc := preload("res://addons/stagehand/protocol/json_rpc.gd")
+const StagehandExpressionEvaluator := preload("res://addons/stagehand/core/expression_evaluator.gd")
+const StagehandMethodHandler := preload("res://addons/stagehand/core/method_handler.gd")
 const StagehandPropertyHandler := preload("res://addons/stagehand/core/property_handler.gd")
 const StagehandScreenshotCapture := preload("res://addons/stagehand/core/screenshot_capture.gd")
 const StagehandTreeSerializer := preload("res://addons/stagehand/core/tree_serializer.gd")
-const StagehandWaiter := preload("res://addons/stagehand/core/waiter.gd")
-const StagehandSceneHandler := preload("res://addons/stagehand/core/scene_handler.gd")
-const StagehandMethodHandler := preload("res://addons/stagehand/core/method_handler.gd")
-const StagehandExpressionEvaluator := preload("res://addons/stagehand/core/expression_evaluator.gd")
 
 var _tcp_server: TCPServer
 var _clients: Dictionary = {}  # int -> WebSocketPeer
@@ -145,12 +143,7 @@ func _register_builtin_handlers() -> void:
 	_router.register("input_mouse", _handle_input_mouse)
 	_router.register("input_action", _handle_input_action)
 	_router.register("input_key", _handle_input_key)
-	_router.register("input_text", _handle_input_text)
-	_router.register("input_mouse_move", _handle_input_mouse_move)
 	_router.register("screenshot", _handle_screenshot)
-	_router.register("wait_for_node", _handle_wait_for_node)
-	_router.register("wait_for_property", _handle_wait_for_property)
-	_router.register("change_scene", _handle_change_scene)
 	_router.register("call_method", _handle_call_method)
 	_router.register("evaluate", _handle_evaluate)
 
@@ -168,16 +161,6 @@ func _handle_input_action(params: Variant) -> Dictionary:
 func _handle_input_key(params: Variant) -> Dictionary:
 	var p: Dictionary = {} if params == null else params
 	return StagehandInputSimulator.input_key(get_tree(), p)
-
-
-func _handle_input_text(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
-	return await StagehandInputSimulator.input_text(get_tree(), p)
-
-
-func _handle_input_mouse_move(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
-	return StagehandInputSimulator.input_mouse_move(get_tree(), p)
 
 
 func _handle_screenshot(params: Variant) -> Dictionary:
@@ -233,6 +216,16 @@ func _handle_set_property(params: Variant) -> Dictionary:
 	return StagehandPropertyHandler.set_property(get_tree(), p)
 
 
+func _handle_call_method(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	return StagehandMethodHandler.call_method(get_tree(), p)
+
+
+func _handle_evaluate(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	return StagehandExpressionEvaluator.evaluate(get_tree(), p)
+
+
 func _handle_get_game_state(_params: Variant) -> Dictionary:
 	var viewport: Viewport = get_viewport()
 	var size: Vector2i = viewport.size if viewport != null else Vector2i.ZERO
@@ -244,56 +237,6 @@ func _handle_get_game_state(_params: Variant) -> Dictionary:
 		"connected": true,
 		"engine_version": Engine.get_version_info()["string"],
 	}
-
-
-func _handle_wait_for_node(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
-	var selector: String = p.get("selector", "")
-	if selector.is_empty():
-		return {"error": "Missing selector"}
-	var timeout_ms: int = p.get("timeout_ms", 10000)
-	var poll_interval_ms: int = p.get("poll_interval_ms", 100)
-	
-	var waiter = StagehandWaiter.new()
-	var result = await waiter.wait_for_node(selector, timeout_ms, poll_interval_ms)
-	waiter.free()
-	return result
-
-
-func _handle_wait_for_property(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
-	var selector: String = p.get("selector", "")
-	if selector.is_empty():
-		return {"error": "Missing selector"}
-	var property: String = p.get("property", "")
-	if property.is_empty():
-		return {"error": "Missing property"}
-	var operator: String = p.get("operator", "")
-	if operator.is_empty():
-		return {"error": "Missing operator"}
-	var timeout_ms: int = p.get("timeout_ms", 10000)
-	var poll_interval_ms: int = p.get("poll_interval_ms", 100)
-	var expected_value = p.get("expected_value")
-	
-	var waiter = StagehandWaiter.new()
-	var result = await waiter.wait_for_property(selector, property, operator, expected_value, timeout_ms, poll_interval_ms)
-	waiter.free()
-	return result
-
-
-func _handle_change_scene(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
-	return StagehandSceneHandler.change_scene(get_tree(), p)
-
-
-func _handle_call_method(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
-	return StagehandMethodHandler.call_method(get_tree(), p)
-
-
-func _handle_evaluate(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
-	return StagehandExpressionEvaluator.evaluate(get_tree(), p)
 
 
 func _stop() -> void:

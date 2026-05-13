@@ -1,55 +1,65 @@
-## Handles call_method command.
+## Handles call_method commands with safety boundaries.
+##
+## A blocklist prevents calling dangerous methods that could destabilize
+## the game or compromise security during automation.
 class_name StagehandMethodHandler
 extends RefCounted
 
 const SelectorEngine := preload("res://addons/stagehand/core/selector_engine.gd")
 const StagehandTreeSerializer := preload("res://addons/stagehand/core/tree_serializer.gd")
 
+## Methods that are always blocked regardless of context.
+const BLOCKED_METHODS: PackedStringArray = [
+	"free",
+	"queue_free",
+	"set_script",
+	"add_child",
+	"remove_child",
+	"queue_redraw",
+	"notification",
+	"propagate_notification",
+	"set_process",
+	"set_physics_process",
+]
+
+
 ## Call a method on a node matched by a selector.
-## Params: {
-##   selector: string,
-##   method: string,
-##   args: Array (optional),
-##   allow_multiple: bool (optional, default false)
-## }
 static func call_method(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var selector: String = params.get("selector", "")
-	var method_name: String = params.get("method", "")
-	var args: Array = params.get("args", []) as Array
-	var allow_multiple: bool = params.get("allow_multiple", false)
-	
-	if selector.is_empty():
-		return {"error": "Missing selector"}
-	if method_name.is_empty():
-		return {"error": "Missing method"}
-	
+	var method: String = params.get("method", "")
+
+	if selector.is_empty() or method.is_empty():
+		return {"error": "Missing selector or method"}
+
+	var err := _validate_method(method)
+	if not err.is_empty():
+		return {"error": err}
+
 	var nodes: Array[Node] = SelectorEngine.query(tree, selector)
 	if nodes.is_empty():
 		return {"error": "Node not found for selector: %s" % selector}
-	
-	if not allow_multiple and nodes.size() > 1:
-		return {"error": "Selector matched %d nodes. Use allow_multiple=true to call on all matches." % nodes.size()}
-	
-	var results := []
-	for node: Node in nodes:
-		if not node.has_method(method_name):
-			return {"error": "Node %s does not have method '%s'" % [node.get_path(), method_name]}
-	
-	for node: Node in nodes:
-		var result = node.callv(method_name, args)
-		results.append({
-			"node": StagehandTreeSerializer._node_info(node),
-			"result": StagehandTreeSerializer._to_json_safe(result),
-		})
-	
-	if not allow_multiple:
-		# Return single result (not wrapped in array) for backward compatibility.
-		return {
-			"success": true,
-			"result": results[0].result,
-		}
-	else:
-		return {
-			"success": true,
-			"results": results,
-		}
+
+	var node: Node = nodes[0]
+
+	if not node.has_method(method):
+		return {"error": "Method not found: %s" % method}
+
+	var args: Array = params.get("args", [])
+	var result: Variant = node.callv(method, args)
+
+	return {
+		"success": true,
+		"return_value": StagehandTreeSerializer._to_json_safe(result),
+	}
+
+
+## Validate a method name against safety rules. Returns an error string,
+## or empty string if the method is allowed.
+static func _validate_method(method: String) -> String:
+	if method.begins_with("_"):
+		return "Blocked: private/lifecycle methods (starting with '_') cannot be called"
+
+	if method in BLOCKED_METHODS:
+		return "Blocked: '%s' is a destructive method and cannot be called remotely" % method
+
+	return ""
