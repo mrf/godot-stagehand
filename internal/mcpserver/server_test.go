@@ -22,6 +22,8 @@ func TestNew_RegistersAllTools(t *testing.T) {
 		"godot_click",
 		"godot_press_key",
 		"godot_press_action",
+		"godot_type_text",
+		"godot_mouse_move",
 		"godot_screenshot",
 		"godot_wait_for_node",
 		"godot_wait_for_property",

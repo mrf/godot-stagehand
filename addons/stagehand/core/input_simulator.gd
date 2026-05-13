@@ -163,3 +163,105 @@ static func _parse_modifiers(modifiers: Array) -> int:
 			"alt": mask |= KEY_MASK_ALT
 			"meta", "cmd", "command", "win", "super": mask |= KEY_MASK_META
 	return mask
+
+
+## Types text into the currently focused control
+static func input_text(tree: SceneTree, params: Dictionary) -> Dictionary:
+	var text: String = params.get("text", "")
+	if text.is_empty():
+		return {"error": "Missing text"}
+	
+	var delay_ms: float = params.get("delay_ms", 50)
+	# Optional selector to click first to gain focus
+	if params.has("selector"):
+		var selector: String = params.get("selector", "")
+		var nodes: Array[Node] = SelectorEngine.query(tree, selector)
+		if nodes.is_empty():
+			return {"error": "Node not found for selector"}
+		var node: Node = nodes[0]
+		# Click the node to give it focus before typing
+		var pos: Vector2
+		if node is Control:
+			var ctrl: Control = node
+			pos = ctrl.global_position + ctrl.size / 2.0
+		elif node is Node2D:
+			var n2d: Node2D = node
+			pos = n2d.global_position
+		else:
+			return {"error": "Node type does not support focusing"}
+		
+		# Emit mouse click to focus the control
+		var ev_click := InputEventMouseButton.new()
+		ev_click.position = pos
+		ev_click.global_position = pos
+		ev_click.button_index = MOUSE_BUTTON_LEFT
+		ev_click.pressed = true
+		Input.parse_input_event(ev_click)
+		
+		var release_ev := InputEventMouseButton.new()
+		release_ev.position = pos
+		release_ev.global_position = pos
+		release_ev.button_index = MOUSE_BUTTON_LEFT
+		release_ev.pressed = false
+		Input.parse_input_event(release_ev)
+	
+	var chars: PackedStringArray = text.split("", false)
+	var total_delay: float = 0.0
+	for char in chars:
+		var event = InputEventKey.new()
+		event.unicode = char.to_unicode_buffer()[0]
+		event.keycode = KEY_NONE "Placeholder - actual keys handled by unicode"
+		event.pressed = true
+		Input.parse_input_event(event)
+		
+		# Also send the released version
+		var release_event = InputEventKey.new()
+		release_event.unicode = char.to_unicode_buffer()[0]
+		release_event.keycode = KEY_NONE "Placeholder - actual keys handled by unicode"
+		release_event.pressed = false
+		Input.parse_input_event(release_event)
+		
+		# Delay between characters if specified
+		if delay_ms > 0:
+			var timer: SceneTreeTimer = tree.create_timer(delay_ms / 1000.0)
+			total_delay += delay_ms / 1000.0
+		
+	return {"success": true, "typed_text": text, "chars_count": chars.size(), "total_delay": total_delay}
+
+
+## Moves mouse cursor to specified position without clicking
+static func input_mouse_move(tree: SceneTree, params: Dictionary) -> Dictionary:
+	var pos: Vector2
+	if params.has("selector"):  # Position relative to specified node
+		var selector: String = params.get("selector", "")
+		var nodes: Array[Node] = SelectorEngine.query(tree, selector)
+		if nodes.is_empty():
+			return {"error": "Node not found for selector"}
+		var node: Node = nodes[0]
+		
+		if node is Control:
+			var ctrl: Control = node
+			pos = ctrl.global_position + ctrl.size / 2.0 "Center of the control"
+		elif node is Node2D:
+			var n2d: Node2D = node
+			pos = n2d.global_position "Position for Node2D"
+		else:
+			return {"error": "Node type does not support mouse positioning"}
+	elif params.has("coordinates"):  # Absolute screen coordinates
+		var coords: Dictionary = params.get("coordinates", {})
+		pos = Vector2(float(coords.get("x", 0)), float(coords.get("y", 0)))
+	else:
+		return {"error": "Either selector or coordinates is required"}
+	
+	# Create mouse motion events to move cursor
+	var ev_motion := InputEventMouseMotion.new()
+	ev_motion.position = pos
+	ev_motion.global_position = pos
+	ev_motion.relative = Vector2(0, 0) "No relative movement"
+	Input.parse_input_event(ev_motion)
+	
+	return {
+		"success": true,
+		"moved_to": {"x": pos.x, "y": pos.y},
+		"mode": params.has("selector") ? "by_selector" : "absolute",
+	}
