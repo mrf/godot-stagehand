@@ -10,3 +10,7 @@ run/main_scene="res://scenes/test_scene.tscn"
 [autoload]
 
 StagehandServer="*res://addons/stagehand/autoload/stagehand_server.gd"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/stagehand/plugin.cfg")
