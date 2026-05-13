@@ -19,7 +19,10 @@ import (
 
 const godotStartupTimeout = 30 * time.Second
 
-func TestIntegrationGodotHeadlessPingAndGetTree(t *testing.T) {
+// setupGodotTest prepares a headless Godot instance with the stagehand addon
+// and returns a connected WebSocket connection. Cleanup is registered automatically.
+func setupGodotTest(t *testing.T) (*Connection, string) {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("skipping Godot integration test in short mode")
 	}
@@ -46,79 +49,91 @@ func TestIntegrationGodotHeadlessPingAndGetTree(t *testing.T) {
 	defer cancel()
 
 	conn := dialGodotWhenReady(t, ctx, port, wait, logPath)
-	defer conn.Close()
-
-	pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer pingCancel()
-	pingResp, err := conn.Call(pingCtx, "ping", nil)
-	if err != nil {
-		t.Fatalf("ping call failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
-	}
-
-	var ping struct {
-		Status           string `json:"status"`
-		Engine           string `json:"engine"`
-		EngineVersion    string `json:"engine_version"`
-		StagehandVersion string `json:"stagehand_version"`
-	}
-	if err := json.Unmarshal(pingResp.Result, &ping); err != nil {
-		t.Fatalf("unmarshal ping result: %v; raw=%s", err, pingResp.Result)
-	}
-	if ping.Status != "ok" || ping.Engine != "godot" {
-		t.Fatalf("unexpected ping response: %+v", ping)
-	}
-	if ping.EngineVersion == "" || ping.StagehandVersion == "" {
-		t.Fatalf("ping response missing version fields: %+v", ping)
-	}
-
-	treeCtx, treeCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer treeCancel()
-	treeResp, err := conn.Call(treeCtx, "get_tree", map[string]any{
-		"root_path":  "/root",
-		"max_depth":  4,
-		"properties": []string{"text"},
+	t.Cleanup(func() {
+		conn.Close()
 	})
-	if err != nil {
-		t.Fatalf("get_tree call failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
-	}
 
-	var tree treeNode
-	if err := json.Unmarshal(treeResp.Result, &tree); err != nil {
-		t.Fatalf("unmarshal get_tree result: %v; raw=%s", err, treeResp.Result)
-	}
-	if tree.Name != "root" || tree.Class == "" || tree.Count < 3 {
-		t.Fatalf("unexpected root tree data: %+v", tree)
-	}
+	return conn, logPath
+}
 
-	scene := findTreeNode(tree, "TestScene")
-	if scene == nil {
-		t.Fatalf("get_tree result missing TestScene; raw=%s", treeResp.Result)
-	}
-	if scene.Class != "Node2D" {
-		t.Fatalf("TestScene class = %q, want Node2D", scene.Class)
-	}
+func TestIntegrationGodotHeadlessPingAndGetTree(t *testing.T) {
+	conn, logPath := setupGodotTest(t)
 
-	titleLabel := findTreeNode(tree, "titleLabel")
-	if titleLabel == nil {
-		t.Fatalf("get_tree result missing titleLabel; raw=%s", treeResp.Result)
-	}
-	if titleLabel.Class != "Label" {
-		t.Fatalf("titleLabel class = %q, want Label", titleLabel.Class)
-	}
-	if got := propertyString(titleLabel, "text"); got != "Stagehand Test Scene" {
-		t.Fatalf("titleLabel text = %q, want %q", got, "Stagehand Test Scene")
-	}
+	t.Run("Ping", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		pingResp, err := conn.Call(ctx, "ping", nil)
+		if err != nil {
+			t.Fatalf("ping call failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
+		}
 
-	clickButton := findTreeNode(tree, "clickButton")
-	if clickButton == nil {
-		t.Fatalf("get_tree result missing clickButton; raw=%s", treeResp.Result)
-	}
-	if clickButton.Class != "Button" {
-		t.Fatalf("clickButton class = %q, want Button", clickButton.Class)
-	}
-	if got := propertyString(clickButton, "text"); got != "Click Me!" {
-		t.Fatalf("clickButton text = %q, want %q", got, "Click Me!")
-	}
+		var ping struct {
+			Status           string `json:"status"`
+			Engine           string `json:"engine"`
+			EngineVersion    string `json:"engine_version"`
+			StagehandVersion string `json:"stagehand_version"`
+		}
+		if err := json.Unmarshal(pingResp.Result, &ping); err != nil {
+			t.Fatalf("unmarshal ping result: %v; raw=%s", err, pingResp.Result)
+		}
+		if ping.Status != "ok" || ping.Engine != "godot" {
+			t.Fatalf("unexpected ping response: %+v", ping)
+		}
+		if ping.EngineVersion == "" || ping.StagehandVersion == "" {
+			t.Fatalf("ping response missing version fields: %+v", ping)
+		}
+	})
+
+	t.Run("GetTree", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		treeResp, err := conn.Call(ctx, "get_tree", map[string]any{
+			"root_path":  "/root",
+			"max_depth":  4,
+			"properties": []string{"text"},
+		})
+		if err != nil {
+			t.Fatalf("get_tree call failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
+		}
+
+		var tree treeNode
+		if err := json.Unmarshal(treeResp.Result, &tree); err != nil {
+			t.Fatalf("unmarshal get_tree result: %v; raw=%s", err, treeResp.Result)
+		}
+		if tree.Name != "root" || tree.Class == "" || tree.Count < 3 {
+			t.Fatalf("unexpected root tree data: %+v", tree)
+		}
+
+		scene := findTreeNode(tree, "TestScene")
+		if scene == nil {
+			t.Fatalf("get_tree result missing TestScene; raw=%s", treeResp.Result)
+		}
+		if scene.Class != "Node2D" {
+			t.Fatalf("TestScene class = %q, want Node2D", scene.Class)
+		}
+
+		label := findTreeNode(tree, "Label")
+		if label == nil {
+			t.Fatalf("get_tree result missing Label; raw=%s", treeResp.Result)
+		}
+		if label.Class != "Label" {
+			t.Fatalf("Label class = %q, want Label", label.Class)
+		}
+		if got := propertyString(label, "text"); got != "Stagehand Test Scene" {
+			t.Fatalf("Label text = %q, want %q", got, "Stagehand Test Scene")
+		}
+
+		button := findTreeNode(tree, "StartButton")
+		if button == nil {
+			t.Fatalf("get_tree result missing StartButton; raw=%s", treeResp.Result)
+		}
+		if button.Class != "Button" {
+			t.Fatalf("StartButton class = %q, want Button", button.Class)
+		}
+		if got := propertyString(button, "text"); got != "Start Game" {
+			t.Fatalf("StartButton text = %q, want %q", got, "Start Game")
+		}
+	})
 }
 
 type treeNode struct {
