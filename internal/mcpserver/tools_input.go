@@ -9,7 +9,7 @@ import (
 var clickTool = mcp.NewTool("godot_click",
 	mcp.WithDescription("Click on a node or at screen coordinates in the Godot game"),
 	mcp.WithString("selector",
-		mcp.Description("Node to click (uses its center position)"),
+		mcp.Description("Node to click, supports selectors like \"class:Button\", \"name:OkBtn\", \"text:Submit\", \"meta:id=confirm\", or \"div >> text:Submit\""),
 	),
 	mcp.WithObject("position",
 		mcp.Description("Screen coordinates {x, y} to click at"),

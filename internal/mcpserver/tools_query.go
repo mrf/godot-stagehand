@@ -42,11 +42,11 @@ func (s *Server) handleGetTree(ctx context.Context, req mcp.CallToolRequest) (*m
 }
 
 var findNodesTool = mcp.NewTool("godot_find_nodes",
-	mcp.WithDescription("Find nodes matching a selector expression (path, name:, class:, group:)"),
+	mcp.WithDescription("Find nodes matching a selector expression (path, name:, class:, group:, text:, meta:, unique:, with >> chaining)"),
 	mcp.WithReadOnlyHintAnnotation(true),
 	mcp.WithString("selector",
 		mcp.Required(),
-		mcp.Description("Selector expression, e.g. \"class:Button\", \"name:*Player*\", \"/root/Main\""),
+		mcp.Description("Selector expression, e.g. \"class:Button\", \"name:*Player*\", \"/root/Main\", \"text:Submit\", \"meta:id=submit_btn\", \"name:dialog >> text:Cancel\""),
 	),
 	mcp.WithArray("properties",
 		mcp.Description("Property names to return per matched node"),
