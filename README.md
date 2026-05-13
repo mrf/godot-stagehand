@@ -51,7 +51,7 @@ go install github.com/mrf/godot-stagehand@latest
 
 ### Prerequisites
 - **Godot 4.x** installed (developed/tested with 4.2+)
-- **Go 1.21+** installed for building the MCP server
+- **Go 1.25+** installed for building the MCP server
 - Your Godot project should have some user interface elements or nodes for interaction
 
 ### Step 1: Build the MCP Server
@@ -107,92 +107,24 @@ In a separate terminal:
 This will start the MCP server which AI tools like Claude Code can connect to.
 
 ### Step 5: Configure MCP Client
-Configure your MCP client (like Claude Code) to recognize the Stagehand tools by pointing your AI assistant to the server.
+Add the server to your MCP client configuration. For Claude Code, add to `.claude/settings.json`:
 
-The following example MCP configuration shows how to enable Godot Stagehand tools:
-
-#### MCP Client Configuration Example
 ```json
 {
   "mcpServers": {
     "godot-stagehand": {
-      "command": [
-        "/absolute/path/to/godot-stagehand"
-      ],
-      "env": {
-        "PATH": "/absolute/path/to/godot-stagehand/binary/directory:$PATH"
-      }
+      "command": "/absolute/path/to/godot-stagehand"
     }
   }
 }
 ```
 
-### Step 6: Use Automation Tools After Launch
-Once connected, you can use these basic automation tools:
+For other MCP clients, consult your client's documentation for how to register an MCP server by command path.
 
-1. **Connect to the game**:
-   ```json
-   {
-     "toolName": "godot_connect",
-     "arguments": {
-       "host": "localhost",
-       "port": 26700
-     }
-   }
-   ```
+### Step 6: Use Automation Tools
+Once your MCP client is configured, the Stagehand tools are available directly through your client's tool-calling interface. Start by calling `godot_connect` to attach to the running game, then use tools like `godot_get_tree`, `godot_find_nodes`, `godot_click`, and `godot_screenshot` to interact with it.
 
-2. **Get the scene tree** to explore the game structure:
-   ```json
-   {
-     "toolName": "godot_get_tree",
-     "arguments": {
-       "max_depth": 5
-     }
-   }
-   ```
-
-3. **Find and interact with UI elements**:
-   ```json
-   {
-     "toolName": "godot_find_nodes",
-     "arguments": {
-       "selector": "class:Button",
-       "properties": ["text", "visible"]
-     }
-   }
-   ```
-
-4. **Click a button** by selector or path:
-   ```json
-   {
-     "toolName": "godot_click",
-     "arguments": {
-       "selector": "class:Button",
-       "button": "left"
-     }
-   }
-   ```
-
-5. **Simulate keyboard input**:
-   ```json
-   {
-     "toolName": "godot_press_key",
-     "arguments": {
-       "key": "Space",
-       "modifiers": []
-     }
-   }
-   ```
-
-6. **Capture a screenshot**:
-   ```json
-   {
-     "toolName": "godot_screenshot",
-     "arguments": {
-       "full_page": true
-     }
-   }
-   ```
+See [DESIGN.md](DESIGN.md) for the full list of available tools and their parameters.
 
 ## Available Selectors
 
