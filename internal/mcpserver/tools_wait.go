@@ -32,6 +32,10 @@ func (s *Server) handleWaitForNode(ctx context.Context, req mcp.CallToolRequest)
 		return mcp.NewToolResultError("Invalid 'selector' parameter: " + err.Error()), nil
 	}
 
+	if errResult := validateSelector(selector); errResult != nil {
+		return errResult, nil
+	}
+
 	params := map[string]any{
 		"selector":        selector,
 		"timeout_ms":      req.GetInt("timeout_ms", 10000),
@@ -81,6 +85,10 @@ func (s *Server) handleWaitForProperty(ctx context.Context, req mcp.CallToolRequ
 	selector, err := req.RequireString("selector")
 	if err != nil {
 		return mcp.NewToolResultError("Invalid 'selector' parameter: " + err.Error()), nil
+	}
+
+	if errResult := validateSelector(selector); errResult != nil {
+		return errResult, nil
 	}
 
 	property, err := req.RequireString("property")

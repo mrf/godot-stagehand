@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -84,6 +85,87 @@ func TestToolsReturnErrorWhenNotConnected(t *testing.T) {
 			}
 			if text.Text != "Not connected. Call godot_connect or godot_launch first." {
 				t.Errorf("unexpected error text: %s", text.Text)
+			}
+		})
+	}
+}
+
+func TestInvalidSelectorReturnsError(t *testing.T) {
+	s := New()
+	ctx := context.Background()
+
+	// Selectors that are invalid: empty value after a recognized prefix
+	invalidSelector := "name:"
+
+	tests := []struct {
+		name    string
+		handler func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
+		args    map[string]any
+	}{
+		{"godot_find_nodes", s.handleFindNodes, map[string]any{"selector": invalidSelector}},
+		{"godot_get_property", s.handleGetProperty, map[string]any{"selector": invalidSelector, "property": "position"}},
+		{"godot_set_property", s.handleSetProperty, map[string]any{"selector": invalidSelector, "property": "position", "value": 0}},
+		{"godot_click", s.handleClick, map[string]any{"selector": invalidSelector}},
+		{"godot_type_text", s.handleTypeText, map[string]any{"text": "hello", "selector": invalidSelector}},
+		{"godot_mouse_move", s.handleMouseMove, map[string]any{"selector": invalidSelector}},
+		{"godot_wait_for_node", s.handleWaitForNode, map[string]any{"selector": invalidSelector}},
+		{"godot_wait_for_property", s.handleWaitForProperty, map[string]any{"selector": invalidSelector, "property": "x", "operator": "exists"}},
+		{"godot_call_method", s.handleCallMethod, map[string]any{"selector": invalidSelector, "method": "get_name"}},
+		{"godot_evaluate context_node", s.handleEvaluate, map[string]any{"expression": "1+1", "context_node": invalidSelector}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := mcp.CallToolRequest{}
+			req.Params.Arguments = tt.args
+			result, err := tt.handler(ctx, req)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatal("expected isError=true for invalid selector")
+			}
+			text, ok := mcp.AsTextContent(result.Content[0])
+			if !ok {
+				t.Fatal("expected TextContent")
+			}
+			if !strings.Contains(text.Text, "invalid selector") {
+				t.Errorf("expected 'invalid selector' in error text, got: %s", text.Text)
+			}
+		})
+	}
+}
+
+func TestValidSelectorPassesThrough(t *testing.T) {
+	s := New()
+	ctx := context.Background()
+
+	// These should fail with "not connected", not a selector error
+	validSelectors := []string{
+		"/root/Main",
+		"class:Button",
+		"name:OkBtn",
+		"group:enemies",
+		"name:dialog >> text:Cancel",
+	}
+
+	for _, sel := range validSelectors {
+		t.Run(sel, func(t *testing.T) {
+			req := mcp.CallToolRequest{}
+			req.Params.Arguments = map[string]any{"selector": sel}
+			result, err := s.handleFindNodes(ctx, req)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatal("expected isError=true (not connected)")
+			}
+			text, ok := mcp.AsTextContent(result.Content[0])
+			if !ok {
+				t.Fatal("expected TextContent")
+			}
+			if strings.Contains(text.Text, "invalid selector") {
+				t.Errorf("valid selector %q incorrectly rejected: %s", sel, text.Text)
 			}
 		})
 	}

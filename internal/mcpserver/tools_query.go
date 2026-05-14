@@ -66,6 +66,10 @@ func (s *Server) handleFindNodes(ctx context.Context, req mcp.CallToolRequest) (
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
+	if errResult := validateSelector(selector); errResult != nil {
+		return errResult, nil
+	}
+
 	params := map[string]any{
 		"selector": selector,
 		"limit":    req.GetInt("limit", 50),
