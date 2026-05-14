@@ -113,6 +113,8 @@ func (s *stubGodot) handleReq(req godotconn.Request) godotconn.Response {
 		resp.Result = rawJSON(`{"success":true}`)
 	case "screenshot":
 		resp.Result = rawJSON(`{"data":"iVBORw0KGgo=","mime_type":"image/png","width":1280,"height":720}`)
+	case "change_scene":
+		resp.Result = rawJSON(`{"success":true,"previous_scene":"res://main.tscn","new_scene":"res://scenes/game.tscn"}`)
 	default:
 		resp.Error = &godotconn.RPCError{Code: godotconn.CodeMethodNotFound, Message: "unknown method: " + req.Method}
 	}
@@ -429,6 +431,40 @@ func TestE2E_GetGameState(t *testing.T) {
 	text := mustText(t, result)
 	if !strings.Contains(text, `"fps":60`) {
 		t.Errorf("get_game_state missing fps: %s", text)
+	}
+}
+
+func TestE2E_ChangeScene(t *testing.T) {
+	srv, stub := setupE2ETest(t)
+	ctx := context.Background()
+
+	result, err := srv.handleChangeScene(ctx, toolReq(map[string]any{
+		"scene_path": "res://scenes/game.tscn",
+	}))
+	if err != nil {
+		t.Fatalf("handleChangeScene: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("change_scene error: %+v", result)
+	}
+	text := mustText(t, result)
+	if !strings.Contains(text, "success") {
+		t.Errorf("change_scene result missing %q: %s", "success", text)
+	}
+
+	if n := stub.callCount("change_scene"); n != 1 {
+		t.Errorf("expected 1 change_scene call, got %d", n)
+	}
+	params := stub.lastCallParams("change_scene")
+	if params == nil {
+		t.Fatal("no change_scene params recorded")
+	}
+	var p map[string]any
+	if err := json.Unmarshal(params, &p); err != nil {
+		t.Fatalf("unmarshal change_scene params: %v", err)
+	}
+	if p["scene_path"] != "res://scenes/game.tscn" {
+		t.Errorf("change_scene scene_path = %v, want res://scenes/game.tscn", p["scene_path"])
 	}
 }
 

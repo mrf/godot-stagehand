@@ -13,6 +13,7 @@ const StagehandJsonRpc := preload("res://addons/stagehand/protocol/json_rpc.gd")
 const StagehandExpressionEvaluator := preload("res://addons/stagehand/core/expression_evaluator.gd")
 const StagehandMethodHandler := preload("res://addons/stagehand/core/method_handler.gd")
 const StagehandPropertyHandler := preload("res://addons/stagehand/core/property_handler.gd")
+const StagehandSceneHandler := preload("res://addons/stagehand/core/scene_handler.gd")
 const StagehandScreenshotCapture := preload("res://addons/stagehand/core/screenshot_capture.gd")
 const StagehandTreeSerializer := preload("res://addons/stagehand/core/tree_serializer.gd")
 
@@ -146,6 +147,7 @@ func _register_builtin_handlers() -> void:
 	_router.register("screenshot", _handle_screenshot)
 	_router.register("call_method", _handle_call_method)
 	_router.register("evaluate", _handle_evaluate)
+	_router.register("change_scene", _handle_change_scene)
 
 
 func _handle_input_mouse(params: Variant) -> Dictionary:
@@ -224,6 +226,11 @@ func _handle_call_method(params: Variant) -> Dictionary:
 func _handle_evaluate(params: Variant) -> Dictionary:
 	var p: Dictionary = {} if params == null else params
 	return StagehandExpressionEvaluator.evaluate(get_tree(), p)
+
+
+func _handle_change_scene(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	return StagehandSceneHandler.change_scene(get_tree(), p)
 
 
 func _handle_get_game_state(_params: Variant) -> Dictionary:
