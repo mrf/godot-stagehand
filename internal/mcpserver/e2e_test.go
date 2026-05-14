@@ -109,6 +109,21 @@ func (s *stubGodot) handleReq(req godotconn.Request) godotconn.Response {
 		resp.Result = rawJSON(`{"success":true,"previous_value":"Old Text"}`)
 	case "get_game_state":
 		resp.Result = rawJSON(`{"current_scene":"res://main.tscn","fps":60,"physics_ticks":120,"window_size":{"x":1280,"y":720},"connected":true,"engine_version":"4.2.1"}`)
+	case "wait_for_node":
+		nodeState := "exists"
+		if p, ok := req.Params.(map[string]any); ok {
+			if st, ok := p["state"].(string); ok {
+				nodeState = st
+			}
+		}
+		switch nodeState {
+		case "removed":
+			resp.Result = rawJSON(`{"success":true,"removed":true,"message":"Node removed within timeout period"}`)
+		case "visible":
+			resp.Result = rawJSON(`{"success":true,"found":true,"visible":true,"message":"Node found and visible within timeout period"}`)
+		default:
+			resp.Result = rawJSON(`{"success":true,"found":true,"message":"Node found within timeout period"}`)
+		}
 	case "input_mouse", "input_action", "input_key":
 		resp.Result = rawJSON(`{"success":true}`)
 	case "screenshot":
@@ -448,6 +463,89 @@ func TestE2E_DisconnectMidSession(t *testing.T) {
 	if result == nil {
 		t.Fatal("expected non-nil result after disconnect")
 	}
+}
+
+func TestE2E_WaitForNode(t *testing.T) {
+	tests := []struct {
+		name         string
+		state        string
+		wantContains string
+	}{
+		{"StateExists", "exists", `"found":true`},
+		{"StateVisible", "visible", `"visible":true`},
+		{"StateRemoved", "removed", `"removed":true`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv, stub := setupE2ETest(t)
+			ctx := context.Background()
+
+			args := map[string]any{
+				"selector":   "class:Button",
+				"timeout_ms": float64(500),
+				"state":      tt.state,
+			}
+
+			result, err := srv.handleWaitForNode(ctx, toolReq(args))
+			if err != nil {
+				t.Fatalf("handleWaitForNode: %v", err)
+			}
+			if result.IsError {
+				t.Fatalf("wait_for_node error: %+v", result)
+			}
+			text := mustText(t, result)
+			if !strings.Contains(text, tt.wantContains) {
+				t.Errorf("wait_for_node result missing %q: %s", tt.wantContains, text)
+			}
+
+			// Verify state was forwarded in params.
+			params := stub.lastCallParams("wait_for_node")
+			if params == nil {
+				t.Fatal("no wait_for_node params recorded")
+			}
+			var p map[string]any
+			if err := json.Unmarshal(params, &p); err != nil {
+				t.Fatalf("unmarshal wait_for_node params: %v", err)
+			}
+			if p["state"] != tt.state {
+				t.Errorf("state = %v, want %q", p["state"], tt.state)
+			}
+		})
+	}
+
+	// Verify omitting state defaults to "exists".
+	t.Run("DefaultState", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleWaitForNode(ctx, toolReq(map[string]any{
+			"selector":   "class:Button",
+			"timeout_ms": float64(500),
+		}))
+		if err != nil {
+			t.Fatalf("handleWaitForNode: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("wait_for_node error: %+v", result)
+		}
+		text := mustText(t, result)
+		if !strings.Contains(text, `"found":true`) {
+			t.Errorf("wait_for_node result missing %q: %s", `"found":true`, text)
+		}
+
+		params := stub.lastCallParams("wait_for_node")
+		if params == nil {
+			t.Fatal("no wait_for_node params recorded")
+		}
+		var p map[string]any
+		if err := json.Unmarshal(params, &p); err != nil {
+			t.Fatalf("unmarshal wait_for_node params: %v", err)
+		}
+		if p["state"] != "exists" {
+			t.Errorf("default state = %v, want %q", p["state"], "exists")
+		}
+	})
 }
 
 func toolReq(args map[string]any) mcp.CallToolRequest {
