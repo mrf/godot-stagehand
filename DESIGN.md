@@ -137,7 +137,7 @@ This finds all nodes named `*Button*` that are descendants of any `Panel`.
 
 ### Navigation & Scene Management
 
-**`godot_change_scene`** - *Phase 2 PENDING*
+**`godot_change_scene`** - ✅ IMPLEMENTED ✅
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `scene_path` | string | yes | Resource path, e.g. `"res://scenes/main_menu.tscn"` |
@@ -145,13 +145,6 @@ This finds all nodes named `*Button*` that are descendants of any `Panel`.
 Returns: `{ success, current_scene }`
 
 **`godot_get_game_state`** - ✅ IMPLEMENTED ✅
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| *(none)* | | | |
-
-Returns: `{ current_scene, fps, physics_ticks, window_size, connected, engine_version }
-
-**`godot_get_game_state`**
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | *(none)* | | | |
@@ -199,7 +192,7 @@ Returns: `{ success, previous_value }`
 
 ### Method Calling
 
-**`godot_call_method`** - *Phase 2 PENDING*
+**`godot_call_method`** - ✅ IMPLEMENTED ✅
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `selector` | string | yes | Target node |
@@ -208,7 +201,7 @@ Returns: `{ success, previous_value }`
 
 Returns: `{ result }`
 
-**`godot_evaluate`** - *Phase 2 PENDING*
+**`godot_evaluate`** - ✅ IMPLEMENTED ✅
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `expression` | string | yes | GDScript expression |
@@ -230,7 +223,7 @@ Returns: `{ result, type }`
 
 Returns: `{ clicked_at, node_path }`
 
-**`godot_type_text`** - *Phase 2 PENDING*
+**`godot_type_text`** - ✅ IMPLEMENTED ✅
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `selector` | string | no | | Target input node |
@@ -257,7 +250,7 @@ Returns: `{ success }`
 
 Returns: `{ success }`
 
-**`godot_mouse_move`** - *Phase 2 PENDING*
+**`godot_mouse_move`** - ✅ IMPLEMENTED ✅
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `position` | `{x, y}` | yes | | Target position |
@@ -277,7 +270,7 @@ Returns: MCP `ImageContent` (base64 PNG)
 
 ### Waiting
 
-**`godot_wait_for_node`** - *Phase 2 PENDING*
+**`godot_wait_for_node`** - ✅ IMPLEMENTED ✅
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `selector` | string | yes | | Node to wait for |
@@ -295,7 +288,7 @@ Returns: `{ found, elapsed_ms, node }`
 
 Returns: `{ received, elapsed_ms, args }`
 
-**`godot_wait_for_property`** - *Phase 2 PENDING*
+**`godot_wait_for_property`** - ✅ IMPLEMENTED ✅
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `selector` | string | yes | | Target node |
