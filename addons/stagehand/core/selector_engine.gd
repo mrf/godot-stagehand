@@ -319,7 +319,7 @@ static func _resolve_class_from_parent(parent: Node, class_name_: String) -> Arr
 
 static func _resolve_group_from_parent(parent: Node, group_name: String) -> Array[Node]:
 	# Get all nodes in the group, then filter for descendants of parent
-	var all_nodes_in_group = parent.tree.get_nodes_in_group(group_name)
+	var all_nodes_in_group = parent.get_tree().get_nodes_in_group(group_name)
 	var results: Array[Node] = []
 	for node in all_nodes_in_group:
 		if _is_ancestor_of(node, parent) and node != parent:  # node is child/descendant of parent, exclude parent itself
