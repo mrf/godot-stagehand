@@ -4,50 +4,28 @@ extends Node
 const SELECTOR_ENGINE = preload("res://addons/stagehand/core/selector_engine.gd")
 
 
-func wait_condition(condition_func, timeout_ms: int = 10000, poll_interval_ms: int = 100):
-	"""
-	Polling mechanism that waits for a condition to become true.
-	
-	Args:
-	    condition_func: Callable returning true when condition is met
-	    timeout_ms: Maximum time to wait in milliseconds
-	    poll_interval_ms: Interval between polls in milliseconds
-	
-	Returns:
-	    bool: True if condition was met within timeout, False otherwise
-	"""
+## Polling mechanism that waits for a condition to become true.
+## Returns true if condition was met within timeout, false otherwise.
+func wait_condition(condition_func: Callable, timeout_ms: int = 10000, poll_interval_ms: int = 100) -> bool:
 	var start_time := Time.get_ticks_msec()
 	var end_time := start_time + timeout_ms
-	
+
 	while Time.get_ticks_msec() < end_time:
 		if condition_func.call():
 			return true
 		await get_tree().create_timer(poll_interval_ms * 0.001).timeout
-		
-	# Try once more at very end in case of timing issues
+
 	if condition_func.call():
 		return true
-	
+
 	return false
 
 
-func evaluate_property_condition(node, property_name: String, operator: String, expected_value) -> bool:
-	"""
-	Evaluate different types of property conditions.
-	
-	Args:
-	    node: The target node to test
-	    property_name: Name of the property to check
-	    operator: Condition operator
-	    expected_value: Expected value to compare against
-	
-	Returns:
-	    bool: Result of the property comparison
-	"""
+## Evaluate different types of property conditions.
+func evaluate_property_condition(node: Node, property_name: String, operator: String, expected_value) -> bool:
 	if not node.has_meta(property_name) and not node.has_method("get_" + property_name) and not (property_name in node):
 		return false
-	
-	# Get the actual value of the property
+
 	var actual_value = null
 	if node.has_method("get_" + property_name):
 		actual_value = node.call("get_" + property_name)
@@ -55,7 +33,7 @@ func evaluate_property_condition(node, property_name: String, operator: String, 
 		actual_value = node.get(property_name)
 	elif node.has_meta(property_name):
 		actual_value = node.get_meta(property_name)
-	
+
 	match operator:
 		"equals":
 			return actual_value == expected_value
@@ -64,7 +42,6 @@ func evaluate_property_condition(node, property_name: String, operator: String, 
 		"exists":
 			return actual_value != null
 		"contains":
-			# Check if actual_value is something that can contain the expected value
 			if actual_value is String and expected_value is String:
 				return actual_value.contains(expected_value)
 			elif actual_value is Array:
@@ -87,80 +64,31 @@ func evaluate_property_condition(node, property_name: String, operator: String, 
 			return false
 
 
-func wait_for_node(selector: String, timeout_ms: int = 10000, poll_interval_ms: int = 100):
-	"""
-	Wait for a node matching the selector to appear in the scene tree.
-	
-	Args:
-	    selector: Node selector expression
-	    timeout_ms: Maximum time to wait in milliseconds
-	    poll_interval_ms: Interval between polls in milliseconds
-	
-	Returns:
-	    Dictionary: Result dictionary with 'found' boolean and additional info
-	"""
-	var condition = func() -> bool:
-		var engine_instance = SELECTOR_ENGINE.new()
-		var result = engine_instance.query_selector(selector)
-		engine_instance.free()
-		
-		if result.has("error") or not result.has("nodes"):
-			return false
-		
-		return result.nodes.size() > 0
-	
-	var success = wait_condition(condition, timeout_ms, poll_interval_ms)
-	
-	var final_result = {}
+## Wait for a node matching the selector to appear in the scene tree.
+func wait_for_node(selector: String, timeout_ms: int = 10000, poll_interval_ms: int = 100) -> Dictionary:
+	var condition := func() -> bool:
+		var results: Array[Node] = SELECTOR_ENGINE.query(get_tree(), selector)
+		return results.size() > 0
+
+	var success := await wait_condition(condition, timeout_ms, poll_interval_ms)
+
 	if success:
-		final_result["success"] = true
-		final_result["found"] = true
-		final_result["message"] = "Node found within timeout period"
+		return {"success": true, "found": true, "message": "Node found within timeout period"}
 	else:
-		final_result["success"] = false
-		final_result["found"] = false
-		final_result["error"] = "Node did not appear before timeout (selector: %s, timeout: %dms)" % [selector, timeout_ms]
-	
-	return final_result
+		return {"success": false, "found": false, "error": "Node did not appear before timeout (selector: %s, timeout: %dms)" % [selector, timeout_ms]}
 
 
-func wait_for_property(selector: String, property: String, operator: String, expected_value, timeout_ms: int = 10000, poll_interval_ms: int = 100):
-	"""
-	Wait for a node's property to satisfy a condition.
-	
-	Args:
-	    selector: Node selector expression
-	    property: Name of the property to monitor
-	    operator: Operator to apply (equals, not_equals, exists, contains, greater_than, less_than)
-	    expected_value: Value to compare against
-	    timeout_ms: Maximum time to wait in milliseconds
-	    poll_interval_ms: Interval between polls in milliseconds
-	
-	Returns:
-	    Dictionary: Result dictionary with status information
-	"""
-	var condition = func() -> bool:
-		var engine_instance = SELECTOR_ENGINE.new()
-		var result = engine_instance.query_selector(selector)
-		engine_instance.free()
-		
-		if result.has("error") or not result.has("nodes") or result.nodes.is_empty():
+## Wait for a node's property to satisfy a condition.
+func wait_for_property(selector: String, property: String, operator: String, expected_value, timeout_ms: int = 10000, poll_interval_ms: int = 100) -> Dictionary:
+	var condition := func() -> bool:
+		var results: Array[Node] = SELECTOR_ENGINE.query(get_tree(), selector)
+		if results.is_empty():
 			return false
-		
-		var node = result.nodes[0]
-		return evaluate_property_condition(node, property, operator, expected_value)
-	
-	var success = wait_condition(condition, timeout_ms, poll_interval_ms)
-	
-	var final_result = {}
+		return evaluate_property_condition(results[0], property, operator, expected_value)
+
+	var success := await wait_condition(condition, timeout_ms, poll_interval_ms)
+
 	if success:
-		final_result["success"] = true
-		final_result["found"] = true
-		final_result["met_condition"] = true
-		final_result["message"] = "Property condition satisfied within timeout period"
+		return {"success": true, "found": true, "met_condition": true, "message": "Property condition satisfied within timeout period"}
 	else:
-		final_result["success"] = false
-		final_result["met_condition"] = false
-		final_result["error"] = "Property condition was not met before timeout (selector: %s, property: %s, operator: %s, timeout: %dms)" % [selector, property, operator, timeout_ms]
-	
-	return final_result
+		return {"success": false, "met_condition": false, "error": "Property condition was not met before timeout (selector: %s, property: %s, operator: %s, timeout: %dms)" % [selector, property, operator, timeout_ms]}

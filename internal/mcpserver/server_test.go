@@ -13,6 +13,7 @@ func TestNew_RegistersAllTools(t *testing.T) {
 
 	expected := []string{
 		"godot_connect",
+		"godot_launch",
 		"godot_get_game_state",
 		"godot_get_tree",
 		"godot_find_nodes",
@@ -21,7 +22,12 @@ func TestNew_RegistersAllTools(t *testing.T) {
 		"godot_click",
 		"godot_press_key",
 		"godot_press_action",
+		"godot_type_text",
+		"godot_mouse_move",
 		"godot_screenshot",
+		"godot_wait_for_node",
+		"godot_wait_for_property",
+		"godot_change_scene",
 		"godot_call_method",
 		"godot_evaluate",
 	}
