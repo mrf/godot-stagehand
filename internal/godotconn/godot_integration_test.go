@@ -112,26 +112,26 @@ func TestIntegrationGodotHeadlessPingAndGetTree(t *testing.T) {
 			t.Fatalf("TestScene class = %q, want Node2D", scene.Class)
 		}
 
-		label := findTreeNode(tree, "Label")
+		label := findTreeNode(tree, "titleLabel")
 		if label == nil {
-			t.Fatalf("get_tree result missing Label; raw=%s", treeResp.Result)
+			t.Fatalf("get_tree result missing titleLabel; raw=%s", treeResp.Result)
 		}
 		if label.Class != "Label" {
-			t.Fatalf("Label class = %q, want Label", label.Class)
+			t.Fatalf("titleLabel class = %q, want Label", label.Class)
 		}
 		if got := propertyString(label, "text"); got != "Stagehand Test Scene" {
-			t.Fatalf("Label text = %q, want %q", got, "Stagehand Test Scene")
+			t.Fatalf("titleLabel text = %q, want %q", got, "Stagehand Test Scene")
 		}
 
-		button := findTreeNode(tree, "StartButton")
+		button := findTreeNode(tree, "clickButton")
 		if button == nil {
-			t.Fatalf("get_tree result missing StartButton; raw=%s", treeResp.Result)
+			t.Fatalf("get_tree result missing clickButton; raw=%s", treeResp.Result)
 		}
 		if button.Class != "Button" {
-			t.Fatalf("StartButton class = %q, want Button", button.Class)
+			t.Fatalf("clickButton class = %q, want Button", button.Class)
 		}
-		if got := propertyString(button, "text"); got != "Start Game" {
-			t.Fatalf("StartButton text = %q, want %q", got, "Start Game")
+		if got := propertyString(button, "text"); got != "Click Me!" {
+			t.Fatalf("clickButton text = %q, want %q", got, "Click Me!")
 		}
 	})
 }
