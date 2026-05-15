@@ -184,6 +184,65 @@ var mouseMoveTool = mcp.NewTool("godot_mouse_move",
 	),
 )
 
+var touchTool = mcp.NewTool("godot_touch",
+	mcp.WithDescription("Simulate a touch screen event in the Godot game"),
+	mcp.WithObject("position",
+		mcp.Required(),
+		mcp.Description("Screen coordinates {x, y} for the touch start position"),
+		mcp.Properties(map[string]any{
+			"x": map[string]any{"type": "number", "description": "X coordinate"},
+			"y": map[string]any{"type": "number", "description": "Y coordinate"},
+		}),
+	),
+	mcp.WithNumber("index",
+		mcp.Description("Touch finger index (0-9 for multi-touch)"),
+		mcp.DefaultNumber(0),
+		mcp.Min(0),
+		mcp.Max(9),
+	),
+	mcp.WithString("action",
+		mcp.Description("Touch action: \"tap\" sends begin+end, \"begin\"/\"end\" send a single phase, \"move\" requires drag_to"),
+		mcp.DefaultString("tap"),
+		mcp.Enum("tap", "begin", "move", "end"),
+	),
+	mcp.WithObject("drag_to",
+		mcp.Description("Drag destination coordinates {x, y}; used by \"tap\" (swipe) and required by \"move\""),
+		mcp.Properties(map[string]any{
+			"x": map[string]any{"type": "number", "description": "X coordinate"},
+			"y": map[string]any{"type": "number", "description": "Y coordinate"},
+		}),
+	),
+	mcp.WithNumber("duration_ms",
+		mcp.Description("Duration before releasing the touch in milliseconds"),
+		mcp.DefaultNumber(100),
+		mcp.Min(0),
+	),
+)
+
+func (s *Server) handleTouch(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	position, hasPosition := args["position"]
+	if !hasPosition {
+		return mcp.NewToolResultError("'position' is required"), nil
+	}
+
+	params := map[string]any{
+		"position":    position,
+		"index":       req.GetInt("index", 0),
+		"action":      req.GetString("action", "tap"),
+		"duration_ms": req.GetInt("duration_ms", 100),
+	}
+	if dragTo, hasDragTo := args["drag_to"]; hasDragTo {
+		params["drag_to"] = dragTo
+	}
+
+	result, errResult := s.callGodot(ctx, "input_touch", params)
+	if errResult != nil {
+		return errResult, nil
+	}
+	return mcp.NewToolResultText(string(result)), nil
+}
+
 func (s *Server) handleMouseMove(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := req.GetArguments()
 	selector, hasSelector := args["selector"]

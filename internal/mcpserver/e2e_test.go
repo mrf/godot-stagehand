@@ -109,7 +109,7 @@ func (s *stubGodot) handleReq(req godotconn.Request) godotconn.Response {
 		resp.Result = rawJSON(`{"success":true,"previous_value":"Old Text"}`)
 	case "get_game_state":
 		resp.Result = rawJSON(`{"current_scene":"res://main.tscn","fps":60,"physics_ticks":120,"window_size":{"x":1280,"y":720},"connected":true,"engine_version":"4.2.1"}`)
-	case "input_mouse", "input_action", "input_key":
+	case "input_mouse", "input_action", "input_key", "input_touch":
 		resp.Result = rawJSON(`{"success":true}`)
 	case "screenshot":
 		resp.Result = rawJSON(`{"data":"iVBORw0KGgo=","mime_type":"image/png","width":1280,"height":720}`)
@@ -466,6 +466,90 @@ func TestE2E_ChangeScene(t *testing.T) {
 	if p["scene_path"] != "res://scenes/game.tscn" {
 		t.Errorf("change_scene scene_path = %v, want res://scenes/game.tscn", p["scene_path"])
 	}
+}
+
+func TestE2E_Touch(t *testing.T) {
+	t.Run("TapAtPosition", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleTouch(ctx, toolReq(map[string]any{
+			"position": map[string]any{"x": float64(100), "y": float64(200)},
+		}))
+		if err != nil {
+			t.Fatalf("handleTouch: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("touch error: %+v", result)
+		}
+		text := mustText(t, result)
+		if !strings.Contains(text, "success") {
+			t.Errorf("touch result missing %q: %s", "success", text)
+		}
+
+		if n := stub.callCount("input_touch"); n != 1 {
+			t.Errorf("expected 1 input_touch call, got %d", n)
+		}
+		params := stub.lastCallParams("input_touch")
+		if params == nil {
+			t.Fatal("no input_touch params recorded")
+		}
+		var p map[string]any
+		if err := json.Unmarshal(params, &p); err != nil {
+			t.Fatalf("unmarshal input_touch params: %v", err)
+		}
+		pos, ok := p["position"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected position map, got %T", p["position"])
+		}
+		if pos["x"] != float64(100) || pos["y"] != float64(200) {
+			t.Errorf("expected position {100, 200}, got %v", pos)
+		}
+	})
+
+	t.Run("TouchWithDrag", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleTouch(ctx, toolReq(map[string]any{
+			"position": map[string]any{"x": float64(50), "y": float64(100)},
+			"drag_to":  map[string]any{"x": float64(200), "y": float64(300)},
+			"index":    float64(0),
+		}))
+		if err != nil {
+			t.Fatalf("handleTouch with drag: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("touch drag error: %+v", result)
+		}
+		if n := stub.callCount("input_touch"); n != 1 {
+			t.Errorf("expected 1 input_touch call, got %d", n)
+		}
+		params := stub.lastCallParams("input_touch")
+		if params == nil {
+			t.Fatal("no input_touch params recorded")
+		}
+		var p map[string]any
+		if err := json.Unmarshal(params, &p); err != nil {
+			t.Fatalf("unmarshal input_touch params: %v", err)
+		}
+		if p["drag_to"] == nil {
+			t.Error("expected drag_to in params")
+		}
+	})
+
+	t.Run("TouchMissingPosition", func(t *testing.T) {
+		srv, _ := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleTouch(ctx, toolReq(map[string]any{}))
+		if err != nil {
+			t.Fatalf("handleTouch missing position: %v", err)
+		}
+		if !result.IsError {
+			t.Fatal("expected error when position not provided")
+		}
+	})
 }
 
 func TestE2E_DisconnectMidSession(t *testing.T) {
