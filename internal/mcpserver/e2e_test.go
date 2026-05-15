@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -115,6 +116,49 @@ func (s *stubGodot) handleReq(req godotconn.Request) godotconn.Response {
 		resp.Result = rawJSON(`{"data":"iVBORw0KGgo=","mime_type":"image/png","width":1280,"height":720}`)
 	case "change_scene":
 		resp.Result = rawJSON(`{"success":true,"previous_scene":"res://main.tscn","new_scene":"res://scenes/game.tscn"}`)
+	case "get_performance":
+		resp.Result = rawJSON(`{"metrics":{"TIME_FPS":60.0,"TIME_PROCESS":0.016,"TIME_PHYSICS_PROCESS":0.008,"MEMORY_STATIC":1048576,"OBJECT_COUNT":42,"RENDER_TOTAL_DRAW_CALLS_IN_FRAME":10}}`)
+	case "assert_performance":
+		p, _ := req.Params.(map[string]any)
+		if p == nil {
+			p = map[string]any{}
+		}
+		monitor, _ := p["monitor"].(string)
+		threshold, _ := p["threshold"].(float64)
+		op, _ := p["op"].(string)
+		if op == "" {
+			op = "lte"
+		}
+		// Stub: TIME_FPS = 60, everything else = 1024
+		value := 60.0
+		if monitor != "TIME_FPS" {
+			value = 1024.0
+		}
+		passed := false
+		switch op {
+		case "lt":
+			passed = value < threshold
+		case "lte":
+			passed = value <= threshold
+		case "gt":
+			passed = value > threshold
+		case "gte":
+			passed = value >= threshold
+		case "eq":
+			passed = value == threshold
+		}
+		assertResult := map[string]any{
+			"passed":    passed,
+			"monitor":   monitor,
+			"value":     value,
+			"threshold": threshold,
+			"op":        op,
+		}
+		if !passed {
+			assertResult["message"] = fmt.Sprintf("%s: %.2f does not satisfy %s %.2f", monitor, value, op, threshold)
+		}
+		b, _ := json.Marshal(assertResult)
+		resp.Result = b
 	default:
 		resp.Error = &godotconn.RPCError{Code: godotconn.CodeMethodNotFound, Message: "unknown method: " + req.Method}
 	}
@@ -484,6 +528,150 @@ func TestE2E_DisconnectMidSession(t *testing.T) {
 	if result == nil {
 		t.Fatal("expected non-nil result after disconnect")
 	}
+}
+
+func TestE2E_GetPerformance(t *testing.T) {
+	t.Run("DefaultMetrics", func(t *testing.T) {
+		srv, _ := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleGetPerformance(ctx, toolReq(nil))
+		if err != nil {
+			t.Fatalf("handleGetPerformance: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("get_performance error: %+v", result)
+		}
+		text := mustText(t, result)
+		if !strings.Contains(text, "TIME_FPS") {
+			t.Errorf("expected TIME_FPS in response, got: %s", text)
+		}
+	})
+
+	t.Run("SpecificMonitor", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleGetPerformance(ctx, toolReq(map[string]any{
+			"monitors": []any{"TIME_FPS", "MEMORY_STATIC"},
+		}))
+		if err != nil {
+			t.Fatalf("handleGetPerformance with monitors: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("get_performance error: %+v", result)
+		}
+		text := mustText(t, result)
+		if !strings.Contains(text, "TIME_FPS") {
+			t.Errorf("expected TIME_FPS in response, got: %s", text)
+		}
+		if n := stub.callCount("get_performance"); n != 1 {
+			t.Errorf("expected 1 get_performance call, got %d", n)
+		}
+		params := stub.lastCallParams("get_performance")
+		if params == nil {
+			t.Fatal("no get_performance params recorded")
+		}
+		var p map[string]any
+		if err := json.Unmarshal(params, &p); err != nil {
+			t.Fatalf("unmarshal get_performance params: %v", err)
+		}
+		monitors, ok := p["monitors"].([]any)
+		if !ok || len(monitors) != 2 {
+			t.Errorf("expected monitors param with 2 entries, got %v", p["monitors"])
+		}
+	})
+}
+
+func TestE2E_AssertPerformance(t *testing.T) {
+	t.Run("PassingAssertion", func(t *testing.T) {
+		srv, _ := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleAssertPerformance(ctx, toolReq(map[string]any{
+			"monitor":   "TIME_FPS",
+			"threshold": float64(30),
+			"op":        "gte",
+		}))
+		if err != nil {
+			t.Fatalf("handleAssertPerformance: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("assert_performance failed unexpectedly: %+v", result)
+		}
+		text := mustText(t, result)
+		if !strings.Contains(text, `"passed":true`) {
+			t.Errorf("expected passed=true, got: %s", text)
+		}
+	})
+
+	t.Run("FailingAssertion", func(t *testing.T) {
+		srv, _ := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleAssertPerformance(ctx, toolReq(map[string]any{
+			"monitor":   "TIME_FPS",
+			"threshold": float64(90),
+			"op":        "gte",
+		}))
+		if err != nil {
+			t.Fatalf("handleAssertPerformance: %v", err)
+		}
+		if !result.IsError {
+			t.Fatal("expected error when assertion fails")
+		}
+		text := mustText(t, result)
+		if !strings.Contains(text, `"passed":false`) {
+			t.Errorf("expected passed=false, got: %s", text)
+		}
+	})
+
+	t.Run("DefaultOpIsLte", func(t *testing.T) {
+		srv, _ := setupE2ETest(t)
+		ctx := context.Background()
+
+		// TIME_FPS stub value is 60; 60 <= 60 should pass with default lte
+		result, err := srv.handleAssertPerformance(ctx, toolReq(map[string]any{
+			"monitor":   "TIME_FPS",
+			"threshold": float64(60),
+		}))
+		if err != nil {
+			t.Fatalf("handleAssertPerformance default op: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("expected pass with default lte op: %+v", result)
+		}
+	})
+
+	t.Run("MissingMonitor", func(t *testing.T) {
+		srv, _ := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleAssertPerformance(ctx, toolReq(map[string]any{
+			"threshold": float64(60),
+		}))
+		if err != nil {
+			t.Fatalf("handleAssertPerformance missing monitor: %v", err)
+		}
+		if !result.IsError {
+			t.Fatal("expected error when monitor is missing")
+		}
+	})
+
+	t.Run("MissingThreshold", func(t *testing.T) {
+		srv, _ := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleAssertPerformance(ctx, toolReq(map[string]any{
+			"monitor": "TIME_FPS",
+		}))
+		if err != nil {
+			t.Fatalf("handleAssertPerformance missing threshold: %v", err)
+		}
+		if !result.IsError {
+			t.Fatal("expected error when threshold is missing")
+		}
+	})
 }
 
 func toolReq(args map[string]any) mcp.CallToolRequest {

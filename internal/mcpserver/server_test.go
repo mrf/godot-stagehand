@@ -30,6 +30,8 @@ func TestNew_RegistersAllTools(t *testing.T) {
 		"godot_change_scene",
 		"godot_call_method",
 		"godot_evaluate",
+		"godot_get_performance",
+		"godot_assert_performance",
 	}
 
 	for _, name := range expected {
@@ -63,6 +65,8 @@ func TestToolsReturnErrorWhenNotConnected(t *testing.T) {
 		{"godot_screenshot", s.handleScreenshot, nil},
 		{"godot_call_method", s.handleCallMethod, map[string]any{"selector": "/root", "method": "get_name"}},
 		{"godot_evaluate", s.handleEvaluate, map[string]any{"expression": "1+1"}},
+		{"godot_get_performance", s.handleGetPerformance, nil},
+		{"godot_assert_performance", s.handleAssertPerformance, map[string]any{"monitor": "TIME_FPS", "threshold": float64(60)}},
 	}
 
 	for _, tt := range tests {

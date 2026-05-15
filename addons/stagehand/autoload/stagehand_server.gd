@@ -148,6 +148,8 @@ func _register_builtin_handlers() -> void:
 	_router.register("call_method", _handle_call_method)
 	_router.register("evaluate", _handle_evaluate)
 	_router.register("change_scene", _handle_change_scene)
+	_router.register("get_performance", _handle_get_performance)
+	_router.register("assert_performance", _handle_assert_performance)
 
 
 func _handle_input_mouse(params: Variant) -> Dictionary:
@@ -231,6 +233,99 @@ func _handle_evaluate(params: Variant) -> Dictionary:
 func _handle_change_scene(params: Variant) -> Dictionary:
 	var p: Dictionary = {} if params == null else params
 	return StagehandSceneHandler.change_scene(get_tree(), p)
+
+
+## Maps Performance monitor names to their enum values.
+const _PERFORMANCE_MONITORS: Dictionary = {
+	"TIME_FPS": Performance.TIME_FPS,
+	"TIME_PROCESS": Performance.TIME_PROCESS,
+	"TIME_PHYSICS_PROCESS": Performance.TIME_PHYSICS_PROCESS,
+	"TIME_NAVIGATION_PROCESS": Performance.TIME_NAVIGATION_PROCESS,
+	"MEMORY_STATIC": Performance.MEMORY_STATIC,
+	"MEMORY_STATIC_MAX": Performance.MEMORY_STATIC_MAX,
+	"MEMORY_MESSAGE_BUFFER_MAX": Performance.MEMORY_MESSAGE_BUFFER_MAX,
+	"OBJECT_COUNT": Performance.OBJECT_COUNT,
+	"OBJECT_RESOURCE_COUNT": Performance.OBJECT_RESOURCE_COUNT,
+	"OBJECT_NODE_COUNT": Performance.OBJECT_NODE_COUNT,
+	"OBJECT_ORPHAN_NODE_COUNT": Performance.OBJECT_ORPHAN_NODE_COUNT,
+	"RENDER_TOTAL_OBJECTS_IN_FRAME": Performance.RENDER_TOTAL_OBJECTS_IN_FRAME,
+	"RENDER_TOTAL_PRIMITIVES_IN_FRAME": Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME,
+	"RENDER_TOTAL_DRAW_CALLS_IN_FRAME": Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME,
+	"RENDER_VIDEO_MEM_USED": Performance.RENDER_VIDEO_MEM_USED,
+	"RENDER_TEXTURE_MEM_USED": Performance.RENDER_TEXTURE_MEM_USED,
+	"RENDER_BUFFER_MEM_USED": Performance.RENDER_BUFFER_MEM_USED,
+	"PHYSICS_2D_ACTIVE_OBJECTS": Performance.PHYSICS_2D_ACTIVE_OBJECTS,
+	"PHYSICS_2D_COLLISION_PAIRS": Performance.PHYSICS_2D_COLLISION_PAIRS,
+	"PHYSICS_2D_ISLAND_COUNT": Performance.PHYSICS_2D_ISLAND_COUNT,
+	"PHYSICS_3D_ACTIVE_OBJECTS": Performance.PHYSICS_3D_ACTIVE_OBJECTS,
+	"PHYSICS_3D_COLLISION_PAIRS": Performance.PHYSICS_3D_COLLISION_PAIRS,
+	"PHYSICS_3D_ISLAND_COUNT": Performance.PHYSICS_3D_ISLAND_COUNT,
+	"AUDIO_OUTPUT_LATENCY": Performance.AUDIO_OUTPUT_LATENCY,
+}
+
+const _DEFAULT_PERFORMANCE_MONITORS: Array[String] = [
+	"TIME_FPS", "TIME_PROCESS", "TIME_PHYSICS_PROCESS",
+	"MEMORY_STATIC", "OBJECT_COUNT", "RENDER_TOTAL_DRAW_CALLS_IN_FRAME",
+]
+
+
+func _handle_get_performance(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	var requested: Array = p.get("monitors", [])
+	var to_query: Array = requested if not requested.is_empty() else _DEFAULT_PERFORMANCE_MONITORS
+	var metrics: Dictionary = {}
+	for item: Variant in to_query:
+		var name: String = String(item)
+		if _PERFORMANCE_MONITORS.has(name):
+			metrics[name] = Performance.get_monitor(_PERFORMANCE_MONITORS[name])
+		else:
+			metrics[name] = null
+	return {"metrics": metrics}
+
+
+func _handle_assert_performance(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	var monitor: String = p.get("monitor", "")
+	var threshold: float = float(p.get("threshold", 0.0))
+	var op: String = p.get("op", "lte")
+
+	if monitor.is_empty():
+		return {"error": "Missing monitor"}
+
+	var perf: Dictionary = _handle_get_performance({"monitors": [monitor]})
+	if perf.has("error"):
+		return perf
+
+	var metrics: Dictionary = perf.get("metrics", {})
+	if not metrics.has(monitor) or metrics[monitor] == null:
+		return {"error": "Unknown monitor: %s" % monitor}
+
+	var value: float = float(metrics[monitor])
+	var passed: bool = false
+	match op:
+		"lt":
+			passed = value < threshold
+		"lte":
+			passed = value <= threshold
+		"gt":
+			passed = value > threshold
+		"gte":
+			passed = value >= threshold
+		"eq":
+			passed = value == threshold
+		_:
+			return {"error": "Unknown operator: %s" % op}
+
+	var result: Dictionary = {
+		"passed": passed,
+		"monitor": monitor,
+		"value": value,
+		"threshold": threshold,
+		"op": op,
+	}
+	if not passed:
+		result["message"] = "%s: %.4f does not satisfy %s %.4f" % [monitor, value, op, threshold]
+	return result
 
 
 func _handle_get_game_state(_params: Variant) -> Dictionary:

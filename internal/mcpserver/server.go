@@ -144,4 +144,6 @@ func (s *Server) registerTools() {
 	s.mcp.AddTool(changeSceneTool, s.handleChangeScene)
 	s.mcp.AddTool(callMethodTool, s.handleCallMethod)
 	s.mcp.AddTool(evaluateTool, s.handleEvaluate)
+	s.mcp.AddTool(getPerformanceTool, s.handleGetPerformance)
+	s.mcp.AddTool(assertPerformanceTool, s.handleAssertPerformance)
 }
