@@ -8,6 +8,7 @@ const DEFAULT_PORT := 26700
 const VERSION := "0.1.0"
 
 const StagehandCommandRouter := preload("res://addons/stagehand/core/command_router.gd")
+const StagehandInputRecorder := preload("res://addons/stagehand/core/input_recorder.gd")
 const StagehandInputSimulator := preload("res://addons/stagehand/core/input_simulator.gd")
 const StagehandJsonRpc := preload("res://addons/stagehand/protocol/json_rpc.gd")
 const StagehandExpressionEvaluator := preload("res://addons/stagehand/core/expression_evaluator.gd")
@@ -24,6 +25,7 @@ var _next_peer_id: int = 0
 var _router: StagehandCommandRouter
 var _port: int = DEFAULT_PORT
 var _active: bool = false
+var _recorder: StagehandInputRecorder
 
 
 func _ready() -> void:
@@ -155,6 +157,9 @@ func _register_builtin_handlers() -> void:
 	_router.register("wait_signal", _handle_wait_signal)
 	_router.register("get_performance", _handle_get_performance)
 	_router.register("assert_performance", _handle_assert_performance)
+	_router.register("record_start", _handle_record_start)
+	_router.register("record_stop", _handle_record_stop)
+	_router.register("replay", _handle_replay)
 
 
 func _handle_input_mouse(params: Variant) -> Dictionary:
@@ -403,6 +408,35 @@ func _handle_wait_for_property(params: Variant) -> Dictionary:
 	var result: Dictionary = await waiter.wait_for_property(selector, property, operator, expected_value, timeout_ms, poll_interval_ms)
 	waiter.queue_free()
 	return result
+
+
+func _handle_record_start(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	var output_path: String = p.get("output_path", "")
+	if output_path.is_empty():
+		return {"error": "Missing output_path"}
+	_ensure_recorder()
+	return _recorder.start_recording(output_path)
+
+
+func _handle_record_stop(_params: Variant) -> Dictionary:
+	_ensure_recorder()
+	return _recorder.stop_recording()
+
+
+func _handle_replay(params: Variant) -> Dictionary:
+	var p: Dictionary = {} if params == null else params
+	var input_path: String = p.get("input_path", "")
+	if input_path.is_empty():
+		return {"error": "Missing input_path"}
+	_ensure_recorder()
+	return await _recorder.start_replay(input_path)
+
+
+func _ensure_recorder() -> void:
+	if _recorder == null:
+		_recorder = StagehandInputRecorder.new()
+		add_child(_recorder)
 
 
 func _stop() -> void:
