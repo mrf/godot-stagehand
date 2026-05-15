@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  GODOT_VERSION: "4.3.stable"
+  GODOT_CACHE_DIR: ~/.cache/godot-ci
+
+jobs:
+  # ── Go quality checks (vet + test + linux build) ─────────────────────────
+  go-quality:
+    name: Go quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
+
+      - name: go build (linux/amd64)
+        run: GOOS=linux GOARCH=amd64 go build -o godot-stagehand-linux-amd64 .
+
+  # ── GDScript parse check (headless Godot) ────────────────────────────────
+  gdscript-parse:
+    name: GDScript parse check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Godot binary
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.GODOT_CACHE_DIR }}
+          key: godot-${{ env.GODOT_VERSION }}-linux
+
+      - name: Install Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: bash scripts/ci-install-godot.sh
+
+      - name: Locate Godot binary
+        run: |
+          source scripts/ci-install-godot.sh
+          echo "GODOT_BIN=${GODOT_BIN}" >> "$GITHUB_ENV"
+
+      - name: GDScript parse check (addon)
+        run: |
+          # Run Godot headless; it parses all GDScript files during project load.
+          # Exit code 0 means no parse errors; any GDScript error is fatal.
+          "$GODOT_BIN" --headless --path testdata/test_project --quit 2>&1 | tee godot-parse.log
+          # Fail if Godot reports a script error
+          if grep -q "ERROR\|SCRIPT ERROR\|Parse Error" godot-parse.log; then
+            echo "GDScript parse errors detected:"
+            grep -E "ERROR|SCRIPT ERROR|Parse Error" godot-parse.log
+            exit 1
+          fi
+
+  # ── Cross-platform release builds ────────────────────────────────────────
+  build-matrix:
+    name: Build (${{ matrix.goos }}-${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            artifact: godot-stagehand-linux-amd64
+          - goos: darwin
+            goarch: amd64
+            artifact: godot-stagehand-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            artifact: godot-stagehand-darwin-arm64
+          - goos: windows
+            goarch: amd64
+            artifact: godot-stagehand-windows-amd64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: go build -o ${{ matrix.artifact }} .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+          retention-days: 7
