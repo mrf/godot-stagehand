@@ -165,4 +165,7 @@ func (s *Server) registerTools() {
 	s.mcp.AddTool(evaluateTool, s.handleEvaluate)
 	s.mcp.AddTool(getPerformanceTool, s.handleGetPerformance)
 	s.mcp.AddTool(assertPerformanceTool, s.handleAssertPerformance)
+	s.mcp.AddTool(recordStartTool, s.handleRecordStart)
+	s.mcp.AddTool(recordStopTool, s.handleRecordStop)
+	s.mcp.AddTool(replayTool, s.handleReplay)
 }
