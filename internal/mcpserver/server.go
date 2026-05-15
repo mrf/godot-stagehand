@@ -10,6 +10,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/mrf/godot-stagehand/internal/godotconn"
 	"github.com/mrf/godot-stagehand/internal/launch"
+	"github.com/mrf/godot-stagehand/internal/selector"
 )
 
 // Server wraps an MCP server and manages the Godot connection.
@@ -99,6 +100,15 @@ func (s *Server) killExistingLaunch() {
 		_ = s.launchResult.Kill()
 		s.launchResult = nil
 	}
+}
+
+// validateSelector parses and validates a selector string via ParseChain.
+// Returns an MCP error result if invalid, nil if valid.
+func validateSelector(sel string) *mcp.CallToolResult {
+	if _, err := selector.ParseChain(sel); err != nil {
+		return mcp.NewToolResultError("invalid selector: " + err.Error())
+	}
+	return nil
 }
 
 // requireConn returns the connection or an MCP error result if not connected.

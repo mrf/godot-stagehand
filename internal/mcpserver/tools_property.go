@@ -29,6 +29,10 @@ func (s *Server) handleGetProperty(ctx context.Context, req mcp.CallToolRequest)
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
+	if errResult := validateSelector(selector); errResult != nil {
+		return errResult, nil
+	}
+
 	result, errResult := s.callGodot(ctx, "get_property", map[string]any{
 		"selector": selector,
 		"property": property,
@@ -69,6 +73,10 @@ func (s *Server) handleSetProperty(ctx context.Context, req mcp.CallToolRequest)
 	value, ok := args["value"]
 	if !ok {
 		return mcp.NewToolResultError("missing required argument: value"), nil
+	}
+
+	if errResult := validateSelector(selector); errResult != nil {
+		return errResult, nil
 	}
 
 	result, errResult := s.callGodot(ctx, "set_property", map[string]any{

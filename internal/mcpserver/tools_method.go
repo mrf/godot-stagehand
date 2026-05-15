@@ -92,6 +92,10 @@ func (s *Server) handleCallMethod(ctx context.Context, req mcp.CallToolRequest) 
 		return mcp.NewToolResultError(errMsg), nil
 	}
 
+	if errResult := validateSelector(selector); errResult != nil {
+		return errResult, nil
+	}
+
 	params := map[string]any{
 		"selector": selector,
 		"method":   method,
@@ -132,6 +136,9 @@ func (s *Server) handleEvaluate(ctx context.Context, req mcp.CallToolRequest) (*
 		"expression": expression,
 	}
 	if ctxNode := req.GetString("context_node", ""); ctxNode != "" {
+		if errResult := validateSelector(ctxNode); errResult != nil {
+			return errResult, nil
+		}
 		params["context_node"] = ctxNode
 	}
 

@@ -38,6 +38,12 @@ func (s *Server) handleClick(ctx context.Context, req mcp.CallToolRequest) (*mcp
 		return mcp.NewToolResultError("one of 'selector' or 'position' is required"), nil
 	}
 
+	if hasSelector {
+		if errResult := validateSelector(selector.(string)); errResult != nil {
+			return errResult, nil
+		}
+	}
+
 	params := map[string]any{
 		"button":       req.GetString("button", "left"),
 		"double_click": req.GetBool("double_click", false),
@@ -158,9 +164,12 @@ func (s *Server) handleTypeText(ctx context.Context, req mcp.CallToolRequest) (*
 		"text":     text,
 		"delay_ms": req.GetInt("delay_ms", 50),
 	}
-	
-	if selector, hasSelector := req.GetArguments()["selector"]; hasSelector {
-		params["selector"] = selector
+
+	if sel, hasSelector := req.GetArguments()["selector"]; hasSelector {
+		if errResult := validateSelector(sel.(string)); errResult != nil {
+			return errResult, nil
+		}
+		params["selector"] = sel
 	}
 
 	result, errResult := s.callGodot(ctx, "input_text", params)
@@ -178,8 +187,8 @@ var mouseMoveTool = mcp.NewTool("godot_mouse_move",
 	mcp.WithObject("coordinates",
 		mcp.Description("Absolute screen coordinates {x, y} to move mouse to"),
 		mcp.Properties(map[string]any{
-			"x": map[string]interface{}{"type": "number", "description": "X coordinate"},
-			"y": map[string]interface{}{"type": "number", "description": "Y coordinate"},
+			"x": map[string]any{"type": "number", "description": "X coordinate"},
+			"y": map[string]any{"type": "number", "description": "Y coordinate"},
 		}),
 	),
 )
@@ -193,8 +202,14 @@ func (s *Server) handleMouseMove(ctx context.Context, req mcp.CallToolRequest) (
 		return mcp.NewToolResultError("one of 'selector' or 'coordinates' is required"), nil
 	}
 	
-	params := map[string]interface{}{}
-	
+	if hasSelector {
+		if errResult := validateSelector(selector.(string)); errResult != nil {
+			return errResult, nil
+		}
+	}
+
+	params := map[string]any{}
+
 	if hasSelector {
 		params["selector"] = selector
 	}
