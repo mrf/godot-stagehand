@@ -7,7 +7,6 @@ on:
     branches: ["main"]
 
 env:
-  GODOT_VERSION: "4.3.stable"
   GODOT_CACHE_DIR: ~/.cache/godot-ci
 
 jobs:
@@ -33,10 +32,16 @@ jobs:
       - name: go build (linux/amd64)
         run: GOOS=linux GOARCH=amd64 go build -o godot-stagehand-linux-amd64 .
 
-  # ── GDScript parse check (headless Godot) ────────────────────────────────
+  # ── GDScript parse check (headless Godot, version matrix) ─────────────────
   gdscript-parse:
-    name: GDScript parse check
+    name: GDScript parse (Godot ${{ matrix.godot-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        godot-version: ["4.3.stable", "4.4.stable"]
+    env:
+      GODOT_VERSION: ${{ matrix.godot-version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,7 +50,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.GODOT_CACHE_DIR }}
-          key: godot-${{ env.GODOT_VERSION }}-linux
+          key: godot-${{ matrix.godot-version }}-linux
 
       - name: Install Godot
         if: steps.godot-cache.outputs.cache-hit != 'true'
@@ -62,7 +67,7 @@ jobs:
           # Exit code 0 means no parse errors; any GDScript error is fatal.
           "$GODOT_BIN" --headless --path testdata/test_project --quit 2>&1 | tee godot-parse.log
           # Fail if Godot reports a script error
-          if grep -q "ERROR\|SCRIPT ERROR\|Parse Error" godot-parse.log; then
+          if grep -qE "ERROR|SCRIPT ERROR|Parse Error" godot-parse.log; then
             echo "GDScript parse errors detected:"
             grep -E "ERROR|SCRIPT ERROR|Parse Error" godot-parse.log
             exit 1

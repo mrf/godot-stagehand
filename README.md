@@ -50,7 +50,7 @@ go install github.com/mrf/godot-stagehand@latest
 ```
 
 ### Prerequisites
-- **Godot 4.x** installed (developed/tested with 4.2+)
+- **Godot 4.3+** (see [Godot Version Compatibility](#godot-version-compatibility) below)
 - **Go 1.25+** installed for building the MCP server
 - Your Godot project should have some user interface elements or nodes for interaction
 
@@ -136,6 +136,39 @@ Currently supported selectors (MVP implementation):
 | Name pattern | `"name:*Button*"` | All nodes whose name contains "*Button*" |
 | Class | `"class:Button"` | All Button nodes |
 | Group | `"group:interactive"` | All nodes in the "interactive" group |
+
+## Godot Version Compatibility
+
+**Minimum supported version: Godot 4.3**
+
+The Stagehand addon uses stable Godot 4.x APIs (WebSocketPeer, SceneTree, InputEvent, Performance monitors). CI runs a GDScript parse check against multiple Godot versions to catch incompatibilities early.
+
+| Godot Version | Status | Notes |
+|---------------|--------|-------|
+| 4.3           | Tested in CI | Fully supported |
+| 4.4           | Tested in CI | Fully supported |
+| 4.2           | Untested | May work, but not validated. WebSocket and Performance APIs may differ. |
+| 4.5+          | Untested | Expected to work. Test locally with `scripts/test-godot-compat.sh 4.5`. |
+
+### Testing compatibility locally
+
+Run the compatibility test script to validate the addon against specific Godot versions:
+
+```bash
+./scripts/test-godot-compat.sh              # test default versions (4.3, 4.4)
+./scripts/test-godot-compat.sh 4.2 4.3 4.4  # test specific versions
+```
+
+The script downloads each Godot version, opens the test project headless, and checks for GDScript parse errors.
+
+### Known compatibility surface
+
+APIs most likely to vary across Godot 4.x minor versions:
+- **WebSocketPeer** (`accept_stream`, `poll`, `get_ready_state`) — core server communication
+- **Performance monitors** (`TIME_NAVIGATION_PROCESS`, etc.) — `get_performance` tool
+- **RenderingServer.frame_post_draw** — screenshot capture timing
+
+If you encounter a parse error on a specific Godot version, please open an issue with the version number and error output.
 
 ## Troubleshooting
 
