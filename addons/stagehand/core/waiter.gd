@@ -78,6 +78,57 @@ func wait_for_node(selector: String, timeout_ms: int = 10000, poll_interval_ms: 
 		return {"success": false, "found": false, "error": "Node did not appear before timeout (selector: %s, timeout: %dms)" % [selector, timeout_ms]}
 
 
+## Wait for a signal to be emitted on a node.
+## Uses one-shot signal connection with timer-based timeout (no polling).
+func wait_for_signal(selector: String, signal_name: String, timeout_ms: int = 5000) -> Dictionary:
+	var start_time := Time.get_ticks_msec()
+
+	var results: Array[Node] = SELECTOR_ENGINE.query(get_tree(), selector)
+	if results.is_empty():
+		return {"received": false, "elapsed_ms": 0, "error": "Node not found: %s" % selector}
+
+	var node: Node = results[0]
+
+	if not node.has_signal(signal_name):
+		return {"received": false, "elapsed_ms": 0, "error": "Signal '%s' not found on node '%s'" % [signal_name, node.get_path()]}
+
+	var received := false
+	var signal_args: Array = []
+
+	# Create a one-shot callback that captures signal arguments.
+	var callback := func(arg1 = null, arg2 = null, arg3 = null, arg4 = null,
+			arg5 = null, arg6 = null, arg7 = null, arg8 = null) -> void:
+		received = true
+		for arg: Variant in [arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8]:
+			if arg == null:
+				break
+			signal_args.append(arg)
+
+	# Check if the node is still valid before connecting.
+	if not is_instance_valid(node):
+		return {"received": false, "elapsed_ms": Time.get_ticks_msec() - start_time, "error": "Node freed before signal connection"}
+
+	node.connect(signal_name, callback, CONNECT_ONE_SHOT)
+
+	# Wait using a timer, checking periodically if signal was received or node freed.
+	var end_time := start_time + timeout_ms
+	while not received and Time.get_ticks_msec() < end_time:
+		if not is_instance_valid(node):
+			return {"received": false, "elapsed_ms": Time.get_ticks_msec() - start_time, "error": "Node freed while waiting for signal"}
+		await get_tree().create_timer(0.01).timeout
+
+	var elapsed := Time.get_ticks_msec() - start_time
+
+	if received:
+		return {"received": true, "elapsed_ms": elapsed, "args": signal_args}
+
+	# Timed out — disconnect the one-shot callback if node is still valid.
+	if is_instance_valid(node) and node.is_connected(signal_name, callback):
+		node.disconnect(signal_name, callback)
+
+	return {"received": false, "elapsed_ms": elapsed, "reason": "timeout"}
+
+
 ## Wait for a node's property to satisfy a condition.
 func wait_for_property(selector: String, property: String, operator: String, expected_value, timeout_ms: int = 10000, poll_interval_ms: int = 100) -> Dictionary:
 	var condition := func() -> bool:

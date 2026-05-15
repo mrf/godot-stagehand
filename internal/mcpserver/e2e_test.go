@@ -115,6 +115,16 @@ func (s *stubGodot) handleReq(req godotconn.Request) godotconn.Response {
 		resp.Result = rawJSON(`{"data":"iVBORw0KGgo=","mime_type":"image/png","width":1280,"height":720}`)
 	case "change_scene":
 		resp.Result = rawJSON(`{"success":true,"previous_scene":"res://main.tscn","new_scene":"res://scenes/game.tscn"}`)
+	case "wait_signal":
+		// Simulate timeout for nonexistent_signal, success for others.
+		params, _ := json.Marshal(req.Params)
+		var p map[string]any
+		json.Unmarshal(params, &p)
+		if p["signal_name"] == "nonexistent_signal" {
+			resp.Result = rawJSON(`{"received":false,"elapsed_ms":100,"reason":"timeout"}`)
+		} else {
+			resp.Result = rawJSON(`{"received":true,"elapsed_ms":42,"args":[]}`)
+		}
 	default:
 		resp.Error = &godotconn.RPCError{Code: godotconn.CodeMethodNotFound, Message: "unknown method: " + req.Method}
 	}
@@ -466,6 +476,115 @@ func TestE2E_ChangeScene(t *testing.T) {
 	if p["scene_path"] != "res://scenes/game.tscn" {
 		t.Errorf("change_scene scene_path = %v, want res://scenes/game.tscn", p["scene_path"])
 	}
+}
+
+func TestE2E_WaitForSignal(t *testing.T) {
+	t.Run("SignalReceived", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleWaitForSignal(ctx, toolReq(map[string]any{
+			"selector":    "/root/UI/StartButton",
+			"signal_name": "pressed",
+		}))
+		if err != nil {
+			t.Fatalf("handleWaitForSignal: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("wait_for_signal error: %+v", result)
+		}
+		text := mustText(t, result)
+		if !strings.Contains(text, "received") {
+			t.Errorf("expected result to contain %q, got: %s", "received", text)
+		}
+
+		// Verify stub received the wait_signal call with correct params.
+		if n := stub.callCount("wait_signal"); n != 1 {
+			t.Errorf("expected 1 wait_signal call, got %d", n)
+		}
+		params := stub.lastCallParams("wait_signal")
+		if params == nil {
+			t.Fatal("no wait_signal params recorded")
+		}
+		var p map[string]any
+		if err := json.Unmarshal(params, &p); err != nil {
+			t.Fatalf("unmarshal wait_signal params: %v", err)
+		}
+		if p["selector"] != "/root/UI/StartButton" {
+			t.Errorf("selector = %v, want /root/UI/StartButton", p["selector"])
+		}
+		if p["signal_name"] != "pressed" {
+			t.Errorf("signal_name = %v, want pressed", p["signal_name"])
+		}
+	})
+
+	t.Run("Timeout", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleWaitForSignal(ctx, toolReq(map[string]any{
+			"selector":    "/root/UI/StartButton",
+			"signal_name": "nonexistent_signal",
+			"timeout_ms":  float64(100),
+		}))
+		if err != nil {
+			t.Fatalf("handleWaitForSignal timeout: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("wait_for_signal timeout error: %+v", result)
+		}
+		text := mustText(t, result)
+		if !strings.Contains(text, "timeout") {
+			t.Errorf("expected result to contain %q, got: %s", "timeout", text)
+		}
+
+		// Verify correct params were sent.
+		params := stub.lastCallParams("wait_signal")
+		if params == nil {
+			t.Fatal("no wait_signal params recorded")
+		}
+		var p map[string]any
+		if err := json.Unmarshal(params, &p); err != nil {
+			t.Fatalf("unmarshal wait_signal params: %v", err)
+		}
+		if p["signal_name"] != "nonexistent_signal" {
+			t.Errorf("signal_name = %v, want nonexistent_signal", p["signal_name"])
+		}
+		// Verify timeout_ms was passed through.
+		if tm, ok := p["timeout_ms"].(float64); !ok || tm != 100 {
+			t.Errorf("timeout_ms = %v, want 100", p["timeout_ms"])
+		}
+	})
+
+	t.Run("MissingSelector", func(t *testing.T) {
+		srv, _ := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleWaitForSignal(ctx, toolReq(map[string]any{
+			"signal_name": "pressed",
+		}))
+		if err != nil {
+			t.Fatalf("handleWaitForSignal missing selector: %v", err)
+		}
+		if !result.IsError {
+			t.Fatal("expected error when selector is missing")
+		}
+	})
+
+	t.Run("MissingSignalName", func(t *testing.T) {
+		srv, _ := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleWaitForSignal(ctx, toolReq(map[string]any{
+			"selector": "/root/UI/StartButton",
+		}))
+		if err != nil {
+			t.Fatalf("handleWaitForSignal missing signal_name: %v", err)
+		}
+		if !result.IsError {
+			t.Fatal("expected error when signal_name is missing")
+		}
+	})
 }
 
 func TestE2E_DisconnectMidSession(t *testing.T) {

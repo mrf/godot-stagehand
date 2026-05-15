@@ -140,6 +140,7 @@ func (s *Server) registerTools() {
 	s.mcp.AddTool(mouseMoveTool, s.handleMouseMove)
 	s.mcp.AddTool(screenshotTool, s.handleScreenshot)
 	s.mcp.AddTool(waitForNodeTool, s.handleWaitForNode)
+	s.mcp.AddTool(waitForSignalTool, s.handleWaitForSignal)
 	s.mcp.AddTool(waitForPropertyTool, s.handleWaitForProperty)
 	s.mcp.AddTool(changeSceneTool, s.handleChangeScene)
 	s.mcp.AddTool(callMethodTool, s.handleCallMethod)
