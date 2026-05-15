@@ -30,6 +30,9 @@ func TestNew_RegistersAllTools(t *testing.T) {
 		"godot_change_scene",
 		"godot_call_method",
 		"godot_evaluate",
+		"godot_record_start",
+		"godot_record_stop",
+		"godot_replay",
 	}
 
 	for _, name := range expected {

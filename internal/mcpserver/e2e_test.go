@@ -115,6 +115,12 @@ func (s *stubGodot) handleReq(req godotconn.Request) godotconn.Response {
 		resp.Result = rawJSON(`{"data":"iVBORw0KGgo=","mime_type":"image/png","width":1280,"height":720}`)
 	case "change_scene":
 		resp.Result = rawJSON(`{"success":true,"previous_scene":"res://main.tscn","new_scene":"res://scenes/game.tscn"}`)
+	case "record_start":
+		resp.Result = rawJSON(`{"success":true,"output_path":"res://recordings/run1.json"}`)
+	case "record_stop":
+		resp.Result = rawJSON(`{"success":true,"frames":42}`)
+	case "replay":
+		resp.Result = rawJSON(`{"success":true,"input_path":"res://recordings/run1.json"}`)
 	default:
 		resp.Error = &godotconn.RPCError{Code: godotconn.CodeMethodNotFound, Message: "unknown method: " + req.Method}
 	}
@@ -483,6 +489,89 @@ func TestE2E_DisconnectMidSession(t *testing.T) {
 	}
 	if result == nil {
 		t.Fatal("expected non-nil result after disconnect")
+	}
+}
+
+func TestE2E_RecordStart(t *testing.T) {
+	srv, stub := setupE2ETest(t)
+	ctx := context.Background()
+
+	result, err := srv.handleRecordStart(ctx, toolReq(map[string]any{
+		"output_path": "res://recordings/run1.json",
+	}))
+	if err != nil {
+		t.Fatalf("handleRecordStart: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("record_start error: %+v", result)
+	}
+	text := mustText(t, result)
+	if !strings.Contains(text, "success") {
+		t.Errorf("record_start result missing %q: %s", "success", text)
+	}
+
+	if n := stub.callCount("record_start"); n != 1 {
+		t.Errorf("expected 1 record_start call, got %d", n)
+	}
+	params := stub.lastCallParams("record_start")
+	var p map[string]any
+	if err := json.Unmarshal(params, &p); err != nil {
+		t.Fatalf("unmarshal record_start params: %v", err)
+	}
+	if p["output_path"] != "res://recordings/run1.json" {
+		t.Errorf("record_start output_path = %v, want res://recordings/run1.json", p["output_path"])
+	}
+}
+
+func TestE2E_RecordStop(t *testing.T) {
+	srv, stub := setupE2ETest(t)
+	ctx := context.Background()
+
+	result, err := srv.handleRecordStop(ctx, toolReq(map[string]any{}))
+	if err != nil {
+		t.Fatalf("handleRecordStop: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("record_stop error: %+v", result)
+	}
+	text := mustText(t, result)
+	if !strings.Contains(text, "success") {
+		t.Errorf("record_stop result missing %q: %s", "success", text)
+	}
+
+	if n := stub.callCount("record_stop"); n != 1 {
+		t.Errorf("expected 1 record_stop call, got %d", n)
+	}
+}
+
+func TestE2E_Replay(t *testing.T) {
+	srv, stub := setupE2ETest(t)
+	ctx := context.Background()
+
+	result, err := srv.handleReplay(ctx, toolReq(map[string]any{
+		"input_path": "res://recordings/run1.json",
+	}))
+	if err != nil {
+		t.Fatalf("handleReplay: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("replay error: %+v", result)
+	}
+	text := mustText(t, result)
+	if !strings.Contains(text, "success") {
+		t.Errorf("replay result missing %q: %s", "success", text)
+	}
+
+	if n := stub.callCount("replay"); n != 1 {
+		t.Errorf("expected 1 replay call, got %d", n)
+	}
+	params := stub.lastCallParams("replay")
+	var p map[string]any
+	if err := json.Unmarshal(params, &p); err != nil {
+		t.Fatalf("unmarshal replay params: %v", err)
+	}
+	if p["input_path"] != "res://recordings/run1.json" {
+		t.Errorf("replay input_path = %v, want res://recordings/run1.json", p["input_path"])
 	}
 }
 
