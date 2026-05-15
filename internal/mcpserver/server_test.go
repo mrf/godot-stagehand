@@ -28,6 +28,7 @@ func TestNew_RegistersAllTools(t *testing.T) {
 		"godot_screenshot",
 		"godot_wait_for_node",
 		"godot_wait_for_property",
+		"godot_wait_for_signal",
 		"godot_change_scene",
 		"godot_call_method",
 		"godot_evaluate",
@@ -62,6 +63,7 @@ func TestToolsReturnErrorWhenNotConnected(t *testing.T) {
 		{"godot_press_key", s.handlePressKey, map[string]any{"key": "Enter"}},
 		{"godot_press_action", s.handlePressAction, map[string]any{"action": "ui_accept"}},
 		{"godot_screenshot", s.handleScreenshot, nil},
+		{"godot_wait_for_signal", s.handleWaitForSignal, map[string]any{"selector": "/root/Button", "signal_name": "pressed"}},
 		{"godot_call_method", s.handleCallMethod, map[string]any{"selector": "/root", "method": "get_name"}},
 		{"godot_evaluate", s.handleEvaluate, map[string]any{"expression": "1+1"}},
 	}

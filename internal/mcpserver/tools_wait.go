@@ -55,6 +55,48 @@ func (s *Server) handleWaitForNode(ctx context.Context, req mcp.CallToolRequest)
 	return mcp.NewToolResultText(string(result)), nil
 }
 
+var waitForSignalTool = mcp.NewTool("godot_wait_for_signal",
+	mcp.WithDescription("Wait for a specific signal to be emitted on a node"),
+	mcp.WithString("selector",
+		mcp.Required(),
+		mcp.Description("Selector for the node that emits the signal (path, name:, class:, group:, text:, meta:, unique:, with >> chaining)"),
+	),
+	mcp.WithString("signal_name",
+		mcp.Required(),
+		mcp.Description("Name of the signal to wait for"),
+	),
+	mcp.WithNumber("timeout_ms",
+		mcp.Description("Maximum time to wait in milliseconds"),
+		mcp.DefaultNumber(5000),
+		mcp.Min(1),
+		mcp.Max(60000),
+	),
+)
+
+func (s *Server) handleWaitForSignal(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	selector, err := req.RequireString("selector")
+	if err != nil {
+		return mcp.NewToolResultError("Invalid 'selector' parameter: " + err.Error()), nil
+	}
+
+	signalName, err := req.RequireString("signal_name")
+	if err != nil {
+		return mcp.NewToolResultError("Invalid 'signal_name' parameter: " + err.Error()), nil
+	}
+
+	params := map[string]any{
+		"selector":    selector,
+		"signal_name": signalName,
+		"timeout_ms":  req.GetInt("timeout_ms", 5000),
+	}
+
+	result, errResult := s.callGodot(ctx, "wait_signal", params)
+	if errResult != nil {
+		return errResult, nil
+	}
+	return mcp.NewToolResultText(string(result)), nil
+}
+
 var waitForPropertyTool = mcp.NewTool("godot_wait_for_property",
 	mcp.WithDescription("Wait for a node's property to satisfy a condition"),
 	mcp.WithString("selector",
