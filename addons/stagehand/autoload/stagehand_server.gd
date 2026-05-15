@@ -237,41 +237,6 @@ func _handle_change_scene(params: Variant) -> Dictionary:
 	return StagehandSceneHandler.change_scene(get_tree(), p)
 
 
-func _handle_wait_for_node(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
-	var selector: String = p.get("selector", "")
-	if selector.is_empty():
-		return {"error": "Missing selector"}
-	var timeout_ms: int = p.get("timeout_ms", 10000)
-	var poll_interval_ms: int = p.get("poll_interval_ms", 100)
-	var waiter := StagehandWaiter.new()
-	add_child(waiter)
-	var result: Dictionary = await waiter.wait_for_node(selector, timeout_ms, poll_interval_ms)
-	waiter.queue_free()
-	return result
-
-
-func _handle_wait_for_property(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
-	var selector: String = p.get("selector", "")
-	if selector.is_empty():
-		return {"error": "Missing selector"}
-	var property: String = p.get("property", "")
-	if property.is_empty():
-		return {"error": "Missing property"}
-	var operator: String = p.get("operator", "equals")
-	var expected_value: Variant = p.get("expected_value")
-	var timeout_ms: int = p.get("timeout_ms", 10000)
-	var poll_interval_ms: int = p.get("poll_interval_ms", 100)
-	var waiter := StagehandWaiter.new()
-	add_child(waiter)
-	var result: Dictionary = await waiter.wait_for_property(
-		selector, property, operator, expected_value, timeout_ms, poll_interval_ms
-	)
-	waiter.queue_free()
-	return result
-
-
 func _handle_wait_signal(params: Variant) -> Dictionary:
 	var p: Dictionary = {} if params == null else params
 	var selector: String = p.get("selector", "")
