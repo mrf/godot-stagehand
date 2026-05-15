@@ -115,6 +115,18 @@ func (s *stubGodot) handleReq(req godotconn.Request) godotconn.Response {
 		resp.Result = rawJSON(`{"data":"iVBORw0KGgo=","mime_type":"image/png","width":1280,"height":720}`)
 	case "change_scene":
 		resp.Result = rawJSON(`{"success":true,"previous_scene":"res://main.tscn","new_scene":"res://scenes/game.tscn"}`)
+	case "call_method":
+		resp.Result = rawJSON(`{"result":42,"type":"int"}`)
+	case "evaluate":
+		resp.Result = rawJSON(`{"value":"hello","type":"String"}`)
+	case "wait_for_node":
+		resp.Result = rawJSON(`{"found":true,"path":"/root/UI/StartButton","elapsed_ms":50}`)
+	case "wait_for_property":
+		resp.Result = rawJSON(`{"satisfied":true,"value":"Start Game","elapsed_ms":50}`)
+	case "input_text":
+		resp.Result = rawJSON(`{"success":true,"characters_sent":5}`)
+	case "input_mouse_move":
+		resp.Result = rawJSON(`{"success":true,"position":{"x":100,"y":200}}`)
 	default:
 		resp.Error = &godotconn.RPCError{Code: godotconn.CodeMethodNotFound, Message: "unknown method: " + req.Method}
 	}
@@ -466,6 +478,354 @@ func TestE2E_ChangeScene(t *testing.T) {
 	if p["scene_path"] != "res://scenes/game.tscn" {
 		t.Errorf("change_scene scene_path = %v, want res://scenes/game.tscn", p["scene_path"])
 	}
+}
+
+func TestE2E_CallMethod(t *testing.T) {
+	t.Run("BasicCall", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleCallMethod(ctx, toolReq(map[string]any{
+			"selector": "class:Button",
+			"method":   "get_text",
+		}))
+		if err != nil {
+			t.Fatalf("handleCallMethod: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("call_method error: %+v", result)
+		}
+		text := mustText(t, result)
+		if !strings.Contains(text, "42") {
+			t.Errorf("call_method result missing expected value: %s", text)
+		}
+
+		if n := stub.callCount("call_method"); n != 1 {
+			t.Errorf("expected 1 call_method call, got %d", n)
+		}
+		params := stub.lastCallParams("call_method")
+		if params == nil {
+			t.Fatal("no call_method params recorded")
+		}
+		var p map[string]any
+		if err := json.Unmarshal(params, &p); err != nil {
+			t.Fatalf("unmarshal call_method params: %v", err)
+		}
+		if p["selector"] != "class:Button" {
+			t.Errorf("call_method selector = %v, want class:Button", p["selector"])
+		}
+		if p["method"] != "get_text" {
+			t.Errorf("call_method method = %v, want get_text", p["method"])
+		}
+	})
+
+	t.Run("BlockedMethod", func(t *testing.T) {
+		srv, _ := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleCallMethod(ctx, toolReq(map[string]any{
+			"selector": "class:Button",
+			"method":   "free",
+		}))
+		if err != nil {
+			t.Fatalf("handleCallMethod blocked: %v", err)
+		}
+		if !result.IsError {
+			t.Fatal("expected error for blocked method 'free'")
+		}
+	})
+
+	t.Run("WithArgs", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleCallMethod(ctx, toolReq(map[string]any{
+			"selector": "class:Button",
+			"method":   "set_text",
+			"args":     []any{"Hello"},
+		}))
+		if err != nil {
+			t.Fatalf("handleCallMethod with args: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("call_method with args error: %+v", result)
+		}
+
+		params := stub.lastCallParams("call_method")
+		var p map[string]any
+		if err := json.Unmarshal(params, &p); err != nil {
+			t.Fatalf("unmarshal call_method params: %v", err)
+		}
+		if _, ok := p["args"]; !ok {
+			t.Error("expected args field in call_method params")
+		}
+	})
+}
+
+func TestE2E_Evaluate(t *testing.T) {
+	t.Run("BasicExpression", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleEvaluate(ctx, toolReq(map[string]any{
+			"expression": `"hello"`,
+		}))
+		if err != nil {
+			t.Fatalf("handleEvaluate: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("evaluate error: %+v", result)
+		}
+		text := mustText(t, result)
+		if !strings.Contains(text, "hello") {
+			t.Errorf("evaluate result missing expected value: %s", text)
+		}
+
+		if n := stub.callCount("evaluate"); n != 1 {
+			t.Errorf("expected 1 evaluate call, got %d", n)
+		}
+		params := stub.lastCallParams("evaluate")
+		if params == nil {
+			t.Fatal("no evaluate params recorded")
+		}
+		var p map[string]any
+		if err := json.Unmarshal(params, &p); err != nil {
+			t.Fatalf("unmarshal evaluate params: %v", err)
+		}
+		if p["expression"] != `"hello"` {
+			t.Errorf("evaluate expression = %v, want %q", p["expression"], `"hello"`)
+		}
+	})
+
+	t.Run("WithContextNode", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleEvaluate(ctx, toolReq(map[string]any{
+			"expression":   "name",
+			"context_node": "/root/UI/StartButton",
+		}))
+		if err != nil {
+			t.Fatalf("handleEvaluate with context_node: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("evaluate with context_node error: %+v", result)
+		}
+
+		params := stub.lastCallParams("evaluate")
+		var p map[string]any
+		if err := json.Unmarshal(params, &p); err != nil {
+			t.Fatalf("unmarshal evaluate params: %v", err)
+		}
+		if p["context_node"] != "/root/UI/StartButton" {
+			t.Errorf("evaluate context_node = %v, want /root/UI/StartButton", p["context_node"])
+		}
+	})
+}
+
+func TestE2E_WaitForNode(t *testing.T) {
+	srv, stub := setupE2ETest(t)
+	ctx := context.Background()
+
+	result, err := srv.handleWaitForNode(ctx, toolReq(map[string]any{
+		"selector":   "class:Button",
+		"timeout_ms": float64(5000),
+	}))
+	if err != nil {
+		t.Fatalf("handleWaitForNode: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("wait_for_node error: %+v", result)
+	}
+	text := mustText(t, result)
+	if !strings.Contains(text, "found") {
+		t.Errorf("wait_for_node result missing 'found': %s", text)
+	}
+
+	if n := stub.callCount("wait_for_node"); n != 1 {
+		t.Errorf("expected 1 wait_for_node call, got %d", n)
+	}
+	params := stub.lastCallParams("wait_for_node")
+	if params == nil {
+		t.Fatal("no wait_for_node params recorded")
+	}
+	var p map[string]any
+	if err := json.Unmarshal(params, &p); err != nil {
+		t.Fatalf("unmarshal wait_for_node params: %v", err)
+	}
+	if p["selector"] != "class:Button" {
+		t.Errorf("wait_for_node selector = %v, want class:Button", p["selector"])
+	}
+}
+
+func TestE2E_WaitForProperty(t *testing.T) {
+	srv, stub := setupE2ETest(t)
+	ctx := context.Background()
+
+	result, err := srv.handleWaitForProperty(ctx, toolReq(map[string]any{
+		"selector":       "class:Button",
+		"property":       "text",
+		"operator":       "equals",
+		"expected_value": "Start Game",
+		"timeout_ms":     float64(5000),
+	}))
+	if err != nil {
+		t.Fatalf("handleWaitForProperty: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("wait_for_property error: %+v", result)
+	}
+	text := mustText(t, result)
+	if !strings.Contains(text, "satisfied") {
+		t.Errorf("wait_for_property result missing 'satisfied': %s", text)
+	}
+
+	if n := stub.callCount("wait_for_property"); n != 1 {
+		t.Errorf("expected 1 wait_for_property call, got %d", n)
+	}
+	params := stub.lastCallParams("wait_for_property")
+	if params == nil {
+		t.Fatal("no wait_for_property params recorded")
+	}
+	var p map[string]any
+	if err := json.Unmarshal(params, &p); err != nil {
+		t.Fatalf("unmarshal wait_for_property params: %v", err)
+	}
+	if p["selector"] != "class:Button" {
+		t.Errorf("wait_for_property selector = %v, want class:Button", p["selector"])
+	}
+	if p["operator"] != "equals" {
+		t.Errorf("wait_for_property operator = %v, want equals", p["operator"])
+	}
+}
+
+func TestE2E_TypeText(t *testing.T) {
+	t.Run("BasicTypeText", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleTypeText(ctx, toolReq(map[string]any{
+			"text": "hello",
+		}))
+		if err != nil {
+			t.Fatalf("handleTypeText: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("type_text error: %+v", result)
+		}
+		text := mustText(t, result)
+		if !strings.Contains(text, "success") {
+			t.Errorf("type_text result missing 'success': %s", text)
+		}
+
+		if n := stub.callCount("input_text"); n != 1 {
+			t.Errorf("expected 1 input_text call, got %d", n)
+		}
+		params := stub.lastCallParams("input_text")
+		if params == nil {
+			t.Fatal("no input_text params recorded")
+		}
+		var p map[string]any
+		if err := json.Unmarshal(params, &p); err != nil {
+			t.Fatalf("unmarshal input_text params: %v", err)
+		}
+		if p["text"] != "hello" {
+			t.Errorf("input_text text = %v, want hello", p["text"])
+		}
+	})
+
+	t.Run("WithSelector", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleTypeText(ctx, toolReq(map[string]any{
+			"text":     "world",
+			"selector": "class:LineEdit",
+		}))
+		if err != nil {
+			t.Fatalf("handleTypeText with selector: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("type_text with selector error: %+v", result)
+		}
+
+		params := stub.lastCallParams("input_text")
+		var p map[string]any
+		if err := json.Unmarshal(params, &p); err != nil {
+			t.Fatalf("unmarshal input_text params: %v", err)
+		}
+		if p["selector"] != "class:LineEdit" {
+			t.Errorf("input_text selector = %v, want class:LineEdit", p["selector"])
+		}
+	})
+}
+
+func TestE2E_MouseMove(t *testing.T) {
+	t.Run("MoveToCoordinates", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleMouseMove(ctx, toolReq(map[string]any{
+			"coordinates": map[string]any{"x": float64(100), "y": float64(200)},
+		}))
+		if err != nil {
+			t.Fatalf("handleMouseMove: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("mouse_move error: %+v", result)
+		}
+		text := mustText(t, result)
+		if !strings.Contains(text, "success") {
+			t.Errorf("mouse_move result missing 'success': %s", text)
+		}
+
+		if n := stub.callCount("input_mouse_move"); n != 1 {
+			t.Errorf("expected 1 input_mouse_move call, got %d", n)
+		}
+	})
+
+	t.Run("MoveToSelector", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleMouseMove(ctx, toolReq(map[string]any{
+			"selector": "class:Button",
+		}))
+		if err != nil {
+			t.Fatalf("handleMouseMove by selector: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("mouse_move by selector error: %+v", result)
+		}
+
+		if n := stub.callCount("input_mouse_move"); n != 1 {
+			t.Errorf("expected 1 input_mouse_move call, got %d", n)
+		}
+		params := stub.lastCallParams("input_mouse_move")
+		if params == nil {
+			t.Fatal("no input_mouse_move params recorded")
+		}
+		var p map[string]any
+		if err := json.Unmarshal(params, &p); err != nil {
+			t.Fatalf("unmarshal input_mouse_move params: %v", err)
+		}
+		if p["selector"] != "class:Button" {
+			t.Errorf("input_mouse_move selector = %v, want class:Button", p["selector"])
+		}
+	})
+
+	t.Run("MissingTarget", func(t *testing.T) {
+		srv, _ := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleMouseMove(ctx, toolReq(map[string]any{}))
+		if err != nil {
+			t.Fatalf("handleMouseMove missing target: %v", err)
+		}
+		if !result.IsError {
+			t.Fatal("expected error when neither selector nor coordinates provided")
+		}
+	})
 }
 
 func TestE2E_DisconnectMidSession(t *testing.T) {
