@@ -27,6 +27,8 @@ func TestNew_RegistersAllTools(t *testing.T) {
 		"godot_type_text",
 		"godot_mouse_move",
 		"godot_screenshot",
+		"godot_screenshot_save_baseline",
+		"godot_screenshot_diff",
 		"godot_wait_for_node",
 		"godot_wait_for_property",
 		"godot_wait_for_signal",

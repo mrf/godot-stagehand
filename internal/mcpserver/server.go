@@ -20,13 +20,18 @@ type Server struct {
 	mu   sync.RWMutex
 	conn *godotconn.Connection
 
-	muLaunch   sync.RWMutex
+	muLaunch     sync.RWMutex
 	launchResult *launch.LaunchResult
+
+	// baselineDir is the directory where screenshot baselines are stored.
+	baselineDir string
 }
 
 // New creates a new MCP server with all Godot tools registered.
 func New() *Server {
-	s := &Server{}
+	s := &Server{
+		baselineDir: "stagehand-baselines",
+	}
 
 	s.mcp = server.NewMCPServer(
 		"godot-stagehand",
@@ -150,6 +155,8 @@ func (s *Server) registerTools() {
 	s.mcp.AddTool(typeTextTool, s.handleTypeText)
 	s.mcp.AddTool(mouseMoveTool, s.handleMouseMove)
 	s.mcp.AddTool(screenshotTool, s.handleScreenshot)
+	s.mcp.AddTool(saveBaselineTool, s.handleSaveBaseline)
+	s.mcp.AddTool(screenshotDiffTool, s.handleScreenshotDiff)
 	s.mcp.AddTool(waitForNodeTool, s.handleWaitForNode)
 	s.mcp.AddTool(waitForSignalTool, s.handleWaitForSignal)
 	s.mcp.AddTool(waitForPropertyTool, s.handleWaitForProperty)
