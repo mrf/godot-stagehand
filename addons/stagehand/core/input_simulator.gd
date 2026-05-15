@@ -228,6 +228,91 @@ static func input_text(tree: SceneTree, params: Dictionary) -> Dictionary:
 	return {"success": true, "typed_text": text, "chars_count": chars.size(), "total_delay": total_delay}
 
 
+## Simulate a touch screen event.
+## [param action] is "tap" (begin + end), "begin", "move", or "end".
+## If [param drag_to] is set during "tap", a drag (swipe) event is sent between begin and end.
+## "move" requires [param drag_to].
+static func input_touch(tree: SceneTree, params: Dictionary) -> Dictionary:
+	if not params.has("position"):
+		return {"error": "Missing position"}
+
+	var p: Dictionary = params["position"]
+	var pos := Vector2(float(p.get("x", 0.0)), float(p.get("y", 0.0)))
+	var index: int = int(params.get("index", 0))
+	var action: String = params.get("action", "tap")
+	var duration_ms: int = int(params.get("duration_ms", 100))
+
+	match action:
+		"tap":
+			_touch_press(pos, index)
+			if params.has("drag_to"):
+				var dt: Dictionary = params["drag_to"]
+				var drag_pos := Vector2(float(dt.get("x", 0.0)), float(dt.get("y", 0.0)))
+				_touch_drag(pos, drag_pos, index)
+				_touch_release_after(tree, drag_pos, index, duration_ms / 1000.0)
+				return {
+					"success": true,
+					"position": {"x": pos.x, "y": pos.y},
+					"drag_to": {"x": drag_pos.x, "y": drag_pos.y},
+					"index": index,
+				}
+			_touch_release_after(tree, pos, index, duration_ms / 1000.0)
+			return {"success": true, "position": {"x": pos.x, "y": pos.y}, "index": index}
+		"begin":
+			_touch_press(pos, index)
+			return {"success": true, "position": {"x": pos.x, "y": pos.y}, "index": index, "action": "begin"}
+		"move":
+			if not params.has("drag_to"):
+				return {"error": "drag_to is required for action 'move'"}
+			var dt: Dictionary = params["drag_to"]
+			var drag_pos := Vector2(float(dt.get("x", 0.0)), float(dt.get("y", 0.0)))
+			_touch_drag(pos, drag_pos, index)
+			return {
+				"success": true,
+				"from": {"x": pos.x, "y": pos.y},
+				"to": {"x": drag_pos.x, "y": drag_pos.y},
+				"index": index,
+				"action": "move",
+			}
+		"end":
+			_touch_release(pos, index)
+			return {"success": true, "position": {"x": pos.x, "y": pos.y}, "index": index, "action": "end"}
+		_:
+			return {"error": "Unknown action: %s" % action}
+
+
+static func _touch_press(pos: Vector2, index: int) -> void:
+	var ev := InputEventScreenTouch.new()
+	ev.position = pos
+	ev.index = index
+	ev.pressed = true
+	Input.parse_input_event(ev)
+
+
+static func _touch_release(pos: Vector2, index: int) -> void:
+	var ev := InputEventScreenTouch.new()
+	ev.position = pos
+	ev.index = index
+	ev.pressed = false
+	Input.parse_input_event(ev)
+
+
+static func _touch_release_after(tree: SceneTree, pos: Vector2, index: int, delay_sec: float) -> void:
+	var timer: SceneTreeTimer = tree.create_timer(delay_sec)
+	timer.timeout.connect(func() -> void:
+		_touch_release(pos, index)
+	)
+
+
+static func _touch_drag(from: Vector2, to: Vector2, index: int) -> void:
+	var ev := InputEventScreenDrag.new()
+	ev.position = to
+	ev.index = index
+	ev.relative = to - from
+	ev.velocity = Vector2.ZERO
+	Input.parse_input_event(ev)
+
+
 ## Moves mouse cursor to specified position without clicking
 static func input_mouse_move(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var pos: Vector2
