@@ -6,7 +6,6 @@ package launch
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net"
 	"os"
@@ -14,8 +13,6 @@ import (
 	"runtime"
 	"testing"
 	"time"
-
-	"github.com/mrf/godot-stagehand/internal/godotconn"
 )
 
 const godotStartupTimeout = 30 * time.Second
