@@ -64,18 +64,39 @@ func evaluate_property_condition(node: Node, property_name: String, operator: St
 			return false
 
 
-## Wait for a node matching the selector to appear in the scene tree.
-func wait_for_node(selector: String, timeout_ms: int = 10000, poll_interval_ms: int = 100) -> Dictionary:
+## Wait for a node matching the selector to reach the desired state.
+## state: "exists" (node in tree), "visible" (node in tree and visible), "removed" (node absent)
+func wait_for_node(selector: String, state: String = "exists", timeout_ms: int = 10000, poll_interval_ms: int = 100) -> Dictionary:
 	var condition := func() -> bool:
 		var results: Array[Node] = SELECTOR_ENGINE.query(get_tree(), selector)
-		return results.size() > 0
+		match state:
+			"exists":
+				return results.size() > 0
+			"visible":
+				return results.size() > 0 and results[0].visible
+			"removed":
+				return results.size() == 0
+			_:
+				return results.size() > 0
 
 	var success := await wait_condition(condition, timeout_ms, poll_interval_ms)
 
 	if success:
-		return {"success": true, "found": true, "message": "Node found within timeout period"}
+		match state:
+			"removed":
+				return {"success": true, "removed": true, "message": "Node removed within timeout period"}
+			"visible":
+				return {"success": true, "found": true, "visible": true, "message": "Node found and visible within timeout period"}
+			_:
+				return {"success": true, "found": true, "message": "Node found within timeout period"}
 	else:
-		return {"success": false, "found": false, "error": "Node did not appear before timeout (selector: %s, timeout: %dms)" % [selector, timeout_ms]}
+		match state:
+			"removed":
+				return {"success": false, "removed": false, "error": "Node did not disappear before timeout (selector: %s, timeout: %dms)" % [selector, timeout_ms]}
+			"visible":
+				return {"success": false, "found": false, "error": "Node did not become visible before timeout (selector: %s, timeout: %dms)" % [selector, timeout_ms]}
+			_:
+				return {"success": false, "found": false, "error": "Node did not appear before timeout (selector: %s, timeout: %dms)" % [selector, timeout_ms]}
 
 
 ## Wait for a node's property to satisfy a condition.

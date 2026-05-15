@@ -7,10 +7,15 @@ import (
 )
 
 var waitForNodeTool = mcp.NewTool("godot_wait_for_node",
-	mcp.WithDescription("Wait for a node matching the selector to appear in the scene tree"),
+	mcp.WithDescription("Wait for a node matching the selector to reach a desired state"),
 	mcp.WithString("selector",
 		mcp.Required(),
 		mcp.Description("Selector for the node to wait for (path, name:, class:, group:, text:, meta:, unique:, with >> chaining)"),
+	),
+	mcp.WithString("state",
+		mcp.Description("State to wait for: 'exists' (node appears in tree), 'visible' (node appears and is visible), 'removed' (node disappears from tree)"),
+		mcp.Enum("exists", "visible", "removed"),
+		mcp.DefaultString("exists"),
 	),
 	mcp.WithNumber("timeout_ms",
 		mcp.Description("Maximum time to wait in milliseconds"),
@@ -33,8 +38,9 @@ func (s *Server) handleWaitForNode(ctx context.Context, req mcp.CallToolRequest)
 	}
 
 	params := map[string]any{
-		"selector":        selector,
-		"timeout_ms":      req.GetInt("timeout_ms", 10000),
+		"selector":         selector,
+		"state":            req.GetString("state", "exists"),
+		"timeout_ms":       req.GetInt("timeout_ms", 10000),
 		"poll_interval_ms": req.GetInt("poll_interval_ms", 100),
 	}
 
