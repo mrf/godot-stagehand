@@ -2,6 +2,38 @@
 
 This project uses **br** (beads_rust) for issue tracking. Run `br robot-docs guide` to get started.
 
+## Quality Standards — MANDATORY
+
+**Every agent session MUST follow strict TDD. No exceptions.**
+
+### TDD Protocol
+
+1. **Write a failing test FIRST** — before any implementation code
+   - Go: unit test in `*_test.go` or E2E test in `e2e_test.go`
+   - GDScript: GdUnit4 test in `testdata/test_project/test/`
+2. **Run the test — verify it fails** for the right reason
+3. **Write the minimum code** to make the test pass
+4. **Run the full test suite** — `go test ./...` — no regressions
+5. **Refactor** if needed, re-run tests
+6. **Run `code-simplifier:code-simplifier` agent** before committing
+
+### Quality Gates (run before every commit)
+
+```bash
+go vet ./...          # Lint
+go test ./...         # All Go tests pass
+# If GDScript changed:
+# Verify .gd files parse cleanly (no Godot errors on startup)
+```
+
+### Rules
+
+- **No skipped tests.** If a test can't run in CI, guard it with a build tag — don't `t.Skip()`.
+- **No "TODO: add test later."** The test comes first or the code doesn't land.
+- **No hallucinated APIs.** Before using any Godot API in GDScript, verify it exists in the Godot docs or by grepping the engine source. `error_string()`, `node.tree`, and similar hallucinations have burned us before.
+- **Validate at the Go layer.** Use `selector.ParseChain()` to validate selectors before sending to Godot. Don't rely on GDScript to catch bad input.
+- **Test the addon installs cleanly.** If you modify any `.gd` file, verify the addon doesn't break a host project's compilation.
+
 ## Quick Reference
 
 ```bash

@@ -38,3 +38,14 @@ go vet ./...
 - WebSocket port: 26700 (configurable)
 - Activation guard: `STAGEHAND_ENABLED=1` or `--stagehand` CLI flag
 - Protocol: JSON-RPC 2.0 over WebSocket (Godot Wire Protocol)
+
+## Quality Standards
+
+**Strict TDD is mandatory.** See AGENTS.md for the full protocol. Summary:
+
+1. Failing test first — before implementation
+2. `go test ./...` must pass before every commit
+3. `go vet ./...` must be clean
+4. No hallucinated Godot APIs — verify before using
+5. Validate selectors in Go with `selector.ParseChain()` before sending to Godot
+6. If you change `.gd` files, verify the addon doesn't break host project compilation
