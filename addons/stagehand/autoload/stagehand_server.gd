@@ -442,6 +442,8 @@ func _ensure_recorder() -> void:
 func _stop() -> void:
 	if not _active:
 		return
+	if _recorder != null and _recorder._recording:
+		_recorder.stop_recording()
 	for peer_id: int in _clients:
 		_clients[peer_id].close()
 	_clients.clear()
