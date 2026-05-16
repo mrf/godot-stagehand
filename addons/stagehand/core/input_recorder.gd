@@ -21,7 +21,7 @@ func _input(event: InputEvent) -> void:
 
 func _exit_tree() -> void:
 	if _recording:
-		stop_recording()
+		var _result: Dictionary = stop_recording()
 
 
 func start_recording(output_path: String) -> Dictionary:
@@ -44,10 +44,11 @@ func stop_recording() -> Dictionary:
 		"frames": _frames,
 	}
 	var json_text: String = JSON.stringify(data, "\t")
-	var file := FileAccess.open(_output_path, FileAccess.WRITE)
+	var file: FileAccess = FileAccess.open(_output_path, FileAccess.WRITE)
 	if file == null:
-		var err: int = FileAccess.get_open_error()
+		var err: Error = FileAccess.get_open_error()
 		return {"error": "Failed to open file for writing: %s (%s)" % [_output_path, error_string(err)]}
+	@warning_ignore("return_value_discarded")
 	file.store_string(json_text)
 	_frames = []
 	return {"success": true, "frames": frame_count}
@@ -56,19 +57,20 @@ func stop_recording() -> Dictionary:
 func start_replay(input_path: String) -> Dictionary:
 	if _recording:
 		return {"error": "Cannot replay while recording"}
-	var file := FileAccess.open(input_path, FileAccess.READ)
+	var file: FileAccess = FileAccess.open(input_path, FileAccess.READ)
 	if file == null:
-		var err: int = FileAccess.get_open_error()
+		var err: Error = FileAccess.get_open_error()
 		return {"error": "Failed to open file for reading: %s (%s)" % [input_path, error_string(err)]}
 	var text: String = file.get_as_text()
-	var json := JSON.new()
-	var parse_err := json.parse(text)
+	var json: JSON = JSON.new()
+	var parse_err: Error = json.parse(text)
 	if parse_err != OK:
 		return {"error": "Failed to parse recording: %s" % json.get_error_message()}
 	var data: Variant = json.data
 	if data is not Dictionary:
 		return {"error": "Invalid recording format"}
-	var frames: Array = data.get("frames", [])
+	var data_dict: Dictionary = data
+	var frames: Array = data_dict.get("frames", [])
 	if frames.is_empty():
 		return {"success": true, "input_path": input_path, "frames": 0}
 
@@ -82,13 +84,13 @@ func start_replay(input_path: String) -> Dictionary:
 		if event == null:
 			continue
 		replayed_count += 1
-		var delay_sec: float = int(frame.get("time_ms", 0)) / 1000.0
+		var delay_sec: float = _variant_to_int(frame.get("time_ms", 0)) / 1000.0
 		if delay_sec > last_delay_sec:
 			last_delay_sec = delay_sec
 		if delay_sec <= 0.0:
 			Input.parse_input_event(event)
 		else:
-			get_tree().create_timer(delay_sec).timeout.connect(func() -> void:
+			var _err: int = get_tree().create_timer(delay_sec).timeout.connect(func() -> void:
 				Input.parse_input_event(event)
 			)
 
@@ -158,51 +160,75 @@ static func _deserialize_event(frame: Dictionary) -> InputEvent:
 	var type: String = frame.get("type", "")
 	match type:
 		"key":
-			var ev := InputEventKey.new()
-			ev.keycode = int(frame.get("keycode", 0))
-			ev.unicode = int(frame.get("unicode", 0))
-			ev.pressed = bool(frame.get("pressed", false))
-			ev.shift_pressed = bool(frame.get("shift", false))
-			ev.ctrl_pressed = bool(frame.get("ctrl", false))
-			ev.alt_pressed = bool(frame.get("alt", false))
-			ev.meta_pressed = bool(frame.get("meta", false))
+			var ev: InputEventKey = InputEventKey.new()
+			ev.keycode = _variant_to_int(frame.get("keycode", 0)) as Key
+			ev.unicode = _variant_to_int(frame.get("unicode", 0))
+			ev.pressed = _variant_to_bool(frame.get("pressed", false))
+			ev.shift_pressed = _variant_to_bool(frame.get("shift", false))
+			ev.ctrl_pressed = _variant_to_bool(frame.get("ctrl", false))
+			ev.alt_pressed = _variant_to_bool(frame.get("alt", false))
+			ev.meta_pressed = _variant_to_bool(frame.get("meta", false))
 			return ev
 		"mouse_button":
-			var ev := InputEventMouseButton.new()
+			var ev: InputEventMouseButton = InputEventMouseButton.new()
 			var pos: Dictionary = frame.get("position", {})
-			ev.position = Vector2(float(pos.get("x", 0.0)), float(pos.get("y", 0.0)))
+			ev.position = Vector2(_variant_to_float(pos.get("x", 0.0)), _variant_to_float(pos.get("y", 0.0)))
 			ev.global_position = ev.position
-			ev.button_index = int(frame.get("button_index", MOUSE_BUTTON_LEFT))
-			ev.pressed = bool(frame.get("pressed", false))
-			ev.double_click = bool(frame.get("double_click", false))
+			ev.button_index = _variant_to_int(frame.get("button_index", MOUSE_BUTTON_LEFT)) as MouseButton
+			ev.pressed = _variant_to_bool(frame.get("pressed", false))
+			ev.double_click = _variant_to_bool(frame.get("double_click", false))
 			return ev
 		"mouse_motion":
-			var ev := InputEventMouseMotion.new()
+			var ev: InputEventMouseMotion = InputEventMouseMotion.new()
 			var pos: Dictionary = frame.get("position", {})
-			ev.position = Vector2(float(pos.get("x", 0.0)), float(pos.get("y", 0.0)))
+			ev.position = Vector2(_variant_to_float(pos.get("x", 0.0)), _variant_to_float(pos.get("y", 0.0)))
 			ev.global_position = ev.position
 			var rel: Dictionary = frame.get("relative", {})
-			ev.relative = Vector2(float(rel.get("x", 0.0)), float(rel.get("y", 0.0)))
+			ev.relative = Vector2(_variant_to_float(rel.get("x", 0.0)), _variant_to_float(rel.get("y", 0.0)))
 			return ev
 		"action":
-			var ev := InputEventAction.new()
+			var ev: InputEventAction = InputEventAction.new()
 			ev.action = str(frame.get("action", ""))
-			ev.strength = float(frame.get("strength", 1.0))
-			ev.pressed = bool(frame.get("pressed", false))
+			ev.strength = _variant_to_float(frame.get("strength", 1.0))
+			ev.pressed = _variant_to_bool(frame.get("pressed", false))
 			return ev
 		"screen_touch":
-			var ev := InputEventScreenTouch.new()
+			var ev: InputEventScreenTouch = InputEventScreenTouch.new()
 			var pos: Dictionary = frame.get("position", {})
-			ev.position = Vector2(float(pos.get("x", 0.0)), float(pos.get("y", 0.0)))
-			ev.index = int(frame.get("index", 0))
-			ev.pressed = bool(frame.get("pressed", false))
+			ev.position = Vector2(_variant_to_float(pos.get("x", 0.0)), _variant_to_float(pos.get("y", 0.0)))
+			ev.index = _variant_to_int(frame.get("index", 0))
+			ev.pressed = _variant_to_bool(frame.get("pressed", false))
 			return ev
 		"screen_drag":
-			var ev := InputEventScreenDrag.new()
+			var ev: InputEventScreenDrag = InputEventScreenDrag.new()
 			var pos: Dictionary = frame.get("position", {})
-			ev.position = Vector2(float(pos.get("x", 0.0)), float(pos.get("y", 0.0)))
-			ev.index = int(frame.get("index", 0))
+			ev.position = Vector2(_variant_to_float(pos.get("x", 0.0)), _variant_to_float(pos.get("y", 0.0)))
+			ev.index = _variant_to_int(frame.get("index", 0))
 			var rel: Dictionary = frame.get("relative", {})
-			ev.relative = Vector2(float(rel.get("x", 0.0)), float(rel.get("y", 0.0)))
+			ev.relative = Vector2(_variant_to_float(rel.get("x", 0.0)), _variant_to_float(rel.get("y", 0.0)))
 			return ev
 	return null
+
+
+static func _variant_to_int(v: Variant) -> int:
+	if v is int:
+		return v
+	if v is float:
+		var f: float = v
+		return int(f)
+	return 0
+
+
+static func _variant_to_float(v: Variant) -> float:
+	if v is float:
+		return v
+	if v is int:
+		var i: int = v
+		return float(i)
+	return 0.0
+
+
+static func _variant_to_bool(v: Variant) -> bool:
+	if v is bool:
+		return v
+	return false

@@ -2,18 +2,18 @@ class_name StagehandJsonRpc
 extends RefCounted
 ## JSON-RPC 2.0 message parsing and construction for the Stagehand wire protocol.
 
-const PARSE_ERROR := -32700
-const INVALID_REQUEST := -32600
-const METHOD_NOT_FOUND := -32601
-const INVALID_PARAMS := -32602
-const INTERNAL_ERROR := -32603
+const PARSE_ERROR: int = -32700
+const INVALID_REQUEST: int = -32600
+const METHOD_NOT_FOUND: int = -32601
+const INVALID_PARAMS: int = -32602
+const INTERNAL_ERROR: int = -32603
 
 
 ## Parse a JSON-RPC 2.0 request string.
 ## Returns {"request": Dictionary} on success, {"error": String} on failure.
 static func parse_request(text: String) -> Dictionary:
-	var json := JSON.new()
-	var err := json.parse(text)
+	var json: JSON = JSON.new()
+	var err: Error = json.parse(text)
 	if err != OK:
 		return {"error": make_error_response(null, PARSE_ERROR, "Parse error")}
 
@@ -48,7 +48,7 @@ static func make_response(id: Variant, result: Variant) -> String:
 static func make_error_response(
 	id: Variant, code: int, message: String, data: Variant = null
 ) -> String:
-	var error_obj := {"code": code, "message": message}
+	var error_obj: Dictionary = {"code": code, "message": message}
 	if data != null:
 		error_obj["data"] = data
 	return JSON.stringify({
@@ -59,7 +59,7 @@ static func make_error_response(
 
 
 static func _normalize_id(id: Variant) -> Variant:
-	if typeof(id) == TYPE_FLOAT:
+	if id is float:
 		var f: float = id
 		var i: int = int(f)
 		if is_equal_approx(f, float(i)):

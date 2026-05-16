@@ -33,8 +33,8 @@ static func evaluate(tree: SceneTree, params: Dictionary) -> Dictionary:
 			return {"error": "Node not found for selector: %s" % selector}
 		base_node = nodes[0]
 
-	var expr := Expression.new()
-	var parse_err := expr.parse(expression_str)
+	var expr: Expression = Expression.new()
+	var parse_err: Error = expr.parse(expression_str)
 	if parse_err != OK:
 		return {"error": "Parse error: %s" % expr.get_error_text()}
 

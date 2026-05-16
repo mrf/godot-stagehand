@@ -12,7 +12,10 @@ static func capture(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if viewport == null:
 		return {"error": "No viewport available"}
 
-	var full_page: bool = params.get("full_page", true)
+	var full_page: bool = true
+	var full_page_raw: Variant = params.get("full_page", true)
+	if full_page_raw is bool:
+		full_page = full_page_raw
 	var crop_rect: Rect2i = Rect2i()
 
 	if not full_page and params.has("selector"):
@@ -29,7 +32,7 @@ static func capture(tree: SceneTree, params: Dictionary) -> Dictionary:
 		return {"error": "Failed to capture viewport image"}
 
 	if crop_rect != Rect2i():
-		var clamped := Rect2i(
+		var clamped: Rect2i = Rect2i(
 			Vector2i(
 				clampi(crop_rect.position.x, 0, img.get_width()),
 				clampi(crop_rect.position.y, 0, img.get_height())
