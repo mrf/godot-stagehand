@@ -9,7 +9,7 @@ const SelectorEngine := preload("res://addons/stagehand/core/selector_engine.gd"
 ## [param max_depth] limits recursion. Roots at the node do not count against depth.
 ## [param include_properties] is a list of property names to include per node.
 static func serialize_tree(root_node: Node, max_depth: int = 10, include_properties: Array[String] = []) -> Dictionary:
-	var root_data := _serialize_node(root_node, 0, max_depth, include_properties)
+	var root_data: Dictionary = _serialize_node(root_node, 0, max_depth, include_properties)
 	root_data["count"] = _count_nodes(root_node)
 	return root_data
 
@@ -20,7 +20,7 @@ static func serialize_tree(root_node: Node, max_depth: int = 10, include_propert
 static func query_nodes(tree: SceneTree, selector: String, properties: Array[String] = [], limit: int = 50) -> Dictionary:
 	var nodes: Array[Node] = SelectorEngine.query(tree, selector)
 	var results: Array[Dictionary] = []
-	var count := min(nodes.size(), limit)
+	var count: int = mini(nodes.size(), limit)
 	for i: int in range(count):
 		results.append(_serialize_node_basic(nodes[i], properties))
 	return {
@@ -30,7 +30,7 @@ static func query_nodes(tree: SceneTree, selector: String, properties: Array[Str
 
 
 static func _serialize_node(node: Node, depth: int, max_depth: int, include_properties: Array[String]) -> Dictionary:
-	var data := _node_info(node)
+	var data: Dictionary = _node_info(node)
 	if include_properties.size() > 0:
 		data["properties"] = _get_properties(node, include_properties)
 	if depth < max_depth:
@@ -42,7 +42,7 @@ static func _serialize_node(node: Node, depth: int, max_depth: int, include_prop
 
 
 static func _serialize_node_basic(node: Node, properties: Array[String]) -> Dictionary:
-	var data := _node_info(node)
+	var data: Dictionary = _node_info(node)
 	if properties.size() > 0:
 		data["properties"] = _get_properties(node, properties)
 	return data
@@ -57,7 +57,7 @@ static func _node_info(node: Node) -> Dictionary:
 
 
 static func _get_properties(node: Node, names: Array[String]) -> Dictionary:
-	var result := {}
+	var result: Dictionary = {}
 	for prop: String in names:
 		var value: Variant = _get_property_deep(node, prop)
 		if value != null:
@@ -73,13 +73,19 @@ static func _get_property_deep(node: Node, property: String) -> Variant:
 	var current: Variant = node
 	for part: String in parts:
 		if current is Object:
-			current = current.get(part)
+			var obj: Object = current
+			current = obj.get(part)
 		elif current is Dictionary:
-			current = current.get(part, null)
-		elif current is Array and part.is_valid_int():
-			var idx: int = part.to_int()
-			if idx >= 0 and idx < current.size():
-				current = current[idx]
+			var dict: Dictionary = current
+			current = dict.get(part, null)
+		elif current is Array:
+			var arr: Array = current
+			if part.is_valid_int():
+				var idx: int = part.to_int()
+				if idx >= 0 and idx < arr.size():
+					current = arr[idx]
+				else:
+					return null
 			else:
 				return null
 		else:
@@ -132,14 +138,15 @@ static func _to_json_safe(value: Variant) -> Variant:
 				"z": _to_json_safe(b.z),
 			}
 		TYPE_STRING_NAME:
-			return String(value)
+			return str(value)
 		TYPE_NODE_PATH:
-			return String(value)
+			return str(value)
 		TYPE_RID:
 			return "RID"
 		TYPE_OBJECT:
 			if value is Node:
-				return _node_info(value)
+				var n: Node = value
+				return _node_info(n)
 			return str(value)
 	return value
 

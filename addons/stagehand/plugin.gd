@@ -1,8 +1,8 @@
 @tool
 extends EditorPlugin
 
-const AUTOLOAD_NAME := "StagehandServer"
-const AUTOLOAD_PATH := "res://addons/stagehand/autoload/stagehand_server.gd"
+const AUTOLOAD_NAME: String = "StagehandServer"
+const AUTOLOAD_PATH: String = "res://addons/stagehand/autoload/stagehand_server.gd"
 
 var _toolbar_button: CheckButton
 

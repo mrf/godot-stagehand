@@ -31,7 +31,7 @@ static func call_method(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if selector.is_empty() or method.is_empty():
 		return {"error": "Missing selector or method"}
 
-	var err := _validate_method(method)
+	var err: String = _validate_method(method)
 	if not err.is_empty():
 		return {"error": err}
 

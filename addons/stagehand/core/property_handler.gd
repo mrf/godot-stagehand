@@ -44,7 +44,7 @@ static func set_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 
 	var node: Node = nodes[0]
 	var previous: Variant = _get_property_at_level(node, property)
-	var success := _set_property_deep(node, property, params.get("value"))
+	var success: bool = _set_property_deep(node, property, params.get("value"))
 	if not success:
 		return {"error": "Failed to set property: %s" % property}
 
@@ -61,12 +61,13 @@ static func _has_property(node: Node, property: String) -> bool:
 	for i: int in range(parts.size()):
 		var part: String = parts[i]
 		if current is Object:
-			if not current.get_property_list().any(
+			var obj: Object = current
+			if not obj.get_property_list().any(
 				func(info: Dictionary) -> bool: return info.get("name", "") == part
 			):
 				# For built-in properties that may not show up in get_property_list,
 				# fall through to get() if we haven't reached the last part.
-				var _tmp: Variant = current.get(part)
+				var _tmp: Variant = obj.get(part)
 				if _tmp == null:
 					return false
 				current = _tmp
@@ -80,7 +81,6 @@ static func _get_property_at_level(node: Node, property: String) -> Variant:
 	var dot_idx: int = property.find(".")
 	if dot_idx >= 0:
 		var top: String = property.substr(0, dot_idx)
-		var rest: String = property.substr(dot_idx + 1)
 		var obj: Variant = node.get(top) if node != null else null
 		if obj == null:
 			return null
@@ -106,10 +106,11 @@ static func _set_property_deep(node: Node, property: String, value: Variant) -> 
 	return _do_set(current, parts[parts.size() - 1], value)
 
 
+## Attempt to set a property on an object.
 static func _do_set(obj: Object, property: String, value: Variant) -> bool:
 	if obj == null:
 		return false
-	var has_property := obj.get_property_list().any(
+	var has_property: bool = obj.get_property_list().any(
 		func(info: Dictionary) -> bool: return info.get("name", "") == property
 	)
 	if has_property:

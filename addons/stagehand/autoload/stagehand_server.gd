@@ -4,8 +4,8 @@ extends Node
 ## Only activates when STAGEHAND_ENABLED=1 env var, --stagehand CLI flag,
 ## or the editor toolbar toggle is on.
 
-const DEFAULT_PORT := 26700
-const VERSION := "0.1.0"
+const DEFAULT_PORT: int = 26700
+const VERSION: String = "0.1.0"
 
 const StagehandCommandRouter := preload("res://addons/stagehand/core/command_router.gd")
 const StagehandInputRecorder := preload("res://addons/stagehand/core/input_recorder.gd")
@@ -38,7 +38,7 @@ func _ready() -> void:
 
 	_port = _get_port()
 	_tcp_server = TCPServer.new()
-	var err := _tcp_server.listen(_port)
+	var err: Error = _tcp_server.listen(_port)
 	if err != OK:
 		push_error("Stagehand: Failed to listen on port %d: %s" % [_port, error_string(err)])
 		set_process(false)
@@ -52,7 +52,7 @@ func _process(_delta: float) -> void:
 	if not _active:
 		return
 	_accept_new_connections()
-	_poll_clients()
+	await _poll_clients()
 
 
 func _exit_tree() -> void:
@@ -77,8 +77,8 @@ func get_port() -> int:
 func _accept_new_connections() -> void:
 	while _tcp_server.is_connection_available():
 		var tcp_peer: StreamPeerTCP = _tcp_server.take_connection()
-		var ws_peer := WebSocketPeer.new()
-		var err := ws_peer.accept_stream(tcp_peer)
+		var ws_peer: WebSocketPeer = WebSocketPeer.new()
+		var err: Error = ws_peer.accept_stream(tcp_peer)
 		if err == OK:
 			var peer_id: int = _next_peer_id
 			_next_peer_id += 1
@@ -97,17 +97,18 @@ func _poll_clients() -> void:
 				while ws.get_available_packet_count() > 0:
 					var packet: PackedByteArray = ws.get_packet()
 					var text: String = packet.get_string_from_utf8()
-					_handle_message(peer_id, text)
+					await _handle_message(peer_id, text)
 			WebSocketPeer.STATE_CLOSED:
 				disconnected.append(peer_id)
 	for peer_id: int in disconnected:
-		_clients.erase(peer_id)
+		var _erased: bool = _clients.erase(peer_id)
 
 
 func _handle_message(peer_id: int, text: String) -> void:
 	var parsed: Dictionary = StagehandJsonRpc.parse_request(text)
 	if parsed.has("error"):
-		_send_to_peer(peer_id, parsed["error"])
+		var error_text: String = parsed["error"]
+		_send_to_peer(peer_id, error_text)
 		return
 
 	var request: Dictionary = parsed["request"]
@@ -134,7 +135,7 @@ func _send_to_peer(peer_id: int, text: String) -> void:
 		return
 	var ws: WebSocketPeer = _clients[peer_id]
 	if ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
-		ws.send_text(text)
+		var _err: Error = ws.send_text(text)
 
 
 func _register_builtin_handlers() -> void:
@@ -163,31 +164,31 @@ func _register_builtin_handlers() -> void:
 
 
 func _handle_input_mouse(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	return StagehandInputSimulator.input_mouse(get_tree(), p)
 
 
 func _handle_input_action(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	return StagehandInputSimulator.input_action(get_tree(), p)
 
 
 func _handle_input_key(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	return StagehandInputSimulator.input_key(get_tree(), p)
 
 
 func _handle_input_touch(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	return StagehandInputSimulator.input_touch(get_tree(), p)
 
 
 func _handle_screenshot(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	return await StagehandScreenshotCapture.capture(get_tree(), p)
 
 
-func _handle_ping(_params: Variant) -> Dictionary:
+func _handle_ping(_unused_params: Variant) -> Dictionary:
 	return {
 		"status": "ok",
 		"engine": "godot",
@@ -197,13 +198,13 @@ func _handle_ping(_params: Variant) -> Dictionary:
 
 
 func _handle_get_tree(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	var root_path: String = p.get("root_path", "/root")
 	var max_depth: int = p.get("max_depth", 10)
 	var include_properties: Array[String] = []
 	if p.has("properties"):
 		for item: Variant in p["properties"]:
-			include_properties.append(String(item))
+			include_properties.append(str(item))
 
 	var root: Node = get_tree().root.get_node_or_null(NodePath(root_path))
 	if root == null:
@@ -213,45 +214,45 @@ func _handle_get_tree(params: Variant) -> Dictionary:
 
 
 func _handle_query_nodes(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	var selector: String = p.get("selector", "")
 	if selector.is_empty():
 		return {"error": "Missing selector"}
 	var properties: Array[String] = []
 	if p.has("properties"):
 		for item: Variant in p["properties"]:
-			properties.append(String(item))
+			properties.append(str(item))
 	var limit: int = p.get("limit", 50)
 	return StagehandTreeSerializer.query_nodes(get_tree(), selector, properties, limit)
 
 
 func _handle_get_property(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	return StagehandPropertyHandler.get_property(get_tree(), p)
 
 
 func _handle_set_property(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	return StagehandPropertyHandler.set_property(get_tree(), p)
 
 
 func _handle_call_method(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	return StagehandMethodHandler.call_method(get_tree(), p)
 
 
 func _handle_evaluate(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	return StagehandExpressionEvaluator.evaluate(get_tree(), p)
 
 
 func _handle_change_scene(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	return StagehandSceneHandler.change_scene(get_tree(), p)
 
 
 func _handle_wait_signal(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	var selector: String = p.get("selector", "")
 	if selector.is_empty():
 		return {"error": "Missing selector"}
@@ -259,7 +260,7 @@ func _handle_wait_signal(params: Variant) -> Dictionary:
 	if signal_name.is_empty():
 		return {"error": "Missing signal_name"}
 	var timeout_ms: int = p.get("timeout_ms", 5000)
-	var waiter := StagehandWaiter.new()
+	var waiter: StagehandWaiter = StagehandWaiter.new()
 	add_child(waiter)
 	var result: Dictionary = await waiter.wait_for_signal(selector, signal_name, timeout_ms)
 	waiter.queue_free()
@@ -301,23 +302,24 @@ const _DEFAULT_PERFORMANCE_MONITORS: Array[String] = [
 
 
 func _handle_get_performance(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	var requested: Array = p.get("monitors", [])
 	var to_query: Array = requested if not requested.is_empty() else _DEFAULT_PERFORMANCE_MONITORS
 	var metrics: Dictionary = {}
 	for item: Variant in to_query:
-		var name: String = String(item)
-		if _PERFORMANCE_MONITORS.has(name):
-			metrics[name] = Performance.get_monitor(_PERFORMANCE_MONITORS[name])
+		var monitor_name: String = str(item)
+		if _PERFORMANCE_MONITORS.has(monitor_name):
+			var monitor_enum: Performance.Monitor = _PERFORMANCE_MONITORS[monitor_name]
+			metrics[monitor_name] = Performance.get_monitor(monitor_enum)
 		else:
-			metrics[name] = null
+			metrics[monitor_name] = null
 	return {"metrics": metrics}
 
 
 func _handle_assert_performance(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	var monitor: String = p.get("monitor", "")
-	var threshold: float = float(p.get("threshold", 0.0))
+	var threshold: float = _to_float(p.get("threshold", 0.0))
 	var op: String = p.get("op", "lte")
 
 	if monitor.is_empty():
@@ -331,7 +333,7 @@ func _handle_assert_performance(params: Variant) -> Dictionary:
 	if not metrics.has(monitor) or metrics[monitor] == null:
 		return {"error": "Unknown monitor: %s" % monitor}
 
-	var value: float = float(metrics[monitor])
+	var value: float = _to_float(metrics[monitor])
 	var passed: bool = false
 	match op:
 		"lt":
@@ -359,11 +361,14 @@ func _handle_assert_performance(params: Variant) -> Dictionary:
 	return result
 
 
-func _handle_get_game_state(_params: Variant) -> Dictionary:
-	var viewport: Viewport = get_viewport()
-	var size: Vector2i = viewport.size if viewport != null else Vector2i.ZERO
+func _handle_get_game_state(_unused_params: Variant) -> Dictionary:
+	var window: Window = get_window()
+	var size: Vector2i = window.size if window != null else Vector2i.ZERO
+	var current_scene_path: String = ""
+	if get_tree().current_scene != null:
+		current_scene_path = get_tree().current_scene.scene_file_path
 	return {
-		"current_scene": str(get_tree().current_scene.scene_file_path) if get_tree().current_scene != null else null,
+		"current_scene": current_scene_path,
 		"fps": Engine.get_frames_per_second(),
 		"physics_ticks": Engine.get_physics_frames(),
 		"window_size": {"x": size.x, "y": size.y},
@@ -373,7 +378,7 @@ func _handle_get_game_state(_params: Variant) -> Dictionary:
 
 
 func _handle_wait_for_node(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	var selector: String = p.get("selector", "")
 	if selector.is_empty():
 		return {"error": "Missing selector"}
@@ -381,7 +386,7 @@ func _handle_wait_for_node(params: Variant) -> Dictionary:
 	var timeout_ms: int = p.get("timeout_ms", 10000)
 	var poll_interval_ms: int = p.get("poll_interval_ms", 100)
 
-	var waiter := StagehandWaiter.new()
+	var waiter: StagehandWaiter = StagehandWaiter.new()
 	add_child(waiter)
 	var result: Dictionary = await waiter.wait_for_node(selector, state, timeout_ms, poll_interval_ms)
 	waiter.queue_free()
@@ -389,7 +394,7 @@ func _handle_wait_for_node(params: Variant) -> Dictionary:
 
 
 func _handle_wait_for_property(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	var selector: String = p.get("selector", "")
 	if selector.is_empty():
 		return {"error": "Missing selector"}
@@ -403,7 +408,7 @@ func _handle_wait_for_property(params: Variant) -> Dictionary:
 	var poll_interval_ms: int = p.get("poll_interval_ms", 100)
 	var expected_value: Variant = p.get("expected_value")
 
-	var waiter := StagehandWaiter.new()
+	var waiter: StagehandWaiter = StagehandWaiter.new()
 	add_child(waiter)
 	var result: Dictionary = await waiter.wait_for_property(selector, property, operator, expected_value, timeout_ms, poll_interval_ms)
 	waiter.queue_free()
@@ -411,7 +416,7 @@ func _handle_wait_for_property(params: Variant) -> Dictionary:
 
 
 func _handle_record_start(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	var output_path: String = p.get("output_path", "")
 	if output_path.is_empty():
 		return {"error": "Missing output_path"}
@@ -419,13 +424,13 @@ func _handle_record_start(params: Variant) -> Dictionary:
 	return _recorder.start_recording(output_path)
 
 
-func _handle_record_stop(_params: Variant) -> Dictionary:
+func _handle_record_stop(_unused_params: Variant) -> Dictionary:
 	_ensure_recorder()
 	return _recorder.stop_recording()
 
 
 func _handle_replay(params: Variant) -> Dictionary:
-	var p: Dictionary = {} if params == null else params
+	var p: Dictionary = _params(params)
 	var input_path: String = p.get("input_path", "")
 	if input_path.is_empty():
 		return {"error": "Missing input_path"}
@@ -443,9 +448,10 @@ func _stop() -> void:
 	if not _active:
 		return
 	if _recorder != null and _recorder._recording:
-		_recorder.stop_recording()
+		var _result: Dictionary = _recorder.stop_recording()
 	for peer_id: int in _clients:
-		_clients[peer_id].close()
+		var ws: WebSocketPeer = _clients[peer_id]
+		ws.close()
 	_clients.clear()
 	if _tcp_server:
 		_tcp_server.stop()
@@ -463,6 +469,22 @@ static func _is_enabled() -> bool:
 	if ProjectSettings.get_setting("stagehand/server/enabled", false):
 		return true
 	return false
+
+
+static func _to_float(v: Variant) -> float:
+	if v is float:
+		return v
+	if v is int:
+		var i: int = v
+		return float(i)
+	return 0.0
+
+
+static func _params(params: Variant) -> Dictionary:
+	if params == null:
+		return {}
+	var d: Dictionary = params
+	return d
 
 
 static func _get_port() -> int:
