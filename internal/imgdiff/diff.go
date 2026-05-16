@@ -23,9 +23,9 @@ type Result struct {
 }
 
 // Compare compares images a and b pixel-by-pixel. A pixel is considered
-// different when any RGBA channel differs by more than threshold (range [0,1]).
+// different when any RGBA channel differs by more than pixelSensitivity (range [0,1]).
 // Returns an error if the images have different bounds.
-func Compare(a, b image.Image, threshold float64) (Result, error) {
+func Compare(a, b image.Image, pixelSensitivity float64) (Result, error) {
 	bounds := a.Bounds()
 	if bounds != b.Bounds() {
 		return Result{}, fmt.Errorf("image size mismatch: %v vs %v", bounds, b.Bounds())
@@ -53,7 +53,7 @@ func Compare(a, b image.Image, threshold float64) (Result, error) {
 				maxDelta = maxChan
 			}
 
-			if maxChan > threshold {
+			if maxChan > pixelSensitivity {
 				diffCount++
 				intensity := clampUint8(maxChan * 4 * 255)
 				diff.SetRGBA(x, y, color.RGBA{R: intensity, G: 0, B: 0, A: 255})
