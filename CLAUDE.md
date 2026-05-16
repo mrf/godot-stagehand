@@ -49,3 +49,4 @@ go vet ./...
 4. No hallucinated Godot APIs — verify before using
 5. Validate selectors in Go with `selector.ParseChain()` before sending to Godot
 6. If you change `.gd` files, verify the addon doesn't break host project compilation
+7. **GDScript must be strict-mode compliant** — all `.gd` files must pass in projects with warnings-as-errors enabled (no implicit type inference, no discarded return values, no untyped params, etc.)

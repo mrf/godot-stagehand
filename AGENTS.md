@@ -22,8 +22,17 @@ This project uses **br** (beads_rust) for issue tracking. Run `br robot-docs gui
 ```bash
 go vet ./...          # Lint
 go test ./...         # All Go tests pass
-# If GDScript changed:
-# Verify .gd files parse cleanly (no Godot errors on startup)
+# If GDScript changed — strict-mode validation:
+timeout 5 ${GODOT_BIN:-godot} --path testdata/test_project --headless --stagehand 2>&1 | grep -E "SCRIPT ERROR|Server listening"
+# Must show "Server listening on port 26700" with ZERO "SCRIPT ERROR" lines.
+# testdata/test_project has all GDScript warnings elevated to errors — this catches:
+#   - Implicitly inferred static types (:= without annotation)
+#   - float()/int()/bool()/String() constructors with Variant args
+#   - Discarded return values
+#   - Variable shadowing
+#   - Untyped function parameters
+#   - Unsafe property/method access on Variant
+# Set GODOT_BIN to your Godot binary (e.g. export GODOT_BIN=~/.local/bin/godot-4.6.2-linux)
 ```
 
 ### Rules
@@ -33,6 +42,7 @@ go test ./...         # All Go tests pass
 - **No hallucinated APIs.** Before using any Godot API in GDScript, verify it exists in the Godot docs or by grepping the engine source. `error_string()`, `node.tree`, and similar hallucinations have burned us before.
 - **Validate at the Go layer.** Use `selector.ParseChain()` to validate selectors before sending to Godot. Don't rely on GDScript to catch bad input.
 - **Test the addon installs cleanly.** If you modify any `.gd` file, verify the addon doesn't break a host project's compilation.
+- **GDScript must be strict-mode compliant.** The addon runs in host projects that may have all warnings elevated to errors. Every `.gd` file must use explicit type annotations, capture all return values, avoid `float()`/`int()`/`bool()`/`String()` constructors on Variant, and never shadow base class properties. Test against water-wars (which has strict settings) before committing any GDScript changes.
 
 ## Quick Reference
 

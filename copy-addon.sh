@@ -37,12 +37,14 @@ fi
 COPY_DEST="$TARGET_ADDONS_DIR/stagehand"
 
 if [ -d "$COPY_DEST" ]; then
-    echo "Warning: Stagehand addon already exists at $COPY_DEST"
-    read -p "Do you want to overwrite it? (y/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Aborting."
-        exit 1
+    if [ -t 0 ]; then
+        echo "Warning: Stagehand addon already exists at $COPY_DEST"
+        read -p "Do you want to overwrite it? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Aborting."
+            exit 1
+        fi
     fi
     # Remove existing addon
     rm -rf "$COPY_DEST"
@@ -52,13 +54,57 @@ echo "Copying Stagehand addon to target project..."
 cp -r "$ADDON_SOURCE" "$COPY_DEST"
 
 echo "Successfully copied Stagehand addon to $COPY_DEST"
+
+# Auto-enable the plugin in project.godot
+PROJECT_FILE="$TARGET_PROJECT/project.godot"
+if [ -f "$PROJECT_FILE" ]; then
+    PLUGIN_ENTRY="res://addons/stagehand/plugin.cfg"
+    if grep -q "$PLUGIN_ENTRY" "$PROJECT_FILE"; then
+        echo "Plugin already enabled in project.godot"
+    elif grep -q '^\[editor_plugins\]' "$PROJECT_FILE"; then
+        # Section exists — append to the enabled array
+        if grep -q 'enabled=PackedStringArray()' "$PROJECT_FILE"; then
+            # Empty array
+            sed -i "s|enabled=PackedStringArray()|enabled=PackedStringArray(\"$PLUGIN_ENTRY\")|" "$PROJECT_FILE"
+        elif grep -q 'enabled=PackedStringArray(' "$PROJECT_FILE"; then
+            # Non-empty array — insert before closing paren
+            sed -i "s|enabled=PackedStringArray(\(.*\))|enabled=PackedStringArray(\1, \"$PLUGIN_ENTRY\")|" "$PROJECT_FILE"
+        fi
+        echo "Enabled Stagehand plugin in project.godot"
+    else
+        # No [editor_plugins] section — append one
+        printf '\n[editor_plugins]\n\nenabled=PackedStringArray("%s")\n' "$PLUGIN_ENTRY" >> "$PROJECT_FILE"
+        echo "Added [editor_plugins] section and enabled Stagehand in project.godot"
+    fi
+    # Auto-register the autoload (required for runtime — plugin.gd only registers it in editor mode)
+    AUTOLOAD_ENTRY='StagehandServer="*res://addons/stagehand/autoload/stagehand_server.gd"'
+    if grep -q "StagehandServer" "$PROJECT_FILE"; then
+        echo "Autoload already registered in project.godot"
+    elif grep -q '^\[autoload\]' "$PROJECT_FILE"; then
+        # Add after the [autoload] section header
+        sed -i "/^\[autoload\]/a\\$AUTOLOAD_ENTRY" "$PROJECT_FILE"
+        echo "Registered StagehandServer autoload in project.godot"
+    else
+        # No [autoload] section — append one
+        printf '\n[autoload]\n\n%s\n' "$AUTOLOAD_ENTRY" >> "$PROJECT_FILE"
+        echo "Added [autoload] section with StagehandServer in project.godot"
+    fi
+else
+    echo "Warning: No project.godot found — enable the plugin manually in Project Settings > Plugins"
+fi
+
 echo ""
-echo "Next steps:"
-echo "1. Open your Godot project"
-echo "2. Go to Project > Project Settings > Plugins "
-echo "3. Enable the 'Stagehand' plugin"
+echo "Run your project with Stagehand active:"
 echo ""
-echo "Remember to enable the plugin by running Godot with:"
-echo "  STAGEHAND_ENABLED=1 godot --path $TARGET_PROJECT"
-echo "Or using the command line option:"
-echo "  godot --path $TARGET_PROJECT --stagehand"
+echo "  Linux / WSL:"
+echo "    STAGEHAND_ENABLED=1 godot --path $TARGET_PROJECT"
+echo "    godot --path $TARGET_PROJECT --stagehand"
+echo ""
+echo "  Windows (CMD):"
+echo "    set STAGEHAND_ENABLED=1 && godot.exe --path \"$(wslpath -w "$TARGET_PROJECT" 2>/dev/null || echo "$TARGET_PROJECT")\""
+echo "    godot.exe --path \"$(wslpath -w "$TARGET_PROJECT" 2>/dev/null || echo "$TARGET_PROJECT")\" --stagehand"
+echo ""
+echo "  Windows (PowerShell):"
+echo "    \$env:STAGEHAND_ENABLED=\"1\"; & godot.exe --path \"$(wslpath -w "$TARGET_PROJECT" 2>/dev/null || echo "$TARGET_PROJECT")\""
+echo ""
+echo "You should see 'Stagehand: Server listening on port 26700' in the Godot output."
