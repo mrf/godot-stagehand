@@ -53,6 +53,12 @@ var screenshotDiffTool = mcp.NewTool("godot_screenshot_diff",
 		mcp.Min(0),
 		mcp.Max(1),
 	),
+	mcp.WithNumber("pixel_sensitivity",
+		mcp.Description("Per-pixel color delta tolerance [0.0–1.0]: channels differing by less than this are treated as matching; default 0.0 (exact color match)"),
+		mcp.DefaultNumber(0.0),
+		mcp.Min(0),
+		mcp.Max(1),
+	),
 )
 
 // screenshotResult is the expected shape of the Godot screenshot response.
@@ -148,6 +154,7 @@ func (s *Server) handleScreenshotDiff(ctx context.Context, req mcp.CallToolReque
 	}
 
 	threshold := req.GetFloat("threshold", 0.0)
+	pixelSensitivity := req.GetFloat("pixel_sensitivity", 0.0)
 
 	// Load baseline.
 	baselinePath := filepath.Join(s.baselineDir, name+".png")
@@ -172,14 +179,14 @@ func (s *Server) handleScreenshotDiff(ctx context.Context, req mcp.CallToolReque
 		return mcp.NewToolResultError(fmt.Sprintf("failed to decode screenshot: %v", err)), nil
 	}
 
-	result, err := imgdiff.Compare(baselineImg, currentImg, threshold)
+	result, err := imgdiff.Compare(baselineImg, currentImg, pixelSensitivity)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("image comparison failed: %v", err)), nil
 	}
 
 	report := fmt.Sprintf(
-		"Baseline: %q\nTotal pixels: %d\nDiff pixels:  %d\nDiff ratio:   %.4f\nMax delta:    %.4f\nThreshold:    %.4f",
-		name, result.TotalPixels, result.DiffPixels, result.DiffRatio, result.MaxDelta, threshold,
+		"Baseline: %q\nTotal pixels: %d\nDiff pixels:  %d\nDiff ratio:   %.4f\nMax delta:    %.4f\nThreshold:    %.4f\nPixel sensitivity: %.4f",
+		name, result.TotalPixels, result.DiffPixels, result.DiffRatio, result.MaxDelta, threshold, pixelSensitivity,
 	)
 
 	if result.DiffRatio > threshold {

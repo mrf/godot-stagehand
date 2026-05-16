@@ -101,7 +101,7 @@ func TestCompare_PartialDiff(t *testing.T) {
 	}
 }
 
-func TestCompare_ThresholdFiltersSmallDiffs(t *testing.T) {
+func TestCompare_PixelSensitivityFiltersSmallDiffs(t *testing.T) {
 	// Nearly identical: one pixel differs by 1/255 on R channel.
 	a := solidImage(2, 2, color.RGBA{R: 100, G: 100, B: 100, A: 255})
 	b := image.NewRGBA(image.Rect(0, 0, 2, 2))
@@ -113,22 +113,66 @@ func TestCompare_ThresholdFiltersSmallDiffs(t *testing.T) {
 	// Nudge one pixel by a tiny amount.
 	b.SetRGBA(0, 0, color.RGBA{R: 101, G: 100, B: 100, A: 255})
 
-	// The delta is ~0.004; a threshold of 0.01 should absorb it.
+	// The delta is ~0.004; pixelSensitivity of 0.01 should absorb it.
 	result, err := Compare(a, b, 0.01)
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
 	if result.DiffPixels != 0 {
-		t.Errorf("DiffPixels = %d, want 0 (within threshold)", result.DiffPixels)
+		t.Errorf("DiffPixels = %d, want 0 (within pixel sensitivity)", result.DiffPixels)
 	}
 
-	// But with no threshold it should detect the difference.
+	// But with pixelSensitivity=0 it should detect the difference.
 	result2, err := Compare(a, b, 0.0)
 	if err != nil {
 		t.Fatalf("Compare strict: %v", err)
 	}
 	if result2.DiffPixels != 1 {
 		t.Errorf("DiffPixels = %d, want 1 (strict comparison)", result2.DiffPixels)
+	}
+}
+
+// TestCompare_PixelSensitivityIndependentOfDiffRatio verifies that
+// pixelSensitivity only controls per-pixel color tolerance and has no effect
+// on how DiffRatio is interpreted by callers.
+func TestCompare_PixelSensitivityIndependentOfDiffRatio(t *testing.T) {
+	// 4 pixels: 2 differ by a large amount, 2 are identical.
+	a := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	b := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	for y := range 2 {
+		for x := range 2 {
+			a.SetRGBA(x, y, color.RGBA{R: 200, G: 200, B: 200, A: 255})
+			b.SetRGBA(x, y, color.RGBA{R: 200, G: 200, B: 200, A: 255})
+		}
+	}
+	// Make 2 out of 4 pixels differ significantly.
+	b.SetRGBA(0, 0, color.RGBA{R: 0, G: 0, B: 0, A: 255})
+	b.SetRGBA(1, 0, color.RGBA{R: 0, G: 0, B: 0, A: 255})
+
+	// With tight pixelSensitivity (0.0), 2 pixels are flagged → DiffRatio = 0.5.
+	result, err := Compare(a, b, 0.0)
+	if err != nil {
+		t.Fatalf("Compare: %v", err)
+	}
+	if result.DiffPixels != 2 {
+		t.Errorf("DiffPixels = %d, want 2", result.DiffPixels)
+	}
+	if result.DiffRatio != 0.5 {
+		t.Errorf("DiffRatio = %f, want 0.5", result.DiffRatio)
+	}
+
+	// pixelSensitivity=1.0 means every per-pixel delta is tolerated, so DiffPixels → 0
+	// even though the pixels differ visually. The diff-ratio gate (threshold) is a
+	// caller concern and not affected by pixelSensitivity.
+	resultLoose, err := Compare(a, b, 1.0)
+	if err != nil {
+		t.Fatalf("Compare loose: %v", err)
+	}
+	if resultLoose.DiffPixels != 0 {
+		t.Errorf("DiffPixels = %d, want 0 with pixelSensitivity=1.0", resultLoose.DiffPixels)
+	}
+	if resultLoose.DiffRatio != 0.0 {
+		t.Errorf("DiffRatio = %f, want 0.0 with pixelSensitivity=1.0", resultLoose.DiffRatio)
 	}
 }
 
