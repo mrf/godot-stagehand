@@ -20,8 +20,8 @@ func _input(event: InputEvent) -> void:
 
 
 func _exit_tree() -> void:
-	_recording = false
-	_frames = []
+	if _recording:
+		stop_recording()
 
 
 func start_recording(output_path: String) -> Dictionary:
