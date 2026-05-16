@@ -116,6 +116,18 @@ func validateSelector(sel string) *mcp.CallToolResult {
 	return nil
 }
 
+// toolResultToError extracts the text from an MCP error result and returns it
+// as a Go error. Used by internal helpers that need to convert MCP-style errors
+// into standard errors.
+func toolResultToError(result *mcp.CallToolResult, fallback string) error {
+	if len(result.Content) > 0 {
+		if tc, ok := mcp.AsTextContent(result.Content[0]); ok {
+			return fmt.Errorf("%s", tc.Text)
+		}
+	}
+	return fmt.Errorf("%s", fallback)
+}
+
 // requireConn returns the connection or an MCP error result if not connected.
 func (s *Server) requireConn() (*godotconn.Connection, *mcp.CallToolResult) {
 	conn := s.getConn()

@@ -126,6 +126,9 @@ func TestInvalidSelectorReturnsError(t *testing.T) {
 		{"godot_wait_for_property", s.handleWaitForProperty, map[string]any{"selector": invalidSelector, "property": "x", "operator": "exists"}},
 		{"godot_call_method", s.handleCallMethod, map[string]any{"selector": invalidSelector, "method": "get_name"}},
 		{"godot_evaluate context_node", s.handleEvaluate, map[string]any{"expression": "1+1", "context_node": invalidSelector}},
+		{"godot_screenshot", s.handleScreenshot, map[string]any{"selector": invalidSelector}},
+		{"godot_screenshot_save_baseline", s.handleSaveBaseline, map[string]any{"name": "test", "selector": invalidSelector}},
+		{"godot_screenshot_diff", s.handleScreenshotDiff, map[string]any{"name": "test", "selector": invalidSelector}},
 	}
 
 	for _, tt := range tests {
