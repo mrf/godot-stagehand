@@ -24,10 +24,8 @@ func (s *Server) handleConnect(ctx context.Context, req mcp.CallToolRequest) (*m
 	host := req.GetString("host", "localhost")
 	port := req.GetInt("port", 26700)
 
-	// Close any existing connection.
-	if existing := s.getConn(); existing != nil {
-		existing.Close()
-	}
+	// Close any existing connection under the write lock.
+	s.clearConn()
 
 	conn, err := godotconn.Dial(ctx, host, port)
 	if err != nil {

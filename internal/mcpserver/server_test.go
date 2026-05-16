@@ -2,10 +2,16 @@ package mcpserver
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
+	"github.com/gorilla/websocket"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mrf/godot-stagehand/internal/godotconn"
 )
 
 func TestNew_RegistersAllTools(t *testing.T) {
@@ -200,4 +206,50 @@ func TestConnectReturnsErrorForUnreachableHost(t *testing.T) {
 	if !result.IsError {
 		t.Fatal("expected isError=true for unreachable host")
 	}
+}
+
+// TestClearConnNoRace verifies that concurrent calls to clearConn and getConn
+// do not trigger the race detector. This guards against the pattern where
+// handleConnect previously called getConn() then Close() without holding any
+// lock, creating a window where another goroutine could observe a closing conn.
+func TestClearConnNoRace(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+		for {
+			if _, _, err := ws.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+
+	_, portStr, _ := strings.Cut(srv.Listener.Addr().String(), ":")
+	port, _ := strconv.Atoi(portStr)
+
+	s := New()
+	conn, err := godotconn.Dial(context.Background(), "127.0.0.1", port)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	s.setConn(conn)
+
+	var wg sync.WaitGroup
+	const workers = 20
+	for i := range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if i%2 == 0 {
+				s.clearConn()
+			} else {
+				_ = s.getConn()
+			}
+		}()
+	}
+	wg.Wait()
 }
