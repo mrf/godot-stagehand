@@ -122,6 +122,7 @@ func TestInvalidSelectorReturnsError(t *testing.T) {
 		{"godot_type_text", s.handleTypeText, map[string]any{"text": "hello", "selector": invalidSelector}},
 		{"godot_mouse_move", s.handleMouseMove, map[string]any{"selector": invalidSelector}},
 		{"godot_wait_for_node", s.handleWaitForNode, map[string]any{"selector": invalidSelector}},
+		{"godot_wait_for_signal", s.handleWaitForSignal, map[string]any{"selector": invalidSelector, "signal_name": "pressed"}},
 		{"godot_wait_for_property", s.handleWaitForProperty, map[string]any{"selector": invalidSelector, "property": "x", "operator": "exists"}},
 		{"godot_call_method", s.handleCallMethod, map[string]any{"selector": invalidSelector, "method": "get_name"}},
 		{"godot_evaluate context_node", s.handleEvaluate, map[string]any{"expression": "1+1", "context_node": invalidSelector}},

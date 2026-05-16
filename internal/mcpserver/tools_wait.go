@@ -79,6 +79,10 @@ func (s *Server) handleWaitForSignal(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError("Invalid 'selector' parameter: " + err.Error()), nil
 	}
 
+	if errResult := validateSelector(selector); errResult != nil {
+		return errResult, nil
+	}
+
 	signalName, err := req.RequireString("signal_name")
 	if err != nil {
 		return mcp.NewToolResultError("Invalid 'signal_name' parameter: " + err.Error()), nil
