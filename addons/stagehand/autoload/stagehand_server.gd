@@ -52,7 +52,7 @@ func _process(_delta: float) -> void:
 	if not _active:
 		return
 	_accept_new_connections()
-	await _poll_clients()
+	_poll_clients()
 
 
 func _exit_tree() -> void:
@@ -97,7 +97,7 @@ func _poll_clients() -> void:
 				while ws.get_available_packet_count() > 0:
 					var packet: PackedByteArray = ws.get_packet()
 					var text: String = packet.get_string_from_utf8()
-					await _handle_message(peer_id, text)
+					_handle_message(peer_id, text)
 			WebSocketPeer.STATE_CLOSED:
 				disconnected.append(peer_id)
 	for peer_id: int in disconnected:
@@ -123,7 +123,13 @@ func _handle_message(peer_id: int, text: String) -> void:
 		))
 		return
 
-	# Await so async handlers (e.g. screenshot) resolve before responding.
+	# Dispatch on next idle frame so _process never blocks on async handlers.
+	# This avoids the "coroutine not awaited" strict-mode warning and keeps
+	# the WebSocket poll loop running every frame.
+	call_deferred("_dispatch_and_respond", peer_id, id, method, params)
+
+
+func _dispatch_and_respond(peer_id: int, id: Variant, method: String, params: Variant) -> void:
 	var result: Variant = await _router.dispatch(method, params)
 	# Notifications (no id) get no response per JSON-RPC 2.0 spec.
 	if id != null:
