@@ -66,10 +66,8 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 	// Kill any existing launched process before launching a new one.
 	s.killExistingLaunch()
 
-	// Also close any existing connection (as godot_connect does).
-	if existing := s.getConn(); existing != nil {
-		existing.Close()
-	}
+	// Also close any existing connection under the write lock.
+	s.clearConn()
 
 	result, err := launch.Launch(ctx, cfg)
 	if err != nil {
