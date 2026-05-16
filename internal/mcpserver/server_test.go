@@ -77,6 +77,9 @@ func TestToolsReturnErrorWhenNotConnected(t *testing.T) {
 		{"godot_evaluate", s.handleEvaluate, map[string]any{"expression": "1+1"}},
 		{"godot_get_performance", s.handleGetPerformance, nil},
 		{"godot_assert_performance", s.handleAssertPerformance, map[string]any{"monitor": "TIME_FPS", "threshold": float64(60)}},
+		{"godot_record_start", s.handleRecordStart, map[string]any{"output_path": "res://recordings/run1.json"}},
+		{"godot_record_stop", s.handleRecordStop, nil},
+		{"godot_replay", s.handleReplay, map[string]any{"input_path": "res://recordings/run1.json"}},
 	}
 
 	for _, tt := range tests {
