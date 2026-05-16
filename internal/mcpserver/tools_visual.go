@@ -66,6 +66,9 @@ func (s *Server) handleScreenshot(ctx context.Context, req mcp.CallToolRequest) 
 		"full_page": req.GetBool("full_page", true),
 	}
 	if sel := req.GetString("selector", ""); sel != "" {
+		if errResult := validateSelector(sel); errResult != nil {
+			return errResult, nil
+		}
 		params["selector"] = sel
 	}
 
@@ -92,18 +95,15 @@ func (s *Server) handleScreenshot(ctx context.Context, req mcp.CallToolRequest) 
 func (s *Server) captureScreenshot(ctx context.Context, req mcp.CallToolRequest) ([]byte, error) {
 	params := map[string]any{"full_page": true}
 	if sel := req.GetString("selector", ""); sel != "" {
+		if errResult := validateSelector(sel); errResult != nil {
+			return nil, toolResultToError(errResult, "invalid selector")
+		}
 		params["selector"] = sel
 	}
 
 	raw, errResult := s.callGodot(ctx, "screenshot", params)
 	if errResult != nil {
-		// Convert MCP error into a Go error for internal use.
-		if len(errResult.Content) > 0 {
-			if tc, ok := mcp.AsTextContent(errResult.Content[0]); ok {
-				return nil, fmt.Errorf("%s", tc.Text)
-			}
-		}
-		return nil, fmt.Errorf("godot screenshot failed")
+		return nil, toolResultToError(errResult, "godot screenshot failed")
 	}
 
 	var sr screenshotResult
@@ -145,6 +145,12 @@ func (s *Server) handleScreenshotDiff(ctx context.Context, req mcp.CallToolReque
 	name, err := req.RequireString("name")
 	if err != nil {
 		return mcp.NewToolResultError("Invalid 'name' parameter: " + err.Error()), nil
+	}
+
+	if sel := req.GetString("selector", ""); sel != "" {
+		if errResult := validateSelector(sel); errResult != nil {
+			return errResult, nil
+		}
 	}
 
 	threshold := req.GetFloat("threshold", 0.0)
