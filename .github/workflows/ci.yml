@@ -61,10 +61,12 @@ jobs:
           # Run Godot headless; it parses all GDScript files during project load.
           # Exit code 0 means no parse errors; any GDScript error is fatal.
           "$GODOT_BIN" --headless --path testdata/test_project --quit 2>&1 | tee godot-parse.log
-          # Fail if Godot reports a script error
-          if grep -q "ERROR\|SCRIPT ERROR\|Parse Error" godot-parse.log; then
+          # Fail if Godot reports a GDScript-specific error.
+          # Bare ERROR is intentionally excluded: headless Godot emits engine-level
+          # ERROR lines (Vulkan, display driver, etc.) that are harmless on runners.
+          if grep -qE "SCRIPT ERROR|Parse Error" godot-parse.log; then
             echo "GDScript parse errors detected:"
-            grep -E "ERROR|SCRIPT ERROR|Parse Error" godot-parse.log
+            grep -E "SCRIPT ERROR|Parse Error" godot-parse.log
             exit 1
           fi
 
