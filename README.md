@@ -2,112 +2,29 @@
 
 External automation and testing for running Godot games — like Playwright, but for game engines.
 
-An MCP server (Go) + Godot addon (GDScript) that lets AI agents, test runners, and CI pipelines connect to a running Godot game and interact with it programmatically: navigate scenes, click buttons, read node properties, take screenshots, wait for conditions.
+An MCP server (Go) + Godot addon (GDScript) that lets AI agents, test runners, and CI pipelines connect to a running Godot game and interact with it programmatically.
 
-## Current Status
+## Setup
 
-**Beta Ready** — Core automation features implemented, documented, and functional. This is a working implementation of Phase 1 (MVP) features as outlined in [DESIGN.md](DESIGN.md).
+### 1. Install the addon
 
-### ✅ Currently Working Features (Phase 1)
-- **`godot_connect`** — Connect to a running Godot game with the stagehand addon
-- **`godot_get_tree`** — Get a snapshot of the scene tree with optional property inclusion
-- **`godot_find_nodes`** — Find nodes by path, name, class, or group selector
-- **`godot_get_property`** and **`godot_set_property`** — Read/write node properties
-- **`godot_click`** — Click on nodes or screen positions
-- **`godot_press_key`** — Simulate keyboard input
-- **`godot_press_action`** — Trigger Godot input actions
-- **`godot_screenshot`** — Capture game viewport as image
-- **`godot_get_game_state`** — Get basic game runtime info (scene, FPS, etc.)
-
-### 🔜 Missing Features (Phase 2/3)
-*These are planned for future releases and are explicitly NOT yet implemented:*
-- **`godot_launch`** — Auto-start Godot from MCP (manual launch required for now)
-- **`godot_wait_for_*`** functions — Wait for conditions/signals (currently in development)
-- **`godot_call_method`**, **`godot_evaluate`** — Execute GDScript code
-- **`godot_change_scene`** — Change scenes programmatically  
-- Advanced selectors (`text:`, `meta:`, `>>` chaining)
-
-## Quickstart Guide
-
-Follow these steps to get started with Godot Stagehand:
-
-### Building Release Artifacts
-You can build binaries for common platforms using the provided build script:
-```bash
-# Build for multiple platforms at once
-./build-release.sh v0.2.0  # Replace with desired version
-
-# Or build just for your current platform
-./build.sh
-```
-
-Binaries will be created with consistent naming: `godot-stagehand-{version}-{platform}-{arch}`
-
-### Alternative: Direct Install with Go
-You can also install directly if you have Go installed:
-```bash
-go install github.com/mrf/godot-stagehand@latest
-```
-
-### Prerequisites
-- **Godot 4.3+** (see [Godot Version Compatibility](#godot-version-compatibility) below)
-- **Go 1.25+** installed for building the MCP server
-- Your Godot project should have some user interface elements or nodes for interaction
-
-### Step 1: Build the MCP Server
-```bash
-# Clone or navigate to the godot-stagehand directory
-cd godot-stagehand
-
-# Build the binary
-go build -o godot-stagehand .
-
-# Or install globally
-go install .
-```
-
-### Step 2: Install Addon in Your Godot Project
-
-There are several ways to install the Stagehand addon in your Godot project:
-
-**Option A: Manual copy from this repository**
-1. Copy the `addons/stagehand/` directory to your Godot project's `addons/` directory
-2. In Godot editor, go to Project > Project Settings > Plugins tab
-3. Find "Stagehand" in the list and change its status from "Inactive" to "Active"
-
-**Option B: Using the provided tool script**
-To easily copy the addon to another Godot project, run the copy-addon.sh script:
 ```bash
 ./copy-addon.sh /path/to/your/godot/project
 ```
 
-**Alternative manual installation**: Copy the entire `addons/` folder from this repository to your Godot project root.
+This copies the addon, enables the plugin, and registers the autoload automatically.
 
-### Step 3: Run Godot with Stagehand Enabled
-You must enable the websocket server by running Godot with either:
+### 2. Run your game with Stagehand enabled
 
-Option A: Environment variable:
-```bash
-STAGEHAND_ENABLED=1 godot --path /path/to/your/project
-```
-
-Option B: Command line flag:
 ```bash
 godot --path /path/to/your/project --stagehand
 ```
 
-The addon will show a "Stagehand" toggle in the Godot editor toolbar that enables the server when the project is run.
+You should see `Stagehand: Server listening on port 26700` in the output.
 
-### Step 4: Start the Stagehand MCP Server
-In a separate terminal:
-```bash
-./godot-stagehand
-```
+### 3. Add to your MCP client
 
-This will start the MCP server which AI tools like Claude Code can connect to.
-
-### Step 5: Configure MCP Client
-Add the server to your MCP client configuration. For Claude Code, add to `.claude/settings.json`:
+Add to `.claude/settings.json` (or your MCP client's config):
 
 ```json
 {
@@ -119,103 +36,109 @@ Add the server to your MCP client configuration. For Claude Code, add to `.claud
 }
 ```
 
-For other MCP clients, consult your client's documentation for how to register an MCP server by command path.
+Build the server binary with `go build -o godot-stagehand .` or `go install .`
 
-### Step 6: Use Automation Tools
-Once your MCP client is configured, the Stagehand tools are available directly through your client's tool-calling interface. Start by calling `godot_connect` to attach to the running game, then use tools like `godot_get_tree`, `godot_find_nodes`, `godot_click`, and `godot_screenshot` to interact with it.
+That's it. Call `godot_connect` from your MCP client to attach to the running game.
 
-See [DESIGN.md](DESIGN.md) for the full list of available tools and their parameters.
+## Windows / WSL Setup
 
-## Available Selectors
+If you develop on Windows with WSL (Godot runs on Windows, MCP server runs in WSL):
 
-Currently supported selectors (MVP implementation):
+**Option A: Mirrored networking (recommended)**
+
+Create `C:\Users\<you>\.wslconfig`:
+```ini
+[wsl2]
+networkingMode=mirrored
+```
+Restart WSL (`wsl --shutdown`). After this, `localhost` in WSL reaches Windows ports directly.
+
+**Option B: Firewall rule**
+
+Run in PowerShell as Administrator:
+```powershell
+New-NetFirewallRule -DisplayName "Stagehand Godot" -Direction Inbound -LocalPort 26700 -Protocol TCP -Action Allow
+```
+
+Then connect with the Windows host IP:
+```json
+{ "name": "godot_connect", "arguments": { "host": "172.x.x.x" } }
+```
+Find your WSL gateway IP with: `ip route show default | awk '{print $3}'`
+
+**Launching Godot on Windows:**
+```cmd
+godot.exe --path "\\wsl.localhost\Ubuntu\home\you\project" --stagehand
+```
+
+## Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `godot_connect` | Connect to a running game |
+| `godot_launch` | Launch Godot and connect |
+| `godot_get_tree` | Snapshot the scene tree |
+| `godot_find_nodes` | Find nodes by selector |
+| `godot_get_property` / `godot_set_property` | Read/write node properties |
+| `godot_call_method` | Call methods on nodes |
+| `godot_evaluate` | Evaluate GDScript expressions |
+| `godot_click` | Click nodes or positions |
+| `godot_press_key` | Simulate keyboard input |
+| `godot_press_action` | Trigger input actions |
+| `godot_touch` | Simulate touch/drag |
+| `godot_type_text` | Type text into controls |
+| `godot_mouse_move` | Move mouse cursor |
+| `godot_screenshot` | Capture viewport |
+| `godot_screenshot_save_baseline` / `godot_screenshot_diff` | Visual regression testing |
+| `godot_wait_for_node` | Wait for node state |
+| `godot_wait_for_signal` | Wait for signal emission |
+| `godot_wait_for_property` | Wait for property condition |
+| `godot_change_scene` | Change scenes |
+| `godot_get_game_state` | Runtime info (scene, FPS, window) |
+| `godot_get_performance` / `godot_assert_performance` | Performance monitoring |
+| `godot_record_start` / `godot_record_stop` / `godot_replay` | Input recording/replay |
+
+## Selectors
 
 | Syntax | Example | Finds |
 |--------|---------|-------|
-| Path (exact) | `"/root/UI/StartButton"` | Node at exact scene path |
-| Name pattern | `"name:*Button*"` | All nodes whose name contains "*Button*" |
-| Class | `"class:Button"` | All Button nodes |
-| Group | `"group:interactive"` | All nodes in the "interactive" group |
+| Path | `/root/UI/StartButton` | Node at exact path |
+| Name | `name:*Button*` | Glob match on node name |
+| Class | `class:Button` | All nodes of class |
+| Group | `group:interactive` | All nodes in group |
+| Text | `text:Start` | Nodes containing text |
+| Meta | `meta:id=player` | Nodes with metadata |
+| Chain | `class:Panel >> name:*Btn*` | Scoped search (find within) |
 
-## Godot Version Compatibility
+## Configuration
 
-**Minimum supported version: Godot 4.3**
+| Method | Example |
+|--------|---------|
+| CLI flag | `godot --stagehand` |
+| Env var | `STAGEHAND_ENABLED=1 godot ...` |
+| Editor toggle | Stagehand button in toolbar |
+| Custom port | `STAGEHAND_PORT=9999` or `--stagehand-port=9999` |
 
-The Stagehand addon uses stable Godot 4.x APIs (WebSocketPeer, SceneTree, InputEvent, Performance monitors). CI runs a GDScript parse check against multiple Godot versions to catch incompatibilities early.
-
-| Godot Version | Status | Notes |
-|---------------|--------|-------|
-| 4.3           | Tested in CI | Fully supported |
-| 4.4           | Tested in CI | Fully supported |
-| 4.2           | Untested | May work, but not validated. WebSocket and Performance APIs may differ. |
-| 4.5+          | Untested | Expected to work. Test locally with `scripts/test-godot-compat.sh 4.5`. |
-
-### Testing compatibility locally
-
-Run the compatibility test script to validate the addon against specific Godot versions:
+## Building
 
 ```bash
-./scripts/test-godot-compat.sh              # test default versions (4.3, 4.4)
-./scripts/test-godot-compat.sh 4.2 4.3 4.4  # test specific versions
+go build -o godot-stagehand .          # build binary
+go test ./...                           # run tests
+./build-release.sh v0.2.0              # cross-platform release
 ```
 
-The script downloads each Godot version, opens the test project headless, and checks for GDScript parse errors.
-
-### Known compatibility surface
-
-APIs most likely to vary across Godot 4.x minor versions:
-- **WebSocketPeer** (`accept_stream`, `poll`, `get_ready_state`) — core server communication
-- **Performance monitors** (`TIME_NAVIGATION_PROCESS`, etc.) — `get_performance` tool
-- **RenderingServer.frame_post_draw** — screenshot capture timing
-
-If you encounter a parse error on a specific Godot version, please open an issue with the version number and error output.
+Requires Go 1.25+ and Godot 4.3+.
 
 ## Troubleshooting
 
-### Common Issues and Solutions:
+**"Connection refused"** — Game isn't running with `--stagehand`, or wrong host/port.
 
-1. **Connection fails immediately after connecting:**
-   - Ensure the Godot project has the stagehand addon installed and enabled
-   - Verify the addon is enabled in the Godot editor plugins panel
-   - Make sure you launched Godot with `STAGEHAND_ENABLED=1` or `--stagehand` flag
-   - Check that no other apps are using port 26700 (default)
+**"Connection reset"** — Godot started but `_process` isn't ticking (common in headless with heavy scenes). Use a visible window or a lighter scene.
 
-2. **Addon not detected or "not enabled" error:**
-   - Verify the `addons/stagehand/` folder structure exists in your Godot project
-   - Check that the addon is activated in Project Settings > Plugins
-   - Ensure you're running Godot with the environment variable or flag to enable it
+**Port conflict** — Another instance on 26700. Set `STAGEHAND_PORT=26701`.
 
-3. **Headless Godot doesn't work as expected:**
-   - Godot Stagehand works best with visible GUI elements in headed mode
-   - Some input simulations may behave unexpectedly in headless mode
-   - Recommended: primarily test with GUI-enabled Godot sessions
-
-4. **Port conflict with multiple instances:**
-   - By default, Godot Stagehand uses port 26700
-   - Use environment variable `STAGEHAND_PORT=XXXX` to specify different port
-   - Or use command line: `godot --stagehand --stagehand-port=XXXX`
-
-5. **No response when using automation commands:**
-   - Ensure scene is loaded before attempting automation
-   - Verify target nodes exist before referencing them
-   - Check Godot console for errors (the addon prints server status messages)
-
-## Development and Contributing
-
-This project is under active development with phases clearly delineated in the [DESIGN.md](DESIGN.md).
-
-### Project Structure:
-- **`internal/mcpserver/`** — MCP tools and server management (Go)
-- **`addons/stagehand/`** — Godot addon with WebSocket server (GDScript)
-- **`internal/godotconn/`** — Godot Websocket protocols and connection handling (Go)
-- **`internal/selector/`** — Selector parsing logic shared between languages (Go)
+**Addon not in plugin list** — Run `./copy-addon.sh` again; it auto-enables the plugin and autoload.
 
 ## License
 
-MIT — same as Godot itself. See [LICENSE](LICENSE).
-
-## Acknowledgments
-
-- Inspired by [Playwright](https://playwright.dev/) for web automation
-- Built on the [MCP Protocol](https://github.com/modelcontextprotocol/specification) specification
-- Uses WebSockets for reliable cross-language communication between Go and Godot
+MIT — see [LICENSE](LICENSE).
