@@ -153,6 +153,11 @@ func (c *Connection) State() State {
 	return c.state
 }
 
+// Addr returns the host:port address this connection dials.
+func (c *Connection) Addr() string {
+	return c.addr
+}
+
 // Close permanently shuts down the connection.
 func (c *Connection) Close() error {
 	var err error

@@ -21,6 +21,7 @@ func TestNew_RegistersAllTools(t *testing.T) {
 	expected := []string{
 		"godot_connect",
 		"godot_launch",
+		"godot_status",
 		"godot_get_game_state",
 		"godot_get_tree",
 		"godot_find_nodes",
@@ -212,6 +213,72 @@ func TestConnectReturnsErrorForUnreachableHost(t *testing.T) {
 	}
 	if !result.IsError {
 		t.Fatal("expected isError=true for unreachable host")
+	}
+}
+
+func TestStatusWhenNotConnected(t *testing.T) {
+	s := New()
+	ctx := context.Background()
+
+	result, err := s.handleStatus(ctx, mcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatal("expected no error from godot_status")
+	}
+	text, ok := mcp.AsTextContent(result.Content[0])
+	if !ok {
+		t.Fatal("expected TextContent")
+	}
+	if !strings.Contains(text.Text, "not connected") {
+		t.Errorf("expected 'not connected' in status output, got: %s", text.Text)
+	}
+}
+
+func TestStatusWhenConnected(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+		for {
+			if _, _, err := ws.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+
+	_, portStr, _ := strings.Cut(srv.Listener.Addr().String(), ":")
+	port, _ := strconv.Atoi(portStr)
+
+	s := New()
+	conn, err := godotconn.Dial(context.Background(), "127.0.0.1", port)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	s.setConn(conn)
+	defer s.clearConn()
+
+	result, err := s.handleStatus(context.Background(), mcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatal("expected no error from godot_status")
+	}
+	text, ok := mcp.AsTextContent(result.Content[0])
+	if !ok {
+		t.Fatal("expected TextContent")
+	}
+	if !strings.Contains(text.Text, "Connected") {
+		t.Errorf("expected 'Connected' in status output, got: %s", text.Text)
+	}
+	if !strings.Contains(text.Text, "127.0.0.1") {
+		t.Errorf("expected address in status output, got: %s", text.Text)
 	}
 }
 

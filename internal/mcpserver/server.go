@@ -176,6 +176,7 @@ func (s *Server) callGodot(ctx context.Context, method string, params any) (json
 func (s *Server) registerTools() {
 	s.mcp.AddTool(connectTool, s.handleConnect)
 	s.mcp.AddTool(launchTool, s.handleLaunch)
+	s.mcp.AddTool(statusTool, s.handleStatus)
 	s.mcp.AddTool(getGameStateTool, s.handleGetGameState)
 	s.mcp.AddTool(getTreeTool, s.handleGetTree)
 	s.mcp.AddTool(findNodesTool, s.handleFindNodes)
