@@ -4,6 +4,22 @@ External automation and testing for running Godot games — like Playwright, but
 
 An MCP server (Go) + Godot addon (GDScript) that lets AI agents, test runners, and CI pipelines connect to a running Godot game and interact with it programmatically.
 
+## How It Works
+
+```
+┌─────────────┐       ┌──────────────────┐       ┌──────────────┐
+│  MCP Client │◄─────►│  Go Server       │◄─────►│  Your Game   │
+│  (Claude,   │ stdio │  (godot-stagehand)│  WS   │  (Godot +    │
+│   CI, etc.) │       │                  │ :26700 │   addon)     │
+└─────────────┘       └──────────────────┘       └──────────────┘
+```
+
+**The addon** lives inside your Godot game. It opens a WebSocket port and waits for commands. When it receives one (like "click this button" or "get the scene tree"), it executes it inside the running game and sends back the result. Think of it as a tiny remote control receiver baked into your game.
+
+**The Go server** is the translator in the middle. It speaks MCP (the protocol AI tools like Claude use) on one side, and the Godot wire protocol on the other. Your MCP client never talks to Godot directly — the server handles connection management, selector parsing, and error handling so the addon can stay simple.
+
+**Why not talk directly to Godot?** MCP clients communicate over stdio (stdin/stdout), not WebSockets. The Go server bridges that gap and adds features like retry logic, selector validation, and screenshot handling that would be awkward to implement in GDScript.
+
 ## Setup
 
 ### 1. Install the addon
