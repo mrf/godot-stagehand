@@ -19,15 +19,21 @@ static func capture(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var crop_rect: Rect2i = Rect2i()
 
 	if not full_page and params.has("selector"):
-		var nodes: Array[Node] = SelectorEngine.query(tree, str(params["selector"]))
-		if not nodes.is_empty():
-			var node: Node = nodes[0]
-			crop_rect = _get_node_rect(node)
+		var selector_str: String = str(params["selector"])
+		var nodes: Array[Node] = SelectorEngine.query(tree, selector_str)
+		if nodes.is_empty():
+			return {"error": "Selector not found: %s" % selector_str}
+		crop_rect = _get_node_rect(nodes[0])
 
-	# Wait for the frame to be fully rendered.
-	await RenderingServer.frame_post_draw
+	# Wait for the next process tick so the scene is in a stable state.
+	# process_frame is guaranteed to fire; RenderingServer.frame_post_draw can
+	# hang indefinitely in headless mode or when the renderer is stuck.
+	await tree.process_frame
 
-	var img: Image = viewport.get_texture().get_image()
+	var texture: ViewportTexture = viewport.get_texture()
+	if texture == null:
+		return {"error": "Viewport has no texture"}
+	var img: Image = texture.get_image()
 	if img == null:
 		return {"error": "Failed to capture viewport image"}
 
