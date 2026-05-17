@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -1073,6 +1074,199 @@ func TestE2E_DisconnectMidSession(t *testing.T) {
 	}
 	if result == nil {
 		t.Fatal("expected non-nil result after disconnect")
+	}
+}
+
+// blockingStubGodot creates a WebSocket server that responds normally to all
+// methods except "wait_signal", "wait_for_node", and "wait_for_property", which
+// it holds open until closeCh is closed (simulating a game that is processing a
+// wait request). Once closeCh is closed, it either drops the connection (if
+// dropConn is true) or keeps it open indefinitely (simulating a frozen game).
+func blockingStubGodot(t *testing.T, dropConn bool) (host string, port int, closeCh chan struct{}) {
+	t.Helper()
+	closeCh = make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+		for {
+			var req godotconn.Request
+			if err := ws.ReadJSON(&req); err != nil {
+				return
+			}
+			switch req.Method {
+			case "wait_signal", "wait_for_node", "wait_for_property":
+				// Block until closeCh is signalled.
+				<-closeCh
+				if dropConn {
+					return // close the WebSocket without sending a response
+				}
+				// Frozen: keep the connection open, never respond.
+				// Block forever (the test's context or Go-side timeout will cancel).
+				select {}
+			default:
+				result, _ := json.Marshal(map[string]string{"status": "ok"})
+				ws.WriteJSON(godotconn.Response{JSONRPC: "2.0", ID: req.ID, Result: result})
+			}
+		}
+	}))
+	t.Cleanup(srv.Close)
+	addr := srv.Listener.Addr().String()
+	h, p, _ := net.SplitHostPort(addr)
+	portNum, _ := strconv.Atoi(p)
+	return h, portNum, closeCh
+}
+
+// TestE2E_WaitDisconnectDuringWait verifies that wait tools return an error
+// (rather than hanging) when the WebSocket is closed while a wait is in progress.
+func TestE2E_WaitDisconnectDuringWait(t *testing.T) {
+	tests := []struct {
+		name   string
+		invoke func(srv *Server, ctx context.Context) (*mcp.CallToolResult, error)
+	}{
+		{
+			name: "wait_for_signal",
+			invoke: func(srv *Server, ctx context.Context) (*mcp.CallToolResult, error) {
+				return srv.handleWaitForSignal(ctx, toolReq(map[string]any{
+					"selector":    "/root/Button",
+					"signal_name": "pressed",
+					"timeout_ms":  float64(5000),
+				}))
+			},
+		},
+		{
+			name: "wait_for_node",
+			invoke: func(srv *Server, ctx context.Context) (*mcp.CallToolResult, error) {
+				return srv.handleWaitForNode(ctx, toolReq(map[string]any{
+					"selector":   "/root/Button",
+					"timeout_ms": float64(5000),
+				}))
+			},
+		},
+		{
+			name: "wait_for_property",
+			invoke: func(srv *Server, ctx context.Context) (*mcp.CallToolResult, error) {
+				return srv.handleWaitForProperty(ctx, toolReq(map[string]any{
+					"selector":       "/root/Button",
+					"property":       "visible",
+					"operator":       "equals",
+					"expected_value": true,
+					"timeout_ms":     float64(5000),
+				}))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			host, port, closeCh := blockingStubGodot(t, true /* dropConn */)
+
+			srv := New()
+			connResult, err := srv.handleConnect(context.Background(), toolReq(map[string]any{
+				"host": host,
+				"port": float64(port),
+			}))
+			if err != nil || connResult.IsError {
+				t.Fatalf("connect failed: err=%v result=%+v", err, connResult)
+			}
+
+			resultCh := make(chan *mcp.CallToolResult, 1)
+			go func() {
+				result, _ := tt.invoke(srv, context.Background())
+				resultCh <- result
+			}()
+
+			// Give the request time to reach the stub.
+			time.Sleep(50 * time.Millisecond)
+
+			// Drop the connection — simulates the game window closing.
+			close(closeCh)
+
+			select {
+			case result := <-resultCh:
+				if !result.IsError {
+					t.Error("expected an error result when connection drops during wait")
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("wait tool hung instead of returning on disconnect")
+			}
+		})
+	}
+}
+
+// TestE2E_WaitGoSideTimeoutOnFrozenGodot verifies that wait tools return an
+// error when Godot is alive but unresponsive (e.g., game frozen, TCP still up).
+// In this case no disconnect event fires; the Go-side deadline must kick in.
+func TestE2E_WaitGoSideTimeoutOnFrozenGodot(t *testing.T) {
+	tests := []struct {
+		name   string
+		invoke func(srv *Server, ctx context.Context) (*mcp.CallToolResult, error)
+	}{
+		{
+			name: "wait_for_signal",
+			invoke: func(srv *Server, ctx context.Context) (*mcp.CallToolResult, error) {
+				return srv.handleWaitForSignal(ctx, toolReq(map[string]any{
+					"selector":    "/root/Button",
+					"signal_name": "pressed",
+					"timeout_ms":  float64(50), // very short so Go-side deadline fires quickly
+				}))
+			},
+		},
+		{
+			name: "wait_for_node",
+			invoke: func(srv *Server, ctx context.Context) (*mcp.CallToolResult, error) {
+				return srv.handleWaitForNode(ctx, toolReq(map[string]any{
+					"selector":   "/root/Button",
+					"timeout_ms": float64(50),
+				}))
+			},
+		},
+		{
+			name: "wait_for_property",
+			invoke: func(srv *Server, ctx context.Context) (*mcp.CallToolResult, error) {
+				return srv.handleWaitForProperty(ctx, toolReq(map[string]any{
+					"selector":       "/root/Button",
+					"property":       "visible",
+					"operator":       "equals",
+					"expected_value": true,
+					"timeout_ms":     float64(50),
+				}))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			host, port, _ := blockingStubGodot(t, false /* keep connection open, never respond */)
+
+			srv := New()
+			connResult, err := srv.handleConnect(context.Background(), toolReq(map[string]any{
+				"host": host,
+				"port": float64(port),
+			}))
+			if err != nil || connResult.IsError {
+				t.Fatalf("connect failed: err=%v result=%+v", err, connResult)
+			}
+
+			// The Go-side deadline is timeout_ms (50ms) + a fixed buffer.
+			// Total should be well under 3 seconds.
+			resultCh := make(chan *mcp.CallToolResult, 1)
+			go func() {
+				result, _ := tt.invoke(srv, context.Background())
+				resultCh <- result
+			}()
+
+			select {
+			case result := <-resultCh:
+				if !result.IsError {
+					t.Error("expected an error result when Godot is unresponsive")
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("wait tool hung instead of returning on frozen Godot (no Go-side timeout)")
+			}
+		})
 	}
 }
 
