@@ -111,6 +111,7 @@ func (s *Server) captureScreenshot(ctx context.Context, req mcp.CallToolRequest)
 			return nil, toolResultToError(errResult, "invalid selector")
 		}
 		params["selector"] = sel
+		params["full_page"] = false
 	}
 
 	raw, errResult := s.callGodot(ctx, "screenshot", params)
