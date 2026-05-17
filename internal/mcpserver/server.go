@@ -139,6 +139,27 @@ func (s *Server) requireConn() (*godotconn.Connection, *mcp.CallToolResult) {
 	return conn, nil
 }
 
+// checkGodotResult inspects a raw JSON result for a top-level "error" key.
+// The GDScript addon returns handler-level errors as {"error": "..."} in an
+// otherwise successful JSON-RPC response. This helper surfaces them as MCP
+// errors so callers get a clear message instead of a confusing decode failure.
+// Returns nil when no error key is present.
+func checkGodotResult(raw json.RawMessage) *mcp.CallToolResult {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil
+	}
+	errVal, ok := m["error"]
+	if !ok {
+		return nil
+	}
+	var errMsg string
+	if err := json.Unmarshal(errVal, &errMsg); err != nil {
+		return mcp.NewToolResultError("godot handler error (unparseable)")
+	}
+	return mcp.NewToolResultError(errMsg)
+}
+
 // callGodot sends a JSON-RPC method to the Godot addon and returns the raw result.
 func (s *Server) callGodot(ctx context.Context, method string, params any) (json.RawMessage, *mcp.CallToolResult) {
 	conn, errResult := s.requireConn()

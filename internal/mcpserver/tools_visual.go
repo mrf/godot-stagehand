@@ -82,10 +82,16 @@ func (s *Server) handleScreenshot(ctx context.Context, req mcp.CallToolRequest) 
 	if errResult != nil {
 		return errResult, nil
 	}
+	if errResult := checkGodotResult(raw); errResult != nil {
+		return errResult, nil
+	}
 
 	var sr screenshotResult
 	if err := json.Unmarshal(raw, &sr); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to parse screenshot response: %v", err)), nil
+	}
+	if sr.Data == "" {
+		return mcp.NewToolResultError("screenshot returned empty image data"), nil
 	}
 	if sr.MimeType == "" {
 		sr.MimeType = "image/png"
@@ -111,10 +117,16 @@ func (s *Server) captureScreenshot(ctx context.Context, req mcp.CallToolRequest)
 	if errResult != nil {
 		return nil, toolResultToError(errResult, "godot screenshot failed")
 	}
+	if errResult := checkGodotResult(raw); errResult != nil {
+		return nil, toolResultToError(errResult, "screenshot error")
+	}
 
 	var sr screenshotResult
 	if err := json.Unmarshal(raw, &sr); err != nil {
 		return nil, fmt.Errorf("failed to parse screenshot response: %v", err)
+	}
+	if sr.Data == "" {
+		return nil, fmt.Errorf("screenshot returned empty image data")
 	}
 
 	imgBytes, err := base64.StdEncoding.DecodeString(sr.Data)
