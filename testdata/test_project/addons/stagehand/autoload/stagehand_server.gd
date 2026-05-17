@@ -154,7 +154,9 @@ func _register_builtin_handlers() -> void:
 	_router.register("input_mouse", _handle_input_mouse)
 	_router.register("input_action", _handle_input_action)
 	_router.register("input_key", _handle_input_key)
+	_router.register("input_text", _handle_input_text)
 	_router.register("input_touch", _handle_input_touch)
+	_router.register("input_mouse_move", _handle_input_mouse_move)
 	_router.register("screenshot", _handle_screenshot)
 	_router.register("call_method", _handle_call_method)
 	_router.register("evaluate", _handle_evaluate)
@@ -187,6 +189,16 @@ func _handle_input_key(params: Variant) -> Dictionary:
 func _handle_input_touch(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
 	return StagehandInputSimulator.input_touch(get_tree(), p)
+
+
+func _handle_input_text(params: Variant) -> Dictionary:
+	var p: Dictionary = _params(params)
+	return await StagehandInputSimulator.input_text(get_tree(), p)
+
+
+func _handle_input_mouse_move(params: Variant) -> Dictionary:
+	var p: Dictionary = _params(params)
+	return StagehandInputSimulator.input_mouse_move(get_tree(), p)
 
 
 func _handle_screenshot(params: Variant) -> Dictionary:
