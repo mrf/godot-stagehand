@@ -2,9 +2,17 @@ package mcpserver
 
 import (
 	"context"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
+
+// waitDeadlineBuffer is added to the Godot-side timeout_ms to compute the
+// Go-side context deadline. It gives Godot time to detect its own timeout and
+// send the response before the Go side gives up. This protects against the
+// case where Godot is alive but unresponsive (e.g., the game is frozen and the
+// TCP connection stays open), which would otherwise cause an indefinite hang.
+const waitDeadlineBuffer = 2 * time.Second
 
 var waitForNodeTool = mcp.NewTool("godot_wait_for_node",
 	mcp.WithDescription("Wait for a node matching the selector to reach a desired state"),
@@ -41,14 +49,19 @@ func (s *Server) handleWaitForNode(ctx context.Context, req mcp.CallToolRequest)
 		return errResult, nil
 	}
 
+	timeoutMs := req.GetInt("timeout_ms", 10000)
 	params := map[string]any{
 		"selector":         selector,
 		"state":            req.GetString("state", "exists"),
-		"timeout_ms":       req.GetInt("timeout_ms", 10000),
+		"timeout_ms":       timeoutMs,
 		"poll_interval_ms": req.GetInt("poll_interval_ms", 100),
 	}
 
-	result, errResult := s.callGodot(ctx, "wait_for_node", params)
+	deadline := time.Duration(timeoutMs)*time.Millisecond + waitDeadlineBuffer
+	waitCtx, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
+
+	result, errResult := s.callGodot(waitCtx, "wait_for_node", params)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -88,13 +101,18 @@ func (s *Server) handleWaitForSignal(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError("Invalid 'signal_name' parameter: " + err.Error()), nil
 	}
 
+	timeoutMs := req.GetInt("timeout_ms", 5000)
 	params := map[string]any{
 		"selector":    selector,
 		"signal_name": signalName,
-		"timeout_ms":  req.GetInt("timeout_ms", 5000),
+		"timeout_ms":  timeoutMs,
 	}
 
-	result, errResult := s.callGodot(ctx, "wait_signal", params)
+	deadline := time.Duration(timeoutMs)*time.Millisecond + waitDeadlineBuffer
+	waitCtx, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
+
+	result, errResult := s.callGodot(waitCtx, "wait_signal", params)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -153,11 +171,12 @@ func (s *Server) handleWaitForProperty(ctx context.Context, req mcp.CallToolRequ
 		return mcp.NewToolResultError("Invalid 'operator' parameter: " + err.Error()), nil
 	}
 
+	timeoutMs := req.GetInt("timeout_ms", 10000)
 	params := map[string]any{
 		"selector":         selector,
 		"property":         property,
 		"operator":         operator,
-		"timeout_ms":       req.GetInt("timeout_ms", 10000),
+		"timeout_ms":       timeoutMs,
 		"poll_interval_ms": req.GetInt("poll_interval_ms", 100),
 	}
 
@@ -171,7 +190,11 @@ func (s *Server) handleWaitForProperty(ctx context.Context, req mcp.CallToolRequ
 		return mcp.NewToolResultError("parameter 'expected_value' is required for operator '" + operator + "'"), nil
 	}
 
-	result, errResult := s.callGodot(ctx, "wait_for_property", params)
+	deadline := time.Duration(timeoutMs)*time.Millisecond + waitDeadlineBuffer
+	waitCtx, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
+
+	result, errResult := s.callGodot(waitCtx, "wait_for_property", params)
 	if errResult != nil {
 		return errResult, nil
 	}
