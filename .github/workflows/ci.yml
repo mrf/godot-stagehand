@@ -15,7 +15,7 @@ jobs:
     name: Go quality
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -43,7 +43,7 @@ jobs:
     env:
       GODOT_VERSION: ${{ matrix.godot-version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Cache Godot binary
         id: godot-cache
@@ -96,7 +96,7 @@ jobs:
             artifact: godot-stagehand-windows-amd64.exe
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Go
         uses: actions/setup-go@v5
