@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -279,6 +280,72 @@ func TestStatusWhenConnected(t *testing.T) {
 	}
 	if !strings.Contains(text.Text, "127.0.0.1") {
 		t.Errorf("expected address in status output, got: %s", text.Text)
+	}
+}
+
+// TestScreenshotSelectorForcesFullPageFalse verifies that handleScreenshot sets
+// full_page=false when a selector is provided, even if the caller omits full_page.
+// This guards against the regression where the selector was silently ignored because
+// the addon only crops when full_page=false AND selector is present.
+func TestScreenshotSelectorForcesFullPageFalse(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	var capturedParams map[string]any
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+
+		_, msg, err := ws.ReadMessage()
+		if err != nil {
+			return
+		}
+
+		var req struct {
+			ID     int64          `json:"id"`
+			Params map[string]any `json:"params"`
+		}
+		_ = json.Unmarshal(msg, &req)
+		capturedParams = req.Params
+
+		resp := map[string]any{
+			"jsonrpc": "2.0",
+			"id":      req.ID,
+			"result":  map[string]any{"data": "aGVsbG8=", "mime_type": "image/png"},
+		}
+		b, _ := json.Marshal(resp)
+		_ = ws.WriteMessage(websocket.TextMessage, b)
+	}))
+	defer srv.Close()
+
+	_, portStr, _ := strings.Cut(srv.Listener.Addr().String(), ":")
+	port, _ := strconv.Atoi(portStr)
+
+	s := New()
+	conn, err := godotconn.Dial(context.Background(), "127.0.0.1", port)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	s.setConn(conn)
+	defer s.clearConn()
+
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"selector": "class:Button"}
+	result, err := s.handleScreenshot(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		text, _ := mcp.AsTextContent(result.Content[0])
+		t.Fatalf("unexpected tool error: %s", text.Text)
+	}
+	if capturedParams == nil {
+		t.Fatal("no params captured — mock server did not receive a message")
+	}
+	if fullPage, ok := capturedParams["full_page"]; !ok || fullPage != false {
+		t.Errorf("expected full_page=false when selector is present, got full_page=%v (ok=%v)", fullPage, ok)
 	}
 }
 

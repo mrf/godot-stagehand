@@ -76,6 +76,7 @@ func (s *Server) handleScreenshot(ctx context.Context, req mcp.CallToolRequest) 
 			return errResult, nil
 		}
 		params["selector"] = sel
+		params["full_page"] = false
 	}
 
 	raw, errResult := s.callGodot(ctx, "screenshot", params)
