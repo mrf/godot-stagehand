@@ -39,7 +39,11 @@ func (s *Server) handleClick(ctx context.Context, req mcp.CallToolRequest) (*mcp
 	}
 
 	if hasSelector {
-		if errResult := validateSelector(selector.(string)); errResult != nil {
+		selStr, ok := selector.(string)
+		if !ok {
+			return mcp.NewToolResultError("'selector' must be a string"), nil
+		}
+		if errResult := validateSelector(selStr); errResult != nil {
 			return errResult, nil
 		}
 	}
@@ -166,7 +170,11 @@ func (s *Server) handleTypeText(ctx context.Context, req mcp.CallToolRequest) (*
 	}
 
 	if sel, hasSelector := req.GetArguments()["selector"]; hasSelector {
-		if errResult := validateSelector(sel.(string)); errResult != nil {
+		selStr, ok := sel.(string)
+		if !ok {
+			return mcp.NewToolResultError("'selector' must be a string"), nil
+		}
+		if errResult := validateSelector(selStr); errResult != nil {
 			return errResult, nil
 		}
 		params["selector"] = sel
@@ -262,7 +270,11 @@ func (s *Server) handleMouseMove(ctx context.Context, req mcp.CallToolRequest) (
 	}
 	
 	if hasSelector {
-		if errResult := validateSelector(selector.(string)); errResult != nil {
+		selStr, ok := selector.(string)
+		if !ok {
+			return mcp.NewToolResultError("'selector' must be a string"), nil
+		}
+		if errResult := validateSelector(selStr); errResult != nil {
 			return errResult, nil
 		}
 	}
