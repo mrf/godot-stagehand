@@ -501,8 +501,10 @@ static func _to_float(v: Variant) -> float:
 static func _params(params: Variant) -> Dictionary:
 	if params == null:
 		return {}
-	var d: Dictionary = params
-	return d
+	if not params is Dictionary:
+		push_warning("Stagehand: params must be a Dictionary (got %s); ignoring" % type_string(typeof(params)))
+		return {}
+	return params as Dictionary
 
 
 static func _get_port() -> int:
