@@ -79,7 +79,6 @@ func (s *Server) handleAssertPerformance(ctx context.Context, req mcp.CallToolRe
 	if errResult != nil {
 		return errResult, nil
 	}
-
 	var result assertPerformanceResult
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to parse assert_performance response: %v", err)), nil

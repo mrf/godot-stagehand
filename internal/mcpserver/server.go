@@ -170,6 +170,9 @@ func (s *Server) callGodot(ctx context.Context, method string, params any) (json
 	if err != nil {
 		return nil, mcp.NewToolResultError(fmt.Sprintf("Godot error: %v", err))
 	}
+	if errResult := checkGodotResult(resp.Result); errResult != nil {
+		return nil, errResult
+	}
 	return resp.Result, nil
 }
 

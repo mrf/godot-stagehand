@@ -83,9 +83,6 @@ func (s *Server) handleScreenshot(ctx context.Context, req mcp.CallToolRequest) 
 	if errResult != nil {
 		return errResult, nil
 	}
-	if errResult := checkGodotResult(raw); errResult != nil {
-		return errResult, nil
-	}
 
 	var sr screenshotResult
 	if err := json.Unmarshal(raw, &sr); err != nil {
@@ -118,9 +115,6 @@ func (s *Server) captureScreenshot(ctx context.Context, req mcp.CallToolRequest)
 	raw, errResult := s.callGodot(ctx, "screenshot", params)
 	if errResult != nil {
 		return nil, toolResultToError(errResult, "godot screenshot failed")
-	}
-	if errResult := checkGodotResult(raw); errResult != nil {
-		return nil, toolResultToError(errResult, "screenshot error")
 	}
 
 	var sr screenshotResult

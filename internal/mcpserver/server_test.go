@@ -390,6 +390,113 @@ func TestScreenshotSelectorForcesFullPageFalse(t *testing.T) {
 	}
 }
 
+// newErrorGodotServer starts a fake WebSocket server that always responds with
+// a JSON-RPC result containing {"error": errMsg}. It returns a connected Server
+// and a cleanup function.
+func newErrorGodotServer(t *testing.T, errMsg string) (*Server, func()) {
+	t.Helper()
+	upgrader := websocket.Upgrader{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+		for {
+			var req map[string]json.RawMessage
+			if err := ws.ReadJSON(&req); err != nil {
+				return
+			}
+			id := req["id"]
+			resp := map[string]any{
+				"jsonrpc": "2.0",
+				"id":      json.RawMessage(id),
+				"result":  map[string]string{"error": errMsg},
+			}
+			if err := ws.WriteJSON(resp); err != nil {
+				return
+			}
+		}
+	}))
+
+	_, portStr, _ := strings.Cut(srv.Listener.Addr().String(), ":")
+	port, _ := strconv.Atoi(portStr)
+
+	s := New()
+	conn, err := godotconn.Dial(context.Background(), "127.0.0.1", port)
+	if err != nil {
+		srv.Close()
+		t.Fatalf("dial: %v", err)
+	}
+	s.setConn(conn)
+
+	return s, func() {
+		s.clearConn()
+		srv.Close()
+	}
+}
+
+// TestAddonErrorsPropagateAsMCPErrors verifies that when the Godot addon returns
+// {"error": "..."} in the result, all tool handlers surface it as IsError=true.
+func TestAddonErrorsPropagateAsMCPErrors(t *testing.T) {
+	const addonErr = "Node not found"
+	s, cleanup := newErrorGodotServer(t, addonErr)
+	defer cleanup()
+
+	type handlerFunc func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	tests := []struct {
+		name    string
+		handler handlerFunc
+		args    map[string]any
+	}{
+		{"godot_get_game_state", s.handleGetGameState, nil},
+		{"godot_get_tree", s.handleGetTree, nil},
+		{"godot_find_nodes", s.handleFindNodes, map[string]any{"selector": "class:Node"}},
+		{"godot_get_property", s.handleGetProperty, map[string]any{"selector": "/root", "property": "name"}},
+		{"godot_set_property", s.handleSetProperty, map[string]any{"selector": "/root", "property": "name", "value": "test"}},
+		{"godot_click", s.handleClick, map[string]any{"selector": "/root/Button"}},
+		{"godot_press_key", s.handlePressKey, map[string]any{"key": "Enter"}},
+		{"godot_press_action", s.handlePressAction, map[string]any{"action": "ui_accept"}},
+		{"godot_touch", s.handleTouch, map[string]any{"position": map[string]any{"x": float64(100), "y": float64(200)}}},
+		{"godot_type_text", s.handleTypeText, map[string]any{"text": "hello"}},
+		{"godot_mouse_move", s.handleMouseMove, map[string]any{"coordinates": map[string]any{"x": float64(100), "y": float64(200)}}},
+		{"godot_change_scene", s.handleChangeScene, map[string]any{"scene_path": "res://main.tscn"}},
+		{"godot_call_method", s.handleCallMethod, map[string]any{"selector": "/root", "method": "get_name"}},
+		{"godot_evaluate", s.handleEvaluate, map[string]any{"expression": "1+1"}},
+		{"godot_wait_for_node", s.handleWaitForNode, map[string]any{"selector": "/root/Button"}},
+		{"godot_wait_for_signal", s.handleWaitForSignal, map[string]any{"selector": "/root/Button", "signal_name": "pressed"}},
+		{"godot_wait_for_property", s.handleWaitForProperty, map[string]any{"selector": "/root", "property": "name", "operator": "exists"}},
+		{"godot_get_performance", s.handleGetPerformance, nil},
+		{"godot_assert_performance", s.handleAssertPerformance, map[string]any{"monitor": "TIME_FPS", "threshold": float64(60)}},
+		{"godot_record_start", s.handleRecordStart, map[string]any{"output_path": "res://rec.json"}},
+		{"godot_record_stop", s.handleRecordStop, nil},
+		{"godot_replay", s.handleReplay, map[string]any{"input_path": "res://rec.json"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := mcp.CallToolRequest{}
+			if tt.args != nil {
+				req.Params.Arguments = tt.args
+			}
+			result, err := tt.handler(context.Background(), req)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("expected IsError=true, got false; content: %v", result.Content)
+			}
+			text, ok := mcp.AsTextContent(result.Content[0])
+			if !ok {
+				t.Fatal("expected TextContent")
+			}
+			if !strings.Contains(text.Text, addonErr) {
+				t.Errorf("expected error message %q in result, got: %s", addonErr, text.Text)
+			}
+		})
+	}
+}
+
 // TestClearConnNoRace verifies that concurrent calls to clearConn and getConn
 // do not trigger the race detector. This guards against the pattern where
 // handleConnect previously called getConn() then Close() without holding any
