@@ -38,6 +38,7 @@ func (s *Server) handleConnect(ctx context.Context, req mcp.CallToolRequest) (*m
 	// Ping to verify the connection and get engine info.
 	result, errResult := s.callGodot(ctx, "ping", nil)
 	if errResult != nil {
+		s.clearConn()
 		return errResult, nil
 	}
 

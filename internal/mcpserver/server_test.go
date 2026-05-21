@@ -199,6 +199,47 @@ func TestValidSelectorPassesThrough(t *testing.T) {
 	}
 }
 
+// TestConnectClearsConnOnPingFailure verifies that when a WebSocket connection
+// succeeds but the ping RPC fails (e.g. server closes immediately), the stored
+// connection is cleared so subsequent calls return "not connected" rather than
+// errors from the broken connection.
+func TestConnectClearsConnOnPingFailure(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		// Accept the WebSocket handshake but immediately close — ping will fail.
+		ws.Close()
+	}))
+	defer srv.Close()
+
+	_, portStr, _ := strings.Cut(srv.Listener.Addr().String(), ":")
+	port, _ := strconv.Atoi(portStr)
+
+	s := New()
+	ctx := context.Background()
+
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{
+		"host": "127.0.0.1",
+		"port": float64(port),
+	}
+	result, err := s.handleConnect(ctx, req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected isError=true when ping fails")
+	}
+
+	// The broken connection must not remain stored.
+	if s.getConn() != nil {
+		t.Fatal("expected conn to be nil after ping failure, but it is still stored")
+	}
+}
+
 func TestConnectReturnsErrorForUnreachableHost(t *testing.T) {
 	s := New()
 	ctx := context.Background()
