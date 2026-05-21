@@ -717,6 +717,36 @@ func TestE2E_CallMethod(t *testing.T) {
 		}
 	})
 
+	t.Run("AllowMultiple", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleCallMethod(ctx, toolReq(map[string]any{
+			"selector":       "class:Button",
+			"method":         "get_text",
+			"allow_multiple": true,
+		}))
+		if err != nil {
+			t.Fatalf("handleCallMethod allow_multiple: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("call_method allow_multiple error: %+v", result)
+		}
+
+		// Verify allow_multiple was forwarded to the Godot addon.
+		params := stub.lastCallParams("call_method")
+		if params == nil {
+			t.Fatal("no call_method params recorded")
+		}
+		var p map[string]any
+		if err := json.Unmarshal(params, &p); err != nil {
+			t.Fatalf("unmarshal call_method params: %v", err)
+		}
+		if p["allow_multiple"] != true {
+			t.Errorf("expected allow_multiple=true forwarded to Godot, got %v", p["allow_multiple"])
+		}
+	})
+
 	t.Run("WithArgs", func(t *testing.T) {
 		srv, stub := setupE2ETest(t)
 		ctx := context.Background()
