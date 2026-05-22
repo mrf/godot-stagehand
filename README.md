@@ -2,9 +2,22 @@
 
 External automation and testing for running Godot games — like Playwright, but for game engines.
 
-An MCP server (Go) + Godot addon (GDScript) that lets AI agents, test runners, and CI pipelines connect to a running Godot game and interact with it programmatically.
+## Why
 
-## How It Works
+Game testing is manual. You click through menus, eyeball the results, and hope you caught the regressions. Automated UI tests exist for the web, but Godot has nothing equivalent — no way for an external process to connect to a running game and drive it programmatically.
+
+Stagehand fixes that. It gives AI agents, test runners, and CI pipelines a real connection to your running game. Click buttons, read properties, wait for signals, take screenshots, assert performance — all from outside the engine.
+
+## What you can do
+
+- **AI-assisted playtesting** — Let Claude (or any MCP client) explore your game, find bugs, and verify fixes without manual clicking.
+- **Visual regression testing** — Save baseline screenshots, diff them later. Catch UI regressions before your players do.
+- **Integration tests** — Write tests that drive your actual game: navigate menus, trigger gameplay, assert on real game state.
+- **CI pipelines** — Run headless Godot in CI, connect Stagehand, and gate merges on automated gameplay checks.
+- **Performance monitoring** — Poll engine performance counters and fail builds when frame times regress.
+- **Input recording/replay** — Record a play session, replay it deterministically for regression testing.
+
+## How it works
 
 ```
 ┌─────────────┐       ┌──────────────────┐       ┌──────────────┐
@@ -14,91 +27,23 @@ An MCP server (Go) + Godot addon (GDScript) that lets AI agents, test runners, a
 └─────────────┘       └──────────────────┘       └──────────────┘
 ```
 
-**The addon** lives inside your Godot game. It opens a WebSocket port and waits for commands. When it receives one (like "click this button" or "get the scene tree"), it executes it inside the running game and sends back the result. Think of it as a tiny remote control receiver baked into your game.
+**The addon** lives inside your Godot game. It opens a WebSocket port and waits for commands. When it receives one (like "click this button" or "get the scene tree"), it executes it inside the running game and sends back the result.
 
-**The Go server** is the translator in the middle. It speaks MCP (the protocol AI tools like Claude use) on one side, and the Godot wire protocol on the other. Your MCP client never talks to Godot directly — the server handles connection management, selector parsing, and error handling so the addon can stay simple.
+**The Go server** sits in the middle. It speaks MCP (the protocol AI tools use) on one side and the Godot wire protocol on the other. It handles connection management, selector parsing, screenshot encoding, and error translation so the addon stays simple.
 
-**Why not talk directly to Godot?** MCP clients communicate over stdio (stdin/stdout), not WebSockets. The Go server bridges that gap and adds features like retry logic, selector validation, and screenshot handling that would be awkward to implement in GDScript.
-
-## Setup
-
-### 1. Install the addon
-
-```bash
-./copy-addon.sh /path/to/your/godot/project
-```
-
-This copies the addon, enables the plugin, and registers the autoload automatically.
-
-### 2. Run your game with Stagehand enabled
-
-```bash
-godot --path /path/to/your/project --stagehand
-```
-
-You should see `Stagehand: Server listening on port 26700` in the output.
-
-### 3. Add to your MCP client
-
-Add to `.claude/settings.json` (or your MCP client's config):
-
-```json
-{
-  "mcpServers": {
-    "godot-stagehand": {
-      "command": "/absolute/path/to/godot-stagehand"
-    }
-  }
-}
-```
-
-Build the server binary with `go build -o godot-stagehand .` or `go install .`
-
-That's it. Call `godot_connect` from your MCP client to attach to the running game.
-
-## Windows / WSL Setup
-
-If you develop on Windows with WSL (Godot runs on Windows, MCP server runs in WSL):
-
-**Option A: Mirrored networking (recommended)**
-
-Create `C:\Users\<you>\.wslconfig`:
-```ini
-[wsl2]
-networkingMode=mirrored
-```
-Restart WSL (`wsl --shutdown`). After this, `localhost` in WSL reaches Windows ports directly.
-
-**Option B: Firewall rule**
-
-Run in PowerShell as Administrator:
-```powershell
-New-NetFirewallRule -DisplayName "Stagehand Godot" -Direction Inbound -LocalPort 26700 -Protocol TCP -Action Allow
-```
-
-Then connect with the Windows host IP:
-```json
-{ "name": "godot_connect", "arguments": { "host": "172.x.x.x" } }
-```
-Find your WSL gateway IP with: `ip route show default | awk '{print $3}'`
-
-**Launching Godot on Windows:**
-```cmd
-godot.exe --path "\\wsl.localhost\Ubuntu\home\you\project" --stagehand
-```
-
-## Available Tools
+## Available tools
 
 | Tool | Description |
 |------|-------------|
 | `godot_connect` | Connect to a running game |
 | `godot_launch` | Launch Godot and connect |
+| `godot_status` | Connection status |
 | `godot_get_tree` | Snapshot the scene tree |
 | `godot_find_nodes` | Find nodes by selector |
 | `godot_get_property` / `godot_set_property` | Read/write node properties |
 | `godot_call_method` | Call methods on nodes |
 | `godot_evaluate` | Evaluate GDScript expressions |
-| `godot_click` | Click nodes or positions |
+| `godot_click` | Click nodes or coordinates |
 | `godot_press_key` | Simulate keyboard input |
 | `godot_press_action` | Trigger input actions |
 | `godot_touch` | Simulate touch/drag |
@@ -106,7 +51,7 @@ godot.exe --path "\\wsl.localhost\Ubuntu\home\you\project" --stagehand
 | `godot_mouse_move` | Move mouse cursor |
 | `godot_screenshot` | Capture viewport |
 | `godot_screenshot_save_baseline` / `godot_screenshot_diff` | Visual regression testing |
-| `godot_wait_for_node` | Wait for node state |
+| `godot_wait_for_node` | Wait for node to exist |
 | `godot_wait_for_signal` | Wait for signal emission |
 | `godot_wait_for_property` | Wait for property condition |
 | `godot_change_scene` | Change scenes |
@@ -115,6 +60,8 @@ godot.exe --path "\\wsl.localhost\Ubuntu\home\you\project" --stagehand
 | `godot_record_start` / `godot_record_stop` / `godot_replay` | Input recording/replay |
 
 ## Selectors
+
+Target nodes using familiar patterns:
 
 | Syntax | Example | Finds |
 |--------|---------|-------|
@@ -126,6 +73,50 @@ godot.exe --path "\\wsl.localhost\Ubuntu\home\you\project" --stagehand
 | Meta | `meta:id=player` | Nodes with metadata |
 | Chain | `class:Panel >> name:*Btn*` | Scoped search (find within) |
 
+## Setup
+
+### 1. Install the addon into your Godot project
+
+```bash
+./copy-addon.sh /path/to/your/godot/project
+```
+
+This copies the addon, enables the plugin, and registers the autoload.
+
+### 2. Build the server
+
+```bash
+go build -o godot-stagehand .
+```
+
+Requires Go 1.25+ and Godot 4.3+.
+
+### 3. Run your game with Stagehand enabled
+
+```bash
+godot --path /path/to/your/project --stagehand
+```
+
+You should see `Stagehand: Server listening on port 26700` in the output.
+
+### 4. Add to your MCP client
+
+Add to your MCP client config (e.g. `.claude/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "godot-stagehand": {
+      "command": "/absolute/path/to/godot-stagehand"
+    }
+  }
+}
+```
+
+Call `godot_connect` to attach to the running game.
+
+> **Windows / WSL?** See the [Windows setup guide](docs/windows-setup.md).
+
 ## Configuration
 
 | Method | Example |
@@ -134,16 +125,6 @@ godot.exe --path "\\wsl.localhost\Ubuntu\home\you\project" --stagehand
 | Env var | `STAGEHAND_ENABLED=1 godot ...` |
 | Editor toggle | Stagehand button in toolbar |
 | Custom port | `STAGEHAND_PORT=9999` or `--stagehand-port=9999` |
-
-## Building
-
-```bash
-go build -o godot-stagehand .          # build binary
-go test ./...                           # run tests
-./build-release.sh v0.2.0              # cross-platform release
-```
-
-Requires Go 1.25+ and Godot 4.3+.
 
 ## Troubleshooting
 
