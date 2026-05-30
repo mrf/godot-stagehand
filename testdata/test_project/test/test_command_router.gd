@@ -58,6 +58,12 @@ func test_dispatch_null_params() -> void:
 	assert_that(_router.dispatch("noop", null)).is_equal("done")
 
 
+func test_dispatch_allows_awaiting_async_handler_result() -> void:
+	_router.register("delayed", _delayed_echo)
+	var result: Variant = await _router.dispatch("delayed", {"status": "ok"})
+	assert_that(result).is_equal({"status": "ok"})
+
+
 func test_get_methods_empty() -> void:
 	assert_that(_router.get_methods().size()).is_equal(0)
 
@@ -90,3 +96,8 @@ func test_register_overwrites_existing_handler() -> void:
 func test_get_methods_returns_packed_string_array() -> void:
 	_router.register("m", func(_p: Variant) -> Variant: return null)
 	assert_bool(_router.get_methods() is PackedStringArray).is_true()
+
+
+func _delayed_echo(p: Variant) -> Variant:
+	await get_tree().process_frame
+	return p

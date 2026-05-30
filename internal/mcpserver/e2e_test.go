@@ -129,7 +129,13 @@ func (s *stubGodot) handleReq(req godotconn.Request) godotconn.Response {
 	case "input_mouse", "input_action", "input_key", "input_touch":
 		resp.Result = rawJSON(`{"success":true}`)
 	case "screenshot":
-		resp.Result = rawJSON(`{"data":"iVBORw0KGgo=","mime_type":"image/png","width":1280,"height":720}`)
+		payload, _ := json.Marshal(map[string]any{
+			"data":      testPNG1x1Base64,
+			"mime_type": "image/png",
+			"width":     1,
+			"height":    1,
+		})
+		resp.Result = payload
 	case "change_scene":
 		resp.Result = rawJSON(`{"success":true,"previous_scene":"res://main.tscn","new_scene":"res://scenes/game.tscn"}`)
 	case "wait_signal":

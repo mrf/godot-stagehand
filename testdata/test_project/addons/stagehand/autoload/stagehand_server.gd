@@ -78,6 +78,12 @@ func _accept_new_connections() -> void:
 	while _tcp_server.is_connection_available():
 		var tcp_peer: StreamPeerTCP = _tcp_server.take_connection()
 		var ws_peer: WebSocketPeer = WebSocketPeer.new()
+		# Screenshot responses are base64-encoded PNGs of the full viewport and
+		# routinely exceed the 64 KiB default WebSocket buffer. If the outbound
+		# buffer is too small, send_text() fails with ERR_OUT_OF_MEMORY and the
+		# response is silently dropped. Size the buffers for a 4K-resolution PNG.
+		ws_peer.inbound_buffer_size = 1 << 23   # 8 MiB (large replay payloads)
+		ws_peer.outbound_buffer_size = 1 << 24  # 16 MiB (full-viewport screenshots)
 		var err: Error = ws_peer.accept_stream(tcp_peer)
 		if err == OK:
 			var peer_id: int = _next_peer_id
@@ -108,7 +114,7 @@ func _handle_message(peer_id: int, text: String) -> void:
 	var parsed: Dictionary = StagehandJsonRpc.parse_request(text)
 	if parsed.has("error"):
 		var error_text: String = parsed["error"]
-		_send_to_peer(peer_id, error_text)
+		var _parse_send_error: Error = _send_to_peer(peer_id, error_text)
 		return
 
 	var request: Dictionary = parsed["request"]
@@ -117,7 +123,7 @@ func _handle_message(peer_id: int, text: String) -> void:
 	var params: Variant = request.get("params", {})
 
 	if not _router.has_handler(method):
-		_send_to_peer(peer_id, StagehandJsonRpc.make_error_response(
+		var _method_send_error: Error = _send_to_peer(peer_id, StagehandJsonRpc.make_error_response(
 			id, StagehandJsonRpc.METHOD_NOT_FOUND,
 			"Method not found: %s" % method
 		))
@@ -133,15 +139,35 @@ func _dispatch_and_respond(peer_id: int, id: Variant, method: String, params: Va
 	var result: Variant = await _router.dispatch(method, params)
 	# Notifications (no id) get no response per JSON-RPC 2.0 spec.
 	if id != null:
-		_send_to_peer(peer_id, StagehandJsonRpc.make_response(id, result))
+		var response_text: String = StagehandJsonRpc.make_response(id, result)
+		var send_error: Error = _send_to_peer(peer_id, response_text)
+		if send_error != OK:
+			var fallback_result: Dictionary = {
+				"error": "Failed to send Stagehand response to WebSocket peer: %s" % error_string(send_error),
+				"error_code": "send_buffer_failed",
+				"details": {
+					"payload_bytes": response_text.to_utf8_buffer().size(),
+					"next_action": "Reduce screenshot size/crop area or increase the WebSocket outbound buffer.",
+				},
+			}
+			var _fallback_send_error: Error = _send_to_peer(peer_id, StagehandJsonRpc.make_response(id, fallback_result))
 
 
-func _send_to_peer(peer_id: int, text: String) -> void:
+func _send_to_peer(peer_id: int, text: String) -> Error:
 	if not _clients.has(peer_id):
-		return
+		return ERR_UNAVAILABLE
 	var ws: WebSocketPeer = _clients[peer_id]
 	if ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
-		var _err: Error = ws.send_text(text)
+		var err: Error = ws.send_text(text)
+		if err != OK:
+			# A failed send (commonly ERR_OUT_OF_MEMORY when the payload exceeds
+			# outbound_buffer_size) drops the response and leaves the client
+			# waiting. Surface it instead of swallowing it silently.
+			push_error("Stagehand: send_text failed (%s) for a %d-byte payload; raise outbound_buffer_size" % [
+				error_string(err), text.to_utf8_buffer().size()
+			])
+		return err
+	return ERR_UNAVAILABLE
 
 
 func _register_builtin_handlers() -> void:
@@ -501,8 +527,10 @@ static func _to_float(v: Variant) -> float:
 static func _params(params: Variant) -> Dictionary:
 	if params == null:
 		return {}
-	var d: Dictionary = params
-	return d
+	if not params is Dictionary:
+		push_warning("Stagehand: params must be a Dictionary (got %s); ignoring" % type_string(typeof(params)))
+		return {}
+	return params as Dictionary
 
 
 static func _get_port() -> int:

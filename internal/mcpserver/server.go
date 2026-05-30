@@ -153,11 +153,32 @@ func checkGodotResult(raw json.RawMessage) *mcp.CallToolResult {
 	if !ok {
 		return nil
 	}
-	var errMsg string
-	if err := json.Unmarshal(errVal, &errMsg); err != nil {
+	var payload struct {
+		Error     string         `json:"error"`
+		ErrorCode string         `json:"error_code"`
+		Details   map[string]any `json:"details"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil || payload.Error == "" {
+		var errMsg string
+		if err := json.Unmarshal(errVal, &errMsg); err == nil {
+			return mcp.NewToolResultError(errMsg)
+		}
 		return mcp.NewToolResultError("godot handler error (unparseable)")
 	}
-	return mcp.NewToolResultError(errMsg)
+	return mcp.NewToolResultError(formatGodotError(payload.Error, payload.ErrorCode, payload.Details))
+}
+
+func formatGodotError(message string, code string, detailsMap map[string]any) string {
+	if code != "" {
+		message += fmt.Sprintf(" (code=%s)", code)
+	}
+	if len(detailsMap) > 0 {
+		details, err := json.Marshal(detailsMap)
+		if err == nil {
+			message += fmt.Sprintf(" details=%s", details)
+		}
+	}
+	return message
 }
 
 // callGodot sends a JSON-RPC method to the Godot addon and returns the raw result.

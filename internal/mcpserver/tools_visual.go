@@ -66,9 +66,13 @@ var screenshotDiffTool = mcp.NewTool("godot_screenshot_diff",
 // viewport image"); without it, a capture failure collapses into the generic
 // "empty image data" message and hides the true cause.
 type screenshotResult struct {
-	Data     string `json:"data"`
-	MimeType string `json:"mime_type"`
-	Error    string `json:"error"`
+	Data      string         `json:"data"`
+	MimeType  string         `json:"mime_type"`
+	Error     string         `json:"error"`
+	ErrorCode string         `json:"error_code"`
+	Details   map[string]any `json:"details"`
+	Width     int            `json:"width"`
+	Height    int            `json:"height"`
 }
 
 func (s *Server) handleScreenshot(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -92,11 +96,8 @@ func (s *Server) handleScreenshot(ctx context.Context, req mcp.CallToolRequest) 
 	if err := json.Unmarshal(raw, &sr); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to parse screenshot response: %v", err)), nil
 	}
-	if sr.Error != "" {
-		return mcp.NewToolResultError(fmt.Sprintf("godot screenshot capture failed: %s", sr.Error)), nil
-	}
-	if sr.Data == "" {
-		return mcp.NewToolResultError("screenshot returned empty image data (addon reported no error)"), nil
+	if _, err := decodeScreenshotPNG(sr); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 	if sr.MimeType == "" {
 		sr.MimeType = "image/png"
@@ -128,8 +129,12 @@ func (s *Server) captureScreenshot(ctx context.Context, req mcp.CallToolRequest)
 	if err := json.Unmarshal(raw, &sr); err != nil {
 		return nil, fmt.Errorf("failed to parse screenshot response: %v", err)
 	}
+	return decodeScreenshotPNG(sr)
+}
+
+func decodeScreenshotPNG(sr screenshotResult) ([]byte, error) {
 	if sr.Error != "" {
-		return nil, fmt.Errorf("godot screenshot capture failed: %s", sr.Error)
+		return nil, fmt.Errorf("godot screenshot capture failed: %s", formatGodotError(sr.Error, sr.ErrorCode, sr.Details))
 	}
 	if sr.Data == "" {
 		return nil, fmt.Errorf("screenshot returned empty image data (addon reported no error)")
@@ -138,6 +143,25 @@ func (s *Server) captureScreenshot(ctx context.Context, req mcp.CallToolRequest)
 	imgBytes, err := base64.StdEncoding.DecodeString(sr.Data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode screenshot data: %v", err)
+	}
+	if len(imgBytes) == 0 {
+		return nil, fmt.Errorf("screenshot decoded to zero bytes")
+	}
+	img, err := png.Decode(bytes.NewReader(imgBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode screenshot PNG: %v", err)
+	}
+	bounds := img.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+	if width <= 0 || height <= 0 {
+		return nil, fmt.Errorf("screenshot PNG has invalid dimensions: %dx%d", width, height)
+	}
+	if sr.Width != 0 && sr.Width != width {
+		return nil, fmt.Errorf("screenshot width mismatch: addon reported %d, PNG is %d", sr.Width, width)
+	}
+	if sr.Height != 0 && sr.Height != height {
+		return nil, fmt.Errorf("screenshot height mismatch: addon reported %d, PNG is %d", sr.Height, height)
 	}
 	return imgBytes, nil
 }

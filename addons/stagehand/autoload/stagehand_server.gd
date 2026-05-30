@@ -114,7 +114,7 @@ func _handle_message(peer_id: int, text: String) -> void:
 	var parsed: Dictionary = StagehandJsonRpc.parse_request(text)
 	if parsed.has("error"):
 		var error_text: String = parsed["error"]
-		_send_to_peer(peer_id, error_text)
+		var _parse_send_error: Error = _send_to_peer(peer_id, error_text)
 		return
 
 	var request: Dictionary = parsed["request"]
@@ -123,7 +123,7 @@ func _handle_message(peer_id: int, text: String) -> void:
 	var params: Variant = request.get("params", {})
 
 	if not _router.has_handler(method):
-		_send_to_peer(peer_id, StagehandJsonRpc.make_error_response(
+		var _method_send_error: Error = _send_to_peer(peer_id, StagehandJsonRpc.make_error_response(
 			id, StagehandJsonRpc.METHOD_NOT_FOUND,
 			"Method not found: %s" % method
 		))
@@ -139,12 +139,23 @@ func _dispatch_and_respond(peer_id: int, id: Variant, method: String, params: Va
 	var result: Variant = await _router.dispatch(method, params)
 	# Notifications (no id) get no response per JSON-RPC 2.0 spec.
 	if id != null:
-		_send_to_peer(peer_id, StagehandJsonRpc.make_response(id, result))
+		var response_text: String = StagehandJsonRpc.make_response(id, result)
+		var send_error: Error = _send_to_peer(peer_id, response_text)
+		if send_error != OK:
+			var fallback_result: Dictionary = {
+				"error": "Failed to send Stagehand response to WebSocket peer: %s" % error_string(send_error),
+				"error_code": "send_buffer_failed",
+				"details": {
+					"payload_bytes": response_text.to_utf8_buffer().size(),
+					"next_action": "Reduce screenshot size/crop area or increase the WebSocket outbound buffer.",
+				},
+			}
+			var _fallback_send_error: Error = _send_to_peer(peer_id, StagehandJsonRpc.make_response(id, fallback_result))
 
 
-func _send_to_peer(peer_id: int, text: String) -> void:
+func _send_to_peer(peer_id: int, text: String) -> Error:
 	if not _clients.has(peer_id):
-		return
+		return ERR_UNAVAILABLE
 	var ws: WebSocketPeer = _clients[peer_id]
 	if ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
 		var err: Error = ws.send_text(text)
@@ -155,6 +166,8 @@ func _send_to_peer(peer_id: int, text: String) -> void:
 			push_error("Stagehand: send_text failed (%s) for a %d-byte payload; raise outbound_buffer_size" % [
 				error_string(err), text.to_utf8_buffer().size()
 			])
+		return err
+	return ERR_UNAVAILABLE
 
 
 func _register_builtin_handlers() -> void:

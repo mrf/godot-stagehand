@@ -15,6 +15,8 @@ import (
 	"github.com/mrf/godot-stagehand/internal/godotconn"
 )
 
+const testPNG1x1Base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
+
 func TestNew_RegistersAllTools(t *testing.T) {
 	s := New()
 	tools := s.mcp.ListTools()
@@ -354,7 +356,7 @@ func TestScreenshotSelectorForcesFullPageFalse(t *testing.T) {
 		resp := map[string]any{
 			"jsonrpc": "2.0",
 			"id":      req.ID,
-			"result":  map[string]any{"data": "aGVsbG8=", "mime_type": "image/png"},
+			"result":  map[string]any{"data": testPNG1x1Base64, "mime_type": "image/png", "width": 1, "height": 1},
 		}
 		b, _ := json.Marshal(resp)
 		_ = ws.WriteMessage(websocket.TextMessage, b)
@@ -395,6 +397,17 @@ func TestScreenshotSelectorForcesFullPageFalse(t *testing.T) {
 // and a cleanup function.
 func newErrorGodotServer(t *testing.T, errMsg string) (*Server, func()) {
 	t.Helper()
+	rawResult, err := json.Marshal(map[string]string{"error": errMsg})
+	if err != nil {
+		t.Fatalf("marshal error result: %v", err)
+	}
+	return newRawResultGodotServer(t, string(rawResult))
+}
+
+// newRawResultGodotServer starts a fake WebSocket server that always responds
+// with the supplied JSON-RPC result payload.
+func newRawResultGodotServer(t *testing.T, rawResult string) (*Server, func()) {
+	t.Helper()
 	upgrader := websocket.Upgrader{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ws, err := upgrader.Upgrade(w, r, nil)
@@ -411,7 +424,7 @@ func newErrorGodotServer(t *testing.T, errMsg string) (*Server, func()) {
 			resp := map[string]any{
 				"jsonrpc": "2.0",
 				"id":      json.RawMessage(id),
-				"result":  map[string]string{"error": errMsg},
+				"result":  json.RawMessage(rawResult),
 			}
 			if err := ws.WriteJSON(resp); err != nil {
 				return
@@ -495,6 +508,50 @@ func TestAddonErrorsPropagateAsMCPErrors(t *testing.T) {
 				t.Errorf("expected error message %q in result, got: %s", addonErr, text.Text)
 			}
 		})
+	}
+}
+
+func TestScreenshotRejectsInvalidPNGData(t *testing.T) {
+	rawResult := `{"data":"bm90IGEgcG5n","mime_type":"image/png","width":1280,"height":720}`
+	s, cleanup := newRawResultGodotServer(t, rawResult)
+	defer cleanup()
+
+	result, err := s.handleScreenshot(context.Background(), mcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected invalid screenshot data to return a tool error")
+	}
+	text, ok := mcp.AsTextContent(result.Content[0])
+	if !ok {
+		t.Fatal("expected TextContent error")
+	}
+	if !strings.Contains(text.Text, "failed to decode screenshot PNG") {
+		t.Fatalf("expected PNG decode diagnostic, got: %s", text.Text)
+	}
+}
+
+func TestScreenshotAddonErrorIncludesCodeAndDetails(t *testing.T) {
+	rawResult := `{"error":"PNG encode produced zero bytes","error_code":"png_encode_empty","details":{"width":1280,"height":720,"next_action":"Run Godot with a visible window"}}`
+	s, cleanup := newRawResultGodotServer(t, rawResult)
+	defer cleanup()
+
+	result, err := s.handleScreenshot(context.Background(), mcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected addon screenshot error to return a tool error")
+	}
+	text, ok := mcp.AsTextContent(result.Content[0])
+	if !ok {
+		t.Fatal("expected TextContent error")
+	}
+	for _, want := range []string{"PNG encode produced zero bytes", "png_encode_empty", "width", "1280", "next_action"} {
+		if !strings.Contains(text.Text, want) {
+			t.Fatalf("expected screenshot diagnostic to contain %q, got: %s", want, text.Text)
+		}
 	}
 }
 
