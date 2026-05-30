@@ -11,7 +11,7 @@ Stagehand fixes that. It gives AI agents, test runners, and CI pipelines a real 
 ## What you can do
 
 - **AI-assisted playtesting** — Let Claude (or any MCP client) explore your game, find bugs, and verify fixes without manual clicking.
-- **Visual regression testing** — Save baseline screenshots, diff them later. Catch UI regressions before your players do.
+- **Visual regression testing** — Save baseline screenshots, diff them later. Catch UI regressions before your players do. See the [visual smoke contract](docs/visual-smoke-contract.md) for how to set up a visual gate in your game repo.
 - **Integration tests** — Write tests that drive your actual game: navigate menus, trigger gameplay, assert on real game state.
 - **CI pipelines** — Run headless Godot in CI, connect Stagehand, and gate merges on automated gameplay checks.
 - **Performance monitoring** — Poll engine performance counters and fail builds when frame times regress.
