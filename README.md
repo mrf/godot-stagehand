@@ -54,7 +54,7 @@ Stagehand fixes that. It gives AI agents, test runners, and CI pipelines a real 
 | `godot_type_text` | Type text into controls |
 | `godot_mouse_move` | Move mouse cursor |
 | `godot_screenshot` | Capture viewport |
-| `godot_screenshot_save_baseline` / `godot_screenshot_diff` | Visual regression testing |
+| `godot_screenshot_save_baseline` / `godot_screenshot_diff` | Visual regression testing ([guide](docs/visual-regression.md)) |
 | `godot_wait_for_node` | Wait for node to exist |
 | `godot_wait_for_signal` | Wait for signal emission |
 | `godot_wait_for_property` | Wait for property condition |
