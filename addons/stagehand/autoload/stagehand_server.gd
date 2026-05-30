@@ -78,6 +78,12 @@ func _accept_new_connections() -> void:
 	while _tcp_server.is_connection_available():
 		var tcp_peer: StreamPeerTCP = _tcp_server.take_connection()
 		var ws_peer: WebSocketPeer = WebSocketPeer.new()
+		# Screenshot responses are base64-encoded PNGs of the full viewport and
+		# routinely exceed the 64 KiB default WebSocket buffer. If the outbound
+		# buffer is too small, send_text() fails with ERR_OUT_OF_MEMORY and the
+		# response is silently dropped. Size the buffers for a 4K-resolution PNG.
+		ws_peer.inbound_buffer_size = 1 << 23   # 8 MiB (large replay payloads)
+		ws_peer.outbound_buffer_size = 1 << 24  # 16 MiB (full-viewport screenshots)
 		var err: Error = ws_peer.accept_stream(tcp_peer)
 		if err == OK:
 			var peer_id: int = _next_peer_id
@@ -141,7 +147,14 @@ func _send_to_peer(peer_id: int, text: String) -> void:
 		return
 	var ws: WebSocketPeer = _clients[peer_id]
 	if ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
-		var _err: Error = ws.send_text(text)
+		var err: Error = ws.send_text(text)
+		if err != OK:
+			# A failed send (commonly ERR_OUT_OF_MEMORY when the payload exceeds
+			# outbound_buffer_size) drops the response and leaves the client
+			# waiting. Surface it instead of swallowing it silently.
+			push_error("Stagehand: send_text failed (%s) for a %d-byte payload; raise outbound_buffer_size" % [
+				error_string(err), text.to_utf8_buffer().size()
+			])
 
 
 func _register_builtin_handlers() -> void:

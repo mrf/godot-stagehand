@@ -63,6 +63,16 @@ Connect to an already-running Godot game with stagehand enabled.
 godot_connect(host="localhost", port=26700)
 ```
 
+> **WSL → Windows note:** if the Godot game runs as a *Windows* binary and the
+> MCP client runs in *WSL*, `localhost`/`127.0.0.1` only works under WSL
+> **mirrored** networking (`networkingMode=mirrored`). On a NAT/default WSL
+> network, dial the **default-gateway IP** instead (it is the Windows host and
+> changes across reboots):
+> ```bash
+> ip route show default | awk '/default/ {print $3}'   # -> host for godot_connect
+> ```
+> When the game runs as the Linux binary *inside WSL*, `127.0.0.1` is correct.
+
 #### `godot_get_game_state`
 Get current game state: scene name, FPS, physics state, window size. No parameters.
 

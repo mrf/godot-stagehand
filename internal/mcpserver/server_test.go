@@ -450,6 +450,7 @@ func TestAddonErrorsPropagateAsMCPErrors(t *testing.T) {
 		args    map[string]any
 	}{
 		{"godot_get_game_state", s.handleGetGameState, nil},
+		{"godot_screenshot", s.handleScreenshot, nil},
 		{"godot_get_tree", s.handleGetTree, nil},
 		{"godot_find_nodes", s.handleFindNodes, map[string]any{"selector": "class:Node"}},
 		{"godot_get_property", s.handleGetProperty, map[string]any{"selector": "/root", "property": "name"}},

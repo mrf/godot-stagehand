@@ -34,8 +34,11 @@ static func capture(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if texture == null:
 		return {"error": "Viewport has no texture"}
 	var img: Image = texture.get_image()
-	if img == null:
-		return {"error": "Failed to capture viewport image"}
+	# get_image() can return a non-null but ZERO-SIZE Image when the readback
+	# target isn't ready. An empty image encodes to zero PNG bytes -> empty
+	# base64 -> the client reports "empty image data". Reject it explicitly.
+	if img == null or img.is_empty():
+		return {"error": "Failed to capture viewport image (null or zero-size). The render target may not be ready, or this build has no rendered frame (headless/no GPU)."}
 
 	if crop_rect != Rect2i():
 		var clamped: Rect2i = Rect2i(
@@ -52,7 +55,11 @@ static func capture(tree: SceneTree, params: Dictionary) -> Dictionary:
 			img = img.get_region(clamped)
 
 	var buffer: PackedByteArray = img.save_png_to_buffer()
+	if buffer.is_empty():
+		return {"error": "PNG encode produced zero bytes for a %dx%d image" % [img.get_width(), img.get_height()]}
 	var base64: String = Marshalls.raw_to_base64(buffer)
+	if base64.is_empty():
+		return {"error": "base64 encode produced an empty string from %d PNG bytes" % buffer.size()}
 
 	return {
 		"data": base64,

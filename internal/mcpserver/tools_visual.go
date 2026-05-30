@@ -62,9 +62,13 @@ var screenshotDiffTool = mcp.NewTool("godot_screenshot_diff",
 )
 
 // screenshotResult is the expected shape of the Godot screenshot response.
+// Error carries the addon-side failure reason (e.g. "Failed to capture
+// viewport image"); without it, a capture failure collapses into the generic
+// "empty image data" message and hides the true cause.
 type screenshotResult struct {
 	Data     string `json:"data"`
 	MimeType string `json:"mime_type"`
+	Error    string `json:"error"`
 }
 
 func (s *Server) handleScreenshot(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -88,8 +92,11 @@ func (s *Server) handleScreenshot(ctx context.Context, req mcp.CallToolRequest) 
 	if err := json.Unmarshal(raw, &sr); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to parse screenshot response: %v", err)), nil
 	}
+	if sr.Error != "" {
+		return mcp.NewToolResultError(fmt.Sprintf("godot screenshot capture failed: %s", sr.Error)), nil
+	}
 	if sr.Data == "" {
-		return mcp.NewToolResultError("screenshot returned empty image data"), nil
+		return mcp.NewToolResultError("screenshot returned empty image data (addon reported no error)"), nil
 	}
 	if sr.MimeType == "" {
 		sr.MimeType = "image/png"
@@ -121,8 +128,11 @@ func (s *Server) captureScreenshot(ctx context.Context, req mcp.CallToolRequest)
 	if err := json.Unmarshal(raw, &sr); err != nil {
 		return nil, fmt.Errorf("failed to parse screenshot response: %v", err)
 	}
+	if sr.Error != "" {
+		return nil, fmt.Errorf("godot screenshot capture failed: %s", sr.Error)
+	}
 	if sr.Data == "" {
-		return nil, fmt.Errorf("screenshot returned empty image data")
+		return nil, fmt.Errorf("screenshot returned empty image data (addon reported no error)")
 	}
 
 	imgBytes, err := base64.StdEncoding.DecodeString(sr.Data)
