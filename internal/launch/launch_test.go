@@ -37,6 +37,18 @@ func TestLaunchValidation(t *testing.T) {
 	}
 }
 
+func TestNormalizeHostDefaultUsesDeterministicLoopback(t *testing.T) {
+	if got := normalizeHost(""); got != "127.0.0.1" {
+		t.Fatalf("normalizeHost(\"\") = %q, want 127.0.0.1", got)
+	}
+	if got := normalizeHost("  "); got != "127.0.0.1" {
+		t.Fatalf("normalizeHost(\"  \") = %q, want 127.0.0.1", got)
+	}
+	if got := normalizeHost("localhost"); got != "localhost" {
+		t.Fatalf("normalizeHost should preserve explicit host, got %q", got)
+	}
+}
+
 func TestFindGodotBinaryEnv(t *testing.T) {
 	// Set a dummy env var that points to a non-existent binary.
 	// Should error because binary doesn't exist.

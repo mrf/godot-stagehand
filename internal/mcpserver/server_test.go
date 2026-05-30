@@ -17,6 +17,17 @@ import (
 
 const testPNG1x1Base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
 
+var hostGuidanceTokens = []string{"127.0.0.1", "localhost", "WSL", "gateway"}
+
+func assertContainsAll(t *testing.T, text string, wants []string) {
+	t.Helper()
+	for _, want := range wants {
+		if !strings.Contains(text, want) {
+			t.Fatalf("expected text to contain %q, got: %s", want, text)
+		}
+	}
+}
+
 func TestNew_RegistersAllTools(t *testing.T) {
 	s := New()
 	tools := s.mcp.ListTools()
@@ -258,6 +269,49 @@ func TestConnectReturnsErrorForUnreachableHost(t *testing.T) {
 	if !result.IsError {
 		t.Fatal("expected isError=true for unreachable host")
 	}
+	text, ok := mcp.AsTextContent(result.Content[0])
+	if !ok {
+		t.Fatal("expected TextContent")
+	}
+	assertContainsAll(t, text.Text, hostGuidanceTokens)
+}
+
+func TestLaunchRejectsHeadlessWhenScreenshotsExpected(t *testing.T) {
+	s := New()
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{
+		"project_path":       "/tmp/nonexistent-stagehand-project",
+		"godot_bin":          "/tmp/nonexistent-godot",
+		"headless":           true,
+		"expect_screenshots": true,
+		"timeout_ms":         float64(1000),
+	}
+
+	result, err := s.handleLaunch(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected launch to reject headless screenshot workflow")
+	}
+	text, ok := mcp.AsTextContent(result.Content[0])
+	if !ok {
+		t.Fatal("expected TextContent")
+	}
+	for _, want := range []string{"headless=true", "expect_screenshots=true", "headless=false"} {
+		if !strings.Contains(text.Text, want) {
+			t.Fatalf("launch error should mention %q, got: %s", want, text.Text)
+		}
+	}
+}
+
+func TestLaunchWarningsAndGuidanceDocumentScreenshotHosts(t *testing.T) {
+	if !strings.Contains(headlessScreenshotWarning, "godot_screenshot") {
+		t.Fatalf("headless warning should mention screenshots, got: %s", headlessScreenshotWarning)
+	}
+
+	guidance := connectionGuidance()
+	assertContainsAll(t, guidance, hostGuidanceTokens)
 }
 
 func TestStatusWhenNotConnected(t *testing.T) {

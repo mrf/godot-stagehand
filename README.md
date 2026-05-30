@@ -113,7 +113,7 @@ Add to your MCP client config (e.g. `.claude/settings.json`):
 }
 ```
 
-Call `godot_connect` to attach to the running game.
+Call `godot_connect` to attach to the running game. Local Linux/macOS and Linux Godot inside WSL use `127.0.0.1` by default. For Windows Godot controlled from WSL, use `localhost` with WSL mirrored networking or the WSL default gateway IP with NAT/default networking.
 
 > **Windows / WSL?** See the [Windows setup guide](docs/windows-setup.md).
 
@@ -131,6 +131,8 @@ Call `godot_connect` to attach to the running game.
 **"Connection refused"** — Game isn't running with `--stagehand`, or wrong host/port.
 
 **"Connection reset"** — Godot started but `_process` isn't ticking (common in headless with heavy scenes). Use a visible window or a lighter scene.
+
+**Screenshots are empty, black, or grey** — Visual workflows need a visible rendered window. Use `godot_launch(headless=false, expect_screenshots=true)`; headless launches are for structural tools.
 
 **Port conflict** — Another instance on 26700. Set `STAGEHAND_PORT=26701`.
 

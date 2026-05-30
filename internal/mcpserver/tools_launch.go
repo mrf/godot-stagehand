@@ -19,8 +19,8 @@ var launchTool = mcp.NewTool("godot_launch",
 		mcp.Description("Path to the Godot binary (default: find via environment or PATH)"),
 	),
 	mcp.WithString("host",
-		mcp.Description("Host to bind the WebSocket server"),
-		mcp.DefaultString("localhost"),
+		mcp.Description(hostSelectionDescription),
+		mcp.DefaultString(launch.DefaultHost),
 	),
 	mcp.WithNumber("port",
 		mcp.Description("TCP port for the WebSocket server"),
@@ -29,6 +29,10 @@ var launchTool = mcp.NewTool("godot_launch",
 	mcp.WithBoolean("headless",
 		mcp.Description("Launch Godot in headless mode"),
 		mcp.DefaultBool(true),
+	),
+	mcp.WithBoolean("expect_screenshots",
+		mcp.Description("Set true for screenshot/baseline/diff workflows; rejects headless launches because screenshots need a visible rendered window"),
+		mcp.DefaultBool(false),
 	),
 	mcp.WithArray("extra_args",
 		mcp.Description("Extra command-line arguments to pass to the Godot binary"),
@@ -47,11 +51,16 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	godotBin := req.GetString("godot_bin", "")
-	host := req.GetString("host", "localhost")
+	host := req.GetString("host", launch.DefaultHost)
 	port := req.GetInt("port", 26700)
 	headless := req.GetBool("headless", true)
+	expectScreenshots := req.GetBool("expect_screenshots", false)
 	extraArgs := req.GetStringSlice("extra_args", nil)
 	timeoutMs := req.GetInt("timeout_ms", 30000)
+
+	if headless && expectScreenshots {
+		return mcp.NewToolResultError("headless=true cannot be used with expect_screenshots=true; relaunch with headless=false and a visible Godot window for godot_screenshot, baselines, and diffs."), nil
+	}
 
 	cfg := launch.Config{
 		ProjectPath: projectPath,
@@ -82,11 +91,15 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 
 	// Return structured launch result as JSON.
 	jsonResult := map[string]any{
-		"pid":               result.PID,
-		"host":              result.Host,
-		"port":              result.Port,
-		"engine_version":    result.EngineVersion,
-		"stagehand_version": result.StagehandVersion,
+		"pid":                 result.PID,
+		"host":                result.Host,
+		"port":                result.Port,
+		"engine_version":      result.EngineVersion,
+		"stagehand_version":   result.StagehandVersion,
+		"connection_guidance": connectionGuidance(),
+	}
+	if headless {
+		jsonResult["warnings"] = []string{headlessScreenshotWarning}
 	}
 	jsonBytes, err := json.MarshalIndent(jsonResult, "", "  ")
 	if err != nil {

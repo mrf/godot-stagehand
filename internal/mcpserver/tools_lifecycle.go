@@ -6,13 +6,14 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mrf/godot-stagehand/internal/godotconn"
+	"github.com/mrf/godot-stagehand/internal/launch"
 )
 
 var connectTool = mcp.NewTool("godot_connect",
 	mcp.WithDescription("Connect to a running Godot game with the stagehand addon enabled"),
 	mcp.WithString("host",
-		mcp.Description("WebSocket host"),
-		mcp.DefaultString("localhost"),
+		mcp.Description(hostSelectionDescription),
+		mcp.DefaultString(launch.DefaultHost),
 	),
 	mcp.WithNumber("port",
 		mcp.Description("WebSocket port"),
@@ -21,7 +22,7 @@ var connectTool = mcp.NewTool("godot_connect",
 )
 
 func (s *Server) handleConnect(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	host := req.GetString("host", "localhost")
+	host := req.GetString("host", launch.DefaultHost)
 	port := req.GetInt("port", 26700)
 
 	// Close any existing connection under the write lock.
@@ -30,7 +31,7 @@ func (s *Server) handleConnect(ctx context.Context, req mcp.CallToolRequest) (*m
 	conn, err := godotconn.Dial(ctx, host, port)
 	if err != nil {
 		return mcp.NewToolResultError(
-			fmt.Sprintf("Failed to connect to Godot at %s:%d: %v", host, port, err),
+			fmt.Sprintf("Failed to connect to Godot at %s:%d: %v\n\n%s", host, port, err, connectionGuidance()),
 		), nil
 	}
 	s.setConn(conn)

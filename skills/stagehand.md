@@ -41,9 +41,10 @@ Launch a Godot game with stagehand enabled and connect to it.
 |-----------|----------|---------|-------------|
 | `project_path` | yes | — | Path to the Godot project directory (contains project.godot) |
 | `godot_bin` | no | auto-detect | Path to the Godot binary |
-| `host` | no | `localhost` | Host to bind the WebSocket server |
+| `host` | no | `127.0.0.1` | WebSocket host |
 | `port` | no | `26700` | TCP port for the WebSocket server |
 | `headless` | no | `true` | Launch Godot in headless mode |
+| `expect_screenshots` | no | `false` | Reject `headless=true` for screenshot/baseline/diff workflows |
 | `extra_args` | no | `[]` | Extra command-line arguments for the Godot binary |
 | `timeout_ms` | no | `30000` | Maximum time to wait for Godot to start (min: 1000) |
 
@@ -56,22 +57,22 @@ Connect to an already-running Godot game with stagehand enabled.
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `host` | no | `localhost` | WebSocket host |
+| `host` | no | `127.0.0.1` | WebSocket host |
 | `port` | no | `26700` | WebSocket port |
 
 ```
-godot_connect(host="localhost", port=26700)
+godot_connect(host="127.0.0.1", port=26700)
 ```
 
-> **WSL → Windows note:** if the Godot game runs as a *Windows* binary and the
-> MCP client runs in *WSL*, `localhost`/`127.0.0.1` only works under WSL
-> **mirrored** networking (`networkingMode=mirrored`). On a NAT/default WSL
-> network, dial the **default-gateway IP** instead (it is the Windows host and
-> changes across reboots):
+> **Host selection:** use `127.0.0.1` when Godot and `godot-stagehand` run in
+> the same OS/network namespace, including Linux Godot inside WSL. If Godot runs
+> as a *Windows* binary and the MCP client runs in *WSL*, use `localhost` only
+> under WSL **mirrored** networking (`networkingMode=mirrored`). On a NAT/default
+> WSL network, dial the **default-gateway IP** instead (it is the Windows host
+> and changes across reboots):
 > ```bash
 > ip route show default | awk '/default/ {print $3}'   # -> host for godot_connect
 > ```
-> When the game runs as the Linux binary *inside WSL*, `127.0.0.1` is correct.
 
 #### `godot_get_game_state`
 Get current game state: scene name, FPS, physics state, window size. No parameters.

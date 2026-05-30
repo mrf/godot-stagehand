@@ -19,7 +19,7 @@ type Config struct {
 	ProjectPath string
 	// GodotBin is the path to the Godot binary. If empty, findGodotBinary will attempt to locate it.
 	GodotBin string
-	// Host is the hostname to bind the WebSocket server (default "localhost").
+	// Host is the hostname to connect to (default "127.0.0.1").
 	Host string
 	// Port is the TCP port for the WebSocket server (default 26700).
 	Port int
@@ -31,8 +31,12 @@ type Config struct {
 	TimeoutMs int
 }
 
-// defaultTimeout is used when TimeoutMs is zero.
-const defaultTimeout = 30000 // 30 seconds
+const (
+	// DefaultHost is the deterministic local loopback address used when no host is supplied.
+	DefaultHost = "127.0.0.1"
+	// defaultTimeout is used when TimeoutMs is zero.
+	defaultTimeout = 30000 // 30 seconds
+)
 
 // LaunchResult holds information about a successfully launched Godot process.
 type LaunchResult struct {
@@ -74,9 +78,7 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		}
 	}
 	host := cfg.Host
-	if host == "" {
-		host = "localhost"
-	}
+	host = normalizeHost(host)
 	port := cfg.Port
 	if port == 0 {
 		port = 26700
@@ -177,6 +179,14 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		Process:          cmd,
 		waitChan:         wait,
 	}, nil
+}
+
+func normalizeHost(host string) string {
+	trimmed := strings.TrimSpace(host)
+	if trimmed == "" {
+		return DefaultHost
+	}
+	return trimmed
 }
 
 // Kill terminates the Godot process and waits for it to exit.
