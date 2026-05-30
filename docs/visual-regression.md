@@ -161,3 +161,10 @@ without parsing prose. Shape:
 saves a baseline frame, changes the rendered state, runs a diff, and asserts a
 FAILING result with on-disk artifacts and the machine-readable fields above —
 all on real PNG pixels, with no game-specific assertions.
+
+## Setting up a visual gate in your game repo
+
+See [docs/visual-smoke-contract.md](visual-smoke-contract.md) for the
+boundary between Stagehand and downstream game repos: what Stagehand guarantees,
+what your repo owns, headless support status, version pinning, and a minimal
+harness example.
