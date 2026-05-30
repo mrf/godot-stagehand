@@ -1,0 +1,9 @@
+; Engine configuration file.
+
+[application]
+
+config/name="Empty Plugins Project"
+
+[editor_plugins]
+
+enabled=PackedStringArray()
