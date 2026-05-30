@@ -2,6 +2,8 @@
 
 External automation and testing for running Godot games — like Playwright, but for game engines.
 
+**New to Stagehand?** → [Quickstart guide](docs/quickstart.md) — zero to connected in 5 minutes, no Go or JSON experience required.
+
 ## Why
 
 Game testing is manual. You click through menus, eyeball the results, and hope you caught the regressions. Automated UI tests exist for the web, but Godot has nothing equivalent — no way for an external process to connect to a running game and drive it programmatically.
