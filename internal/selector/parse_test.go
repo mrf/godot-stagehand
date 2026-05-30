@@ -170,19 +170,19 @@ func TestParseChain(t *testing.T) {
 }
 
 func TestParseChainErrors(t *testing.T) {
-	tests := []struct{
-		input string
+	tests := []struct {
+		input     string
 		wantError bool
 	}{
 		{"", true},
-		{"  \t", true},  // Whitespace only
-		{"name:Button >>", true},  // Ends with >>
-		{">> name:Button", true},  // Starts with >>
-		{"name:Button >>  >> text:OK", true},  // Empty selector in chain
-		{"name:", true},     // Empty value
-		{"text:", true},     // Empty text value
-		{"meta:", true},     // Empty meta value
-		{"unique:", true},   // Empty unique value
+		{"  \t", true},                       // Whitespace only
+		{"name:Button >>", true},             // Ends with >>
+		{">> name:Button", true},             // Starts with >>
+		{"name:Button >>  >> text:OK", true}, // Empty selector in chain
+		{"name:", true},                      // Empty value
+		{"text:", true},                      // Empty text value
+		{"meta:", true},                      // Empty meta value
+		{"unique:", true},                    // Empty unique value
 	}
 
 	for _, tc := range tests {
