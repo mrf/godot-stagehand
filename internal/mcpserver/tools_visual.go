@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -27,34 +28,45 @@ var screenshotTool = mcp.NewTool("godot_screenshot",
 )
 
 var saveBaselineTool = mcp.NewTool("godot_screenshot_save_baseline",
-	mcp.WithDescription("Capture a screenshot and save it as a named baseline for future comparison"),
+	mcp.WithDescription("Capture a screenshot and save it as a named baseline for future comparison. "+
+		"Baselines are stored as <name>.png in the server's baseline directory (default \"stagehand-baselines\"). "+
+		"Re-running with the same name overwrites (refreshes) the baseline. Returns structured fields: name, path, width, height."),
 	mcp.WithString("name",
 		mcp.Required(),
-		mcp.Description("Baseline name (used as filename, e.g. \"main_menu\")"),
+		mcp.Description("Baseline name, used verbatim as the filename stem (e.g. \"main_menu\" -> main_menu.png). Keep it filesystem-safe."),
 	),
 	mcp.WithString("selector",
-		mcp.Description("Crop the screenshot to this node's bounding rect"),
+		mcp.Description("Crop the baseline to this node's bounding rect. Use the SAME selector when diffing so the bounds match."),
 	),
 )
 
 var screenshotDiffTool = mcp.NewTool("godot_screenshot_diff",
-	mcp.WithDescription("Capture a screenshot and compare it pixel-by-pixel against a saved baseline"),
+	mcp.WithDescription("Capture a screenshot and compare it pixel-by-pixel against a saved baseline. "+
+		"Returns machine-readable structured fields (pass, diff_ratio, diff_pixels, max_delta, total_pixels, "+
+		"width, height, baseline_path, and on failure actual_image_path + diff_image_path). "+
+		"On a regression (diff_ratio > threshold) the result is an error and the actual frame plus a red-on-dim "+
+		"diff visualization are written to the artifact directory (default \"stagehand-diffs\")."),
 	mcp.WithReadOnlyHintAnnotation(true),
 	mcp.WithString("name",
 		mcp.Required(),
-		mcp.Description("Baseline name to compare against"),
+		mcp.Description("Baseline name to compare against (the <name> passed to godot_screenshot_save_baseline)."),
 	),
 	mcp.WithString("selector",
-		mcp.Description("Crop the screenshot to this node's bounding rect"),
+		mcp.Description("Crop to this node's bounding rect. Must match the selector used for the baseline, or bounds will differ and the diff errors."),
 	),
 	mcp.WithNumber("threshold",
-		mcp.Description("Maximum acceptable fraction of differing pixels [0.0–1.0]; default 0.0 (exact match)"),
+		mcp.Description("Image-level gate: maximum acceptable fraction of differing pixels [0.0–1.0]. "+
+			"diff_ratio > threshold fails the diff. Default 0.0 (any differing pixel fails). "+
+			"Example: 0.01 tolerates up to 1% of pixels changing (small UI jitter, anti-aliasing)."),
 		mcp.DefaultNumber(0.0),
 		mcp.Min(0),
 		mcp.Max(1),
 	),
 	mcp.WithNumber("pixel_sensitivity",
-		mcp.Description("Per-pixel color delta tolerance [0.0–1.0]: channels differing by less than this are treated as matching; default 0.0 (exact color match)"),
+		mcp.Description("Per-pixel color tolerance [0.0–1.0], independent of threshold. A pixel counts as differing only "+
+			"when some RGBA channel differs by MORE than this fraction. Default 0.0 (exact color match). "+
+			"Example: 0.05 ignores per-channel color drift up to ~13/255 (compression noise, gradients) while still "+
+			"counting larger changes. threshold controls HOW MANY pixels may differ; pixel_sensitivity controls HOW DIFFERENT a single pixel must be to count."),
 		mcp.DefaultNumber(0.0),
 		mcp.Min(0),
 		mcp.Max(1),
@@ -166,6 +178,34 @@ func decodeScreenshotPNG(sr screenshotResult) ([]byte, error) {
 	return imgBytes, nil
 }
 
+// baselineOutcome is the machine-readable result of godot_screenshot_save_baseline.
+type baselineOutcome struct {
+	Name     string `json:"name"`
+	Path     string `json:"path"`
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+	Selector string `json:"selector,omitempty"`
+}
+
+// diffOutcome is the machine-readable result of godot_screenshot_diff. Agents
+// should branch on Pass; the *Path fields are populated only when Pass is false.
+type diffOutcome struct {
+	Name             string  `json:"name"`
+	Pass             bool    `json:"pass"`
+	TotalPixels      int     `json:"total_pixels"`
+	DiffPixels       int     `json:"diff_pixels"`
+	DiffRatio        float64 `json:"diff_ratio"`
+	MaxDelta         float64 `json:"max_delta"`
+	Threshold        float64 `json:"threshold"`
+	PixelSensitivity float64 `json:"pixel_sensitivity"`
+	Width            int     `json:"width"`
+	Height           int     `json:"height"`
+	BaselinePath     string  `json:"baseline_path"`
+	ActualImagePath  string  `json:"actual_image_path,omitempty"`
+	DiffImagePath    string  `json:"diff_image_path,omitempty"`
+	Selector         string  `json:"selector,omitempty"`
+}
+
 func (s *Server) handleSaveBaseline(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	name, err := req.RequireString("name")
 	if err != nil {
@@ -177,6 +217,12 @@ func (s *Server) handleSaveBaseline(ctx context.Context, req mcp.CallToolRequest
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
+	img, err := png.Decode(bytes.NewReader(imgBytes))
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to decode baseline screenshot: %v", err)), nil
+	}
+	bounds := img.Bounds()
+
 	if err := os.MkdirAll(s.baselineDir, 0o755); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to create baseline directory: %v", err)), nil
 	}
@@ -186,7 +232,15 @@ func (s *Server) handleSaveBaseline(ctx context.Context, req mcp.CallToolRequest
 		return mcp.NewToolResultError(fmt.Sprintf("failed to save baseline: %v", err)), nil
 	}
 
-	return mcp.NewToolResultText(fmt.Sprintf("Baseline %q saved to %s", name, path)), nil
+	outcome := baselineOutcome{
+		Name:     name,
+		Path:     path,
+		Width:    bounds.Dx(),
+		Height:   bounds.Dy(),
+		Selector: req.GetString("selector", ""),
+	}
+	text := fmt.Sprintf("Baseline %q (%dx%d) saved to %s", name, outcome.Width, outcome.Height, path)
+	return mcp.NewToolResultStructured(outcome, text), nil
 }
 
 func (s *Server) handleScreenshotDiff(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -232,14 +286,83 @@ func (s *Server) handleScreenshotDiff(ctx context.Context, req mcp.CallToolReque
 		return mcp.NewToolResultError(fmt.Sprintf("image comparison failed: %v", err)), nil
 	}
 
-	report := fmt.Sprintf(
-		"Baseline: %q\nTotal pixels: %d\nDiff pixels:  %d\nDiff ratio:   %.4f\nMax delta:    %.4f\nThreshold:    %.4f\nPixel sensitivity: %.4f",
-		name, result.TotalPixels, result.DiffPixels, result.DiffRatio, result.MaxDelta, threshold, pixelSensitivity,
-	)
+	bounds := currentImg.Bounds()
+	pass := result.DiffRatio <= threshold
 
-	if result.DiffRatio > threshold {
-		return mcp.NewToolResultError(fmt.Sprintf("Visual regression detected!\n%s", report)), nil
+	outcome := diffOutcome{
+		Name:             name,
+		Pass:             pass,
+		TotalPixels:      result.TotalPixels,
+		DiffPixels:       result.DiffPixels,
+		DiffRatio:        result.DiffRatio,
+		MaxDelta:         result.MaxDelta,
+		Threshold:        threshold,
+		PixelSensitivity: pixelSensitivity,
+		Width:            bounds.Dx(),
+		Height:           bounds.Dy(),
+		BaselinePath:     baselinePath,
+		Selector:         req.GetString("selector", ""),
 	}
 
-	return mcp.NewToolResultText(fmt.Sprintf("Images match within threshold.\n%s", report)), nil
+	// On failure, persist artifacts so callers can inspect what changed:
+	// the actual captured frame and a diff visualization (changed pixels in
+	// red, unchanged pixels dimmed). Best-effort — a write failure is surfaced
+	// in the report but does not mask the regression itself.
+	var artifactErr string
+	if !pass {
+		actualPath, diffPath, werr := s.writeDiffArtifacts(name, imgBytes, result.DiffImage)
+		outcome.ActualImagePath = actualPath
+		outcome.DiffImagePath = diffPath
+		if werr != nil {
+			artifactErr = werr.Error()
+		}
+	}
+
+	report := fmt.Sprintf(
+		"Baseline: %q\nTotal pixels: %d\nDiff pixels:  %d\nDiff ratio:   %.4f (threshold %.4f)\nMax delta:    %.4f\nPixel sensitivity: %.4f",
+		name, result.TotalPixels, result.DiffPixels, result.DiffRatio, threshold, result.MaxDelta, pixelSensitivity,
+	)
+	if outcome.ActualImagePath != "" {
+		report += fmt.Sprintf("\nActual frame: %s\nDiff image:   %s", outcome.ActualImagePath, outcome.DiffImagePath)
+	}
+	if artifactErr != "" {
+		report += fmt.Sprintf("\nWARNING: failed to write diff artifacts: %s", artifactErr)
+	}
+
+	if !pass {
+		res := mcp.NewToolResultStructured(outcome, "Visual regression detected!\n"+report)
+		res.IsError = true
+		return res, nil
+	}
+	return mcp.NewToolResultStructured(outcome, "Images match within threshold.\n"+report), nil
+}
+
+// writeDiffArtifacts writes the actual captured frame and the diff
+// visualization to the artifact directory, returning their paths. The diff
+// image may be nil (identical images that still exceeded a negative-equivalent
+// threshold); in that case only the actual frame is written.
+func (s *Server) writeDiffArtifacts(name string, actualPNG []byte, diffImg image.Image) (actualPath, diffPath string, err error) {
+	if mkErr := os.MkdirAll(s.artifactDir, 0o755); mkErr != nil {
+		return "", "", fmt.Errorf("failed to create artifact directory: %w", mkErr)
+	}
+
+	actualPath = filepath.Join(s.artifactDir, name+"-actual.png")
+	if wErr := os.WriteFile(actualPath, actualPNG, 0o644); wErr != nil {
+		return "", "", fmt.Errorf("failed to write actual frame: %w", wErr)
+	}
+
+	if diffImg == nil {
+		return actualPath, "", nil
+	}
+
+	diffPath = filepath.Join(s.artifactDir, name+"-diff.png")
+	f, cErr := os.Create(diffPath)
+	if cErr != nil {
+		return actualPath, "", fmt.Errorf("failed to create diff image: %w", cErr)
+	}
+	defer f.Close()
+	if eErr := png.Encode(f, diffImg); eErr != nil {
+		return actualPath, "", fmt.Errorf("failed to encode diff image: %w", eErr)
+	}
+	return actualPath, diffPath, nil
 }

@@ -25,12 +25,17 @@ type Server struct {
 
 	// baselineDir is the directory where screenshot baselines are stored.
 	baselineDir string
+
+	// artifactDir is where failed-diff artifacts (the captured frame and the
+	// diff visualization) are written so downstream tooling can inspect them.
+	artifactDir string
 }
 
 // New creates a new MCP server with all Godot tools registered.
 func New() *Server {
 	s := &Server{
 		baselineDir: "stagehand-baselines",
+		artifactDir: "stagehand-diffs",
 	}
 
 	s.mcp = server.NewMCPServer(
