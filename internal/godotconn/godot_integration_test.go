@@ -615,40 +615,47 @@ func TestSmokeScreenshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("screenshot call failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
 	}
-	
-	var screenshotResult struct {
-		B64PNG string `json:"b64png"`
-		Format string `json:"format"`
-		Size   struct {
-			X int `json:"x"`
-			Y int `json:"y"`
-		} `json:"size"`
-		Path string `json:"path"`
+
+	// Check for an addon-level error first (e.g. headless/no-GPU = "viewport_image_empty").
+	var errCheck struct {
+		Error     string `json:"error"`
+		ErrorCode string `json:"error_code"`
 	}
-	
+	if err := json.Unmarshal(screenshotResp.Result, &errCheck); err != nil {
+		t.Fatalf("unmarshal screenshot result: %v; raw=%s", err, screenshotResp.Result)
+	}
+	if errCheck.ErrorCode == "viewport_image_empty" {
+		t.Skipf("screenshot skipped: headless/no-GPU session returned no frame (%s)", errCheck.Error)
+	}
+	if errCheck.Error != "" {
+		t.Fatalf("screenshot returned error %q (code=%q): raw=%s", errCheck.Error, errCheck.ErrorCode, screenshotResp.Result)
+	}
+
+	// Decode the success response — addon returns data/mime_type/width/height.
+	var screenshotResult struct {
+		Data     string `json:"data"`
+		MimeType string `json:"mime_type"`
+		Width    int    `json:"width"`
+		Height   int    `json:"height"`
+	}
 	if err := json.Unmarshal(screenshotResp.Result, &screenshotResult); err != nil {
 		t.Fatalf("unmarshal screenshot result: %v; raw=%s", err, screenshotResp.Result)
 	}
-	
-	t.Logf("Screenshot taken: %dx%d, format: %s, path: %s", 
-		screenshotResult.Size.X, screenshotResult.Size.Y, 
-		screenshotResult.Format, screenshotResult.Path)
-	
-	if screenshotResult.B64PNG == "" {
-		t.Log("Screenshot result missing base64 data - this is expected in headless mode")
-		t.Skip("Screenshot test skipped in headless mode: no image data available")
+
+	t.Logf("Screenshot taken: %dx%d, mime_type: %s", screenshotResult.Width, screenshotResult.Height, screenshotResult.MimeType)
+
+	if screenshotResult.Data == "" {
+		t.Fatalf("screenshot returned success but data field is empty; raw=%s", screenshotResp.Result)
 	}
-	
-	// Verify that the base64 data can be decoded
-	decoded, err := base64.StdEncoding.DecodeString(screenshotResult.B64PNG)
+
+	decoded, err := base64.StdEncoding.DecodeString(screenshotResult.Data)
 	if err != nil {
-		t.Fatalf("Failed to decode base64 screenshot data: %v", err)
+		t.Fatalf("failed to decode base64 screenshot data: %v", err)
 	}
-	
 	if len(decoded) == 0 {
-		t.Fatalf("Decoded screenshot is empty")
+		t.Fatalf("decoded screenshot is empty")
 	}
-	
+
 	t.Logf("Screenshot data decoded successfully (%d bytes)", len(decoded))
 }
 
