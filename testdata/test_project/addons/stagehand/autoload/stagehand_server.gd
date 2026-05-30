@@ -136,7 +136,12 @@ func _handle_message(peer_id: int, text: String) -> void:
 
 
 func _dispatch_and_respond(peer_id: int, id: Variant, method: String, params: Variant) -> void:
-	var result: Variant = await _router.dispatch(method, params)
+	# Await the handler Callable directly rather than going through dispatch():
+	# coroutine handlers (e.g. screenshot, input_text) suspend on `await`, and a
+	# synchronous dispatch() would return null instead of the real result. The
+	# method was confirmed registered in _handle_message before deferring here.
+	var handler: Callable = _router.get_handler(method)
+	var result: Variant = await handler.call(params)
 	# Notifications (no id) get no response per JSON-RPC 2.0 spec.
 	if id != null:
 		var response_text: String = StagehandJsonRpc.make_response(id, result)

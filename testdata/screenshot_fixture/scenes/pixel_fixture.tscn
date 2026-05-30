@@ -1,0 +1,43 @@
+[gd_scene format=3 uid="uid://stagehand_pixel_fixture"]
+
+; Deterministic screenshot fixture.
+;
+; Four full-coverage ColorRect quadrants paint unmistakable primary colors so a
+; real rendered frame is provable by sampling pixels:
+;   top-left     RED    (255,   0,   0)
+;   top-right    GREEN  (  0, 255,   0)
+;   bottom-left  BLUE   (  0,   0, 255)
+;   bottom-right WHITE  (255, 255, 255)
+;
+; Anchors are fractional (0 / 0.5 / 1) so the quadrants fill the viewport
+; regardless of the actual window size — pixel sampling uses fractions of the
+; captured dimensions, not hard-coded coordinates.
+
+[node name="PixelFixture" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="TopLeftRed" type="ColorRect" parent="."]
+anchor_right = 0.5
+anchor_bottom = 0.5
+color = Color(1, 0, 0, 1)
+
+[node name="TopRightGreen" type="ColorRect" parent="."]
+anchor_left = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+color = Color(0, 1, 0, 1)
+
+[node name="BottomLeftBlue" type="ColorRect" parent="."]
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 1.0
+color = Color(0, 0, 1, 1)
+
+[node name="BottomRightWhite" type="ColorRect" parent="."]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(1, 1, 1, 1)
