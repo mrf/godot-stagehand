@@ -268,7 +268,7 @@ func (s *Server) handleMouseMove(ctx context.Context, req mcp.CallToolRequest) (
 	if !hasSelector && !hasCoords {
 		return mcp.NewToolResultError("one of 'selector' or 'coordinates' is required"), nil
 	}
-	
+
 	if hasSelector {
 		selStr, ok := selector.(string)
 		if !ok {

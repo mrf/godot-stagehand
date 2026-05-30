@@ -15,8 +15,8 @@ const (
 	Name
 	Class
 	Group
-	Text  // text: for label text content matching (Phase 2)
-	Meta  // meta: for metadata attribute matching (Phase 2)
+	Text   // text: for label text content matching (Phase 2)
+	Meta   // meta: for metadata attribute matching (Phase 2)
 	Unique // unique: for unique UI element identification (Phase 2)
 )
 

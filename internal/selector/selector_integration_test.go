@@ -22,9 +22,9 @@ func TestParseNewSelectors(t *testing.T) {
 		{"/absolute/path", Path, false},
 		{"relativePath", Path, false},
 		// Error cases
-		{"text:", Text, true},      // Empty value
-		{"meta:", Meta, true},      // Empty value
-		{"unique:", Unique, true},  // Empty value
+		{"text:", Text, true},     // Empty value
+		{"meta:", Meta, true},     // Empty value
+		{"unique:", Unique, true}, // Empty value
 	}
 
 	for _, tt := range tests {
@@ -40,11 +40,11 @@ func TestParseNewSelectors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ParseChain(%q) = %v, %v", tt.input, result, err)
 			}
-			
+
 			if len(*result) != 1 {
 				t.Errorf("Expected 1 selector in chain, got %d", len(*result))
 			}
-			
+
 			singleResult := (*result)[0]
 			if singleResult.Type != tt.expected {
 				t.Errorf("ParseChain(%q) = %v, want %v", tt.input, singleResult.Type, tt.expected)
@@ -131,9 +131,9 @@ func TestBackwardCompatibility(t *testing.T) {
 				t.Fatalf("Parse(%q) = %v, want no error", tt.input, err)
 			}
 
-			// Old Parse returns individual Selectors, not chains 
+			// Old Parse returns individual Selectors, not chains
 			if result.Type != tt.expected || result.Value != tt.value {
-				t.Errorf("Parse(%q) = Type: %v, Value: %q, want Type: %v, Value: %q", 
+				t.Errorf("Parse(%q) = Type: %v, Value: %q, want Type: %v, Value: %q",
 					tt.input, result.Type, result.Value, tt.expected, tt.value)
 			}
 		})

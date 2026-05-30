@@ -395,23 +395,23 @@ func TestSmokeFindNodes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query_nodes (class) call failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
 	}
-	
+
 	var classResult map[string]interface{}
 	if err := json.Unmarshal(classResp.Result, &classResult); err != nil {
 		t.Fatalf("unmarshal query_nodes (class) result: %v; raw=%s", err, classResp.Result)
 	}
-	
+
 	buttons, ok := classResult["nodes"].([]interface{})
 	if !ok {
 		t.Fatalf("failed to extract buttons from result; type: %T", classResult["nodes"])
 	}
-	
+
 	t.Logf("Found %d Button nodes", len(buttons))
 	if len(buttons) == 0 {
 		t.Logf("Raw response: %+v", classResult)
 		t.Fatalf("Expected at least one Button node in test scene")
 	}
-	
+
 	// Test finding nodes by class pattern
 	lineEditQuery := map[string]any{
 		"selector": "class:LineEdit",
@@ -420,21 +420,21 @@ func TestSmokeFindNodes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query_nodes (class) call failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
 	}
-	
+
 	var lineEditResult map[string]interface{}
 	if err := json.Unmarshal(lineEditResp.Result, &lineEditResult); err != nil {
 		t.Fatalf("unmarshal query_nodes (class) LineEdit result: %v; raw=%s", err, lineEditResp.Result)
 	}
-	
+
 	inputs, ok := lineEditResult["nodes"].([]interface{})
 	if !ok && lineEditResult["nodes"] != nil {
 		t.Fatalf("failed to extract inputs from result; type: %T, actual value: %v", lineEditResult["nodes"], lineEditResult["nodes"])
 	}
-	
+
 	if inputs == nil {
 		inputs = []interface{}{}
 	}
-	
+
 	t.Logf("Found %d input-related nodes", len(inputs))
 }
 
@@ -504,10 +504,10 @@ func TestSmokeGetProperty(t *testing.T) {
 	if !ok {
 		t.Fatalf("node data has wrong type: %T", inputNodes[0])
 	}
-	
+
 	nodePath, exists := nodeData["path"].(string)
 	if !exists {
-		t.Fatalf("node has no path string: %v", nodeData) 
+		t.Fatalf("node has no path string: %v", nodeData)
 	}
 
 	// Test getting property from the input field
@@ -518,18 +518,18 @@ func TestSmokeGetProperty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get_property call failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
 	}
-	
+
 	var getPropResult struct {
 		Value interface{} `json:"value"`
 		Type  string      `json:"type"`
 	}
-	
+
 	if err := json.Unmarshal(getPropResp.Result, &getPropResult); err != nil {
 		t.Fatalf("unmarshal get_property result: %v; raw=%s", err, getPropResp.Result)
 	}
-	
+
 	t.Logf("Retrieved property 'text' = %v (type: %s)", getPropResult.Value, getPropResult.Type)
-	
+
 	// Now test setting the property
 	newValue := "Modified by smoke test"
 	setPropResp, err := conn.Call(ctx, "set_property", map[string]any{
@@ -540,22 +540,22 @@ func TestSmokeGetProperty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("set_property call failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
 	}
-	
+
 	var setPropResult struct {
 		Success       bool        `json:"success"`
 		PreviousValue interface{} `json:"previous_value"`
 	}
-	
+
 	if err := json.Unmarshal(setPropResp.Result, &setPropResult); err != nil {
 		t.Fatalf("unmarshal set_property result: %v; raw=%s", err, setPropResp.Result)
 	}
-	
+
 	if !setPropResult.Success {
 		t.Fatalf("set_property returned success=false: %+v", setPropResult)
 	}
-	
+
 	t.Logf("Set property successfully, previous value was: %v", setPropResult.PreviousValue)
-	
+
 	// Verify the change by getting the property again
 	verifyResp, err := conn.Call(ctx, "get_property", map[string]any{
 		"selector": nodePath,
@@ -564,19 +564,19 @@ func TestSmokeGetProperty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get_property verification call failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
 	}
-	
+
 	var verifyResult struct {
 		Value interface{} `json:"value"`
 	}
-	
+
 	if err := json.Unmarshal(verifyResp.Result, &verifyResult); err != nil {
 		t.Fatalf("unmarshal verification result: %v; raw=%s", err, verifyResp.Result)
 	}
-	
+
 	if verifyResult.Value != newValue {
 		t.Fatalf("Verification failed: expected %q, got %q", newValue, verifyResult.Value)
 	}
-	
+
 	t.Logf("Property modification verified successfully")
 }
 
@@ -615,7 +615,7 @@ func TestSmokeScreenshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("screenshot call failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
 	}
-	
+
 	var screenshotResult struct {
 		B64PNG string `json:"b64png"`
 		Format string `json:"format"`
@@ -625,30 +625,30 @@ func TestSmokeScreenshot(t *testing.T) {
 		} `json:"size"`
 		Path string `json:"path"`
 	}
-	
+
 	if err := json.Unmarshal(screenshotResp.Result, &screenshotResult); err != nil {
 		t.Fatalf("unmarshal screenshot result: %v; raw=%s", err, screenshotResp.Result)
 	}
-	
-	t.Logf("Screenshot taken: %dx%d, format: %s, path: %s", 
-		screenshotResult.Size.X, screenshotResult.Size.Y, 
+
+	t.Logf("Screenshot taken: %dx%d, format: %s, path: %s",
+		screenshotResult.Size.X, screenshotResult.Size.Y,
 		screenshotResult.Format, screenshotResult.Path)
-	
+
 	if screenshotResult.B64PNG == "" {
 		t.Log("Screenshot result missing base64 data - this is expected in headless mode")
 		t.Skip("Screenshot test skipped in headless mode: no image data available")
 	}
-	
+
 	// Verify that the base64 data can be decoded
 	decoded, err := base64.StdEncoding.DecodeString(screenshotResult.B64PNG)
 	if err != nil {
 		t.Fatalf("Failed to decode base64 screenshot data: %v", err)
 	}
-	
+
 	if len(decoded) == 0 {
 		t.Fatalf("Decoded screenshot is empty")
 	}
-	
+
 	t.Logf("Screenshot data decoded successfully (%d bytes)", len(decoded))
 }
 
@@ -694,22 +694,22 @@ func TestSmokeClick(t *testing.T) {
 	if err := json.Unmarshal(btnQueryResp.Result, &btnQueryResult); err != nil {
 		t.Fatalf("unmarshal button query result: %v; raw=%s", err, btnQueryResp.Result)
 	}
-	
+
 	buttons, ok := btnQueryResult["nodes"].([]interface{})
 	if !ok || len(buttons) == 0 {
 		t.Fatalf("No buttons found in scene for click test")
 	}
-	
+
 	buttonData, ok := buttons[0].(map[string]interface{})
 	if !ok {
 		t.Fatalf("First button has wrong type: %T", buttons[0])
 	}
-	
+
 	buttonPath, exists := buttonData["path"].(string)
 	if !exists {
 		t.Fatalf("Button doesn't have path: %v", buttonData)
 	}
-	
+
 	t.Logf("Attempting to click button at path: %s", buttonPath)
 
 	// Click the button
@@ -720,25 +720,25 @@ func TestSmokeClick(t *testing.T) {
 	if err != nil {
 		t.Fatalf("input_mouse click failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
 	}
-	
+
 	var clickResult struct {
-		Success bool     `json:"success"`
-		Button  string   `json:"button"`
+		Success bool   `json:"success"`
+		Button  string `json:"button"`
 		Clicked struct {
 			X float64 `json:"x"`
 			Y float64 `json:"y"`
 		} `json:"clicked_at"`
 	}
-	
+
 	if err := json.Unmarshal(clickResp.Result, &clickResult); err != nil {
 		t.Fatalf("unmarshal click result: %v; raw=%s", err, clickResp.Result)
 	}
-	
+
 	if !clickResult.Success {
 		t.Fatalf("Click operation failed: %+v", clickResult)
 	}
-	
-	t.Logf("Click successful at (%.2f, %.2f), button: %s", 
+
+	t.Logf("Click successful at (%.2f, %.2f), button: %s",
 		clickResult.Clicked.X, clickResult.Clicked.Y, clickResult.Button)
 }
 
@@ -784,7 +784,7 @@ func TestSmokePressKey(t *testing.T) {
 	if err := json.Unmarshal(queryResp.Result, &queryResult); err != nil {
 		t.Fatalf("unmarshal LineEdit query result: %v; raw=%s", err, queryResp.Result)
 	}
-	
+
 	textInputs, ok := queryResult["nodes"].([]interface{})
 	if !ok || len(textInputs) == 0 {
 		t.Logf("Trying to find all scene nodes...\n")
@@ -802,17 +802,17 @@ func TestSmokePressKey(t *testing.T) {
 		}
 		t.Fatalf("No LineEdit controls found in scene for key press test, see tree above for available nodes")
 	}
-	
+
 	inputData, ok := textInputs[0].(map[string]interface{})
 	if !ok {
 		t.Fatalf("First text input has wrong type: %T", textInputs[0])
 	}
-	
+
 	inputPath, exists := inputData["path"].(string)
 	if !exists {
 		t.Fatalf("TextEdit doesn't have path: %v", inputData)
 	}
-	
+
 	t.Logf("Will press keys to target input at: %s", inputPath)
 
 	// Focus the input field by clicking on it
@@ -824,25 +824,25 @@ func TestSmokePressKey(t *testing.T) {
 		t.Logf("Non-fatal: could not focus input control: %v", focusErr)
 		// Continue anyway - some input events might work without explicit focus in headless
 	}
-	_ = focusResp  // Unused but captured to prevent warning
+	_ = focusResp // Unused but captured to prevent warning
 
 	// Send some key presses
 	pressKey1Resp, err := conn.Call(ctx, "input_key", map[string]any{
-		"key":        "A",
-		"hold_ms":    50,
+		"key":     "A",
+		"hold_ms": 50,
 	})
 	if err != nil {
 		t.Logf("Non-fatal: key press failed (may be normal in headless): %v", err)
 		// Key input can behave differently in headless and we'll continue anyway
 	}
-	
+
 	var pressKeyResult map[string]interface{}
-	json.Unmarshal(pressKey1Resp.Result, &pressKeyResult)  // Ignore error, just debug log
-	
+	json.Unmarshal(pressKey1Resp.Result, &pressKeyResult) // Ignore error, just debug log
+
 	// Try sending the 'Return' key
 	_, returnErr := conn.Call(ctx, "input_key", map[string]any{
-		"key":        "RETURN",
-		"hold_ms":    50,
+		"key":     "RETURN",
+		"hold_ms": 50,
 	})
 	if returnErr != nil {
 		t.Logf("Non-fatal: return key press failed: %v", returnErr)
@@ -861,10 +861,10 @@ func TestSmokePressKey(t *testing.T) {
 		}
 		var result map[string]interface{}
 		json.Unmarshal(resp.Result, &result)
-		
+
 		successVal, exists := result["success"].(bool)
 		keyVal, keyExists := result["key"].(string)
-		
+
 		if exists && successVal && keyExists {
 			t.Logf("Key '%s' pressed successfully", keyVal)
 		} else {
@@ -911,9 +911,9 @@ func TestSmokePressAction(t *testing.T) {
 	action := "ui_accept" // Use common default action
 
 	pressActionResp, err := conn.Call(ctx, "input_action", map[string]any{
-		"action":    action,
-		"strength":  1.0,
-		"hold_ms":   100,
+		"action":   action,
+		"strength": 1.0,
+		"hold_ms":  100,
 	})
 	if err != nil {
 		t.Logf("Action '%s' failed (expected if action not defined in project): %v", action, err)
@@ -922,14 +922,14 @@ func TestSmokePressAction(t *testing.T) {
 		// Try a few common default actions
 		alternateActions := []string{"ui_accept", "ui_select", "ui_cancel", "jump", "move_right", "confirm"}
 		tested := false
-		
+
 		for _, altAction := range alternateActions {
 			resp, err := conn.Call(ctx, "input_action", map[string]any{
-				"action":    altAction,
-				"strength":  1.0,
-				"hold_ms":   50,
+				"action":   altAction,
+				"strength": 1.0,
+				"hold_ms":  50,
 			})
-			
+
 			if err == nil {
 				var result map[string]interface{}
 				if err := json.Unmarshal(resp.Result, &result); err == nil {
@@ -948,7 +948,7 @@ func TestSmokePressAction(t *testing.T) {
 				}
 			}
 		}
-		
+
 		if !tested {
 			// Even without success, just verify the call structure was valid
 			t.Logf("Attempted action press, call structure is correct even though action '%s' is likely undefined in project", action)
@@ -968,7 +968,7 @@ func TestSmokePressAction(t *testing.T) {
 // TestSmokeAllMvpTools runs all the individual smoke tests together
 func TestSmokeAllMvpTools(t *testing.T) {
 	t.Run("find_nodes", TestSmokeFindNodes)
-	t.Run("get_set_property", TestSmokeGetProperty) 
+	t.Run("get_set_property", TestSmokeGetProperty)
 	t.Run("screenshot", TestSmokeScreenshot)
 	t.Run("click", TestSmokeClick)
 	t.Run("press_key", TestSmokePressKey)

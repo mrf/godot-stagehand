@@ -9,10 +9,10 @@ func Example() {
 	// New selectors
 	selectors := []string{
 		"text:Submit",
-		"meta:id=title", 
+		"meta:id=title",
 		"unique:submit-button",
 	}
-	
+
 	for _, s := range selectors {
 		chain, err := ParseChain(s)
 		if err != nil {
@@ -24,13 +24,13 @@ func Example() {
 			fmt.Printf("  First element: type=%v, value='%s'\n", (*chain)[0].Type, (*chain)[0].Value)
 		}
 	}
-	
+
 	// Chained selectors
 	chains := []string{
 		"name:Container >> text:OK",
 		"group:forms >> class:LineEdit >> unique:email-input",
 	}
-	
+
 	fmt.Println("\nChained examples:")
 	for _, s := range chains {
 		chain, err := ParseChain(s)
@@ -43,7 +43,7 @@ func Example() {
 			fmt.Printf("  Part %d: type=%v, value='%s'\n", i, selector.Type, selector.Value)
 		}
 	}
-	
+
 	// Output:
 	// text:Submit parsed as 1 element(s) in chain
 	//   First element: type=text, value='Submit'
