@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and release
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build release binaries
+        run: |
+          chmod +x build-release.sh
+          ./build-release.sh ${{ steps.version.outputs.VERSION }}
+
+      - name: Package artifacts
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          BUILD="build"
+
+          cp  "$BUILD/godot-stagehand-${VERSION}-linux-amd64"          godot-stagehand-linux-amd64
+          zip godot-stagehand-darwin-amd64.zip -j "$BUILD/godot-stagehand-${VERSION}-darwin-amd64"
+          zip godot-stagehand-darwin-arm64.zip  -j "$BUILD/godot-stagehand-${VERSION}-darwin-arm64"
+          cp  "$BUILD/godot-stagehand-${VERSION}-windows-amd64.exe"    godot-stagehand-windows-amd64.exe
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            godot-stagehand-linux-amd64
+            godot-stagehand-darwin-amd64.zip
+            godot-stagehand-darwin-arm64.zip
+            godot-stagehand-windows-amd64.exe

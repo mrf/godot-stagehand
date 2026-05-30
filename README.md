@@ -83,13 +83,24 @@ Target nodes using familiar patterns:
 
 This copies the addon, enables the plugin, and registers the autoload.
 
-### 2. Build the server
+### 2. Get the server binary
+
+Download the prebuilt binary for your platform from the [latest release](https://github.com/mrf/godot-stagehand/releases/latest):
+
+| Platform | File |
+|----------|------|
+| Linux x86-64 | `godot-stagehand-linux-amd64` |
+| macOS Apple Silicon | `godot-stagehand-darwin-arm64.zip` |
+| macOS Intel | `godot-stagehand-darwin-amd64.zip` |
+| Windows x86-64 | `godot-stagehand-windows-amd64.exe` |
+
+macOS: unzip the archive, then `chmod +x godot-stagehand-darwin-*`.
+
+**From source** (requires Go 1.25+):
 
 ```bash
 go build -o godot-stagehand .
 ```
-
-Requires Go 1.25+ and Godot 4.3+.
 
 ### 3. Run your game with Stagehand enabled
 
