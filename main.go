@@ -15,6 +15,9 @@ func main() {
 }
 
 func run() error {
+	if len(os.Args) > 1 && os.Args[1] == "setup" {
+		return runSetup(os.Args[2:])
+	}
 	srv := mcpserver.New()
 	return srv.Serve()
 }

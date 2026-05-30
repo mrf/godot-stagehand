@@ -75,21 +75,28 @@ Target nodes using familiar patterns:
 
 ## Setup
 
-### 1. Install the addon into your Godot project
-
-```bash
-./copy-addon.sh /path/to/your/godot/project
-```
-
-This copies the addon, enables the plugin, and registers the autoload.
-
-### 2. Build the server
+### 1. Build the server
 
 ```bash
 go build -o godot-stagehand .
 ```
 
 Requires Go 1.25+ and Godot 4.3+.
+
+### 2. Install into your Godot project (one command)
+
+```bash
+godot-stagehand setup /path/to/your/godot/project
+```
+
+This copies the addon, enables the plugin, and registers the `StagehandServer`
+autoload — idempotently, so it is safe to re-run. It then prints the MCP client
+config snippet (with this binary's detected path) and the exact command to run
+your game. Pass `--force` to overwrite an existing addon installation. On WSL it
+also prints WSL-specific connection guidance.
+
+> The old `./copy-addon.sh` script is deprecated; it now forwards to
+> `godot-stagehand setup`.
 
 ### 3. Run your game with Stagehand enabled
 
@@ -101,7 +108,8 @@ You should see `Stagehand: Server listening on port 26700` in the output.
 
 ### 4. Add to your MCP client
 
-Add to your MCP client config (e.g. `.claude/settings.json`):
+The `setup` command prints this snippet for you; add it to your MCP client config
+(e.g. `.claude/settings.json`):
 
 ```json
 {
@@ -136,7 +144,7 @@ Call `godot_connect` to attach to the running game. Local Linux/macOS and Linux 
 
 **Port conflict** — Another instance on 26700. Set `STAGEHAND_PORT=26701`.
 
-**Addon not in plugin list** — Run `./copy-addon.sh` again; it auto-enables the plugin and autoload.
+**Addon not in plugin list** — Run `godot-stagehand setup /path/to/project` again; it idempotently enables the plugin and autoload.
 
 ## License
 

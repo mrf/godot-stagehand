@@ -1,0 +1,13 @@
+; Engine configuration file.
+
+[application]
+
+config/name="Other Plugin Project"
+
+[autoload]
+
+ExistingService="*res://autoload/existing_service.gd"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/other/plugin.cfg")

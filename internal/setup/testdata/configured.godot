@@ -1,0 +1,14 @@
+; Engine configuration file.
+
+[application]
+
+config/name="Already Configured Project"
+run/main_scene="res://scenes/main.tscn"
+
+[autoload]
+
+StagehandServer="*res://addons/stagehand/autoload/stagehand_server.gd"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/stagehand/plugin.cfg")
