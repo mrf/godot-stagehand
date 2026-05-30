@@ -1,5 +1,7 @@
 # Godot Stagehand
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/mrf/godot-stagehand)](https://goreportcard.com/report/github.com/mrf/godot-stagehand)
+
 External automation and testing for running Godot games — like Playwright, but for game engines.
 
 **New to Stagehand?** → [Quickstart guide](docs/quickstart.md) — zero to connected in 5 minutes, no Go or JSON experience required.
