@@ -195,6 +195,34 @@ func TestParseChainErrors(t *testing.T) {
 	}
 }
 
+// TestParseLegacyMisclassifiesNewSelectors verifies that Parse() no longer
+// silently coerces newer selector forms into wrong types.
+func TestParseNewSelectorForms(t *testing.T) {
+	tests := []struct {
+		input     string
+		wantType  Type
+		wantValue string
+	}{
+		{"text:Click Me", Text, "Click Me"},
+		{"meta:id=submit", Meta, "id=submit"},
+		{"unique:login-button", Unique, "login-button"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			s, err := Parse(tc.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if s.Type != tc.wantType {
+				t.Errorf("type = %v, want %v (silent misclassification as path)", s.Type, tc.wantType)
+			}
+			if s.Value != tc.wantValue {
+				t.Errorf("value = %q, want %q", s.Value, tc.wantValue)
+			}
+		})
+	}
+}
+
 func TestTypeString(t *testing.T) {
 	if Path.String() != "path" {
 		t.Errorf("Path.String() = %q", Path.String())

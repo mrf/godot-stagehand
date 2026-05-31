@@ -49,9 +49,15 @@ type Selector struct {
 // Chain represents a sequence of selectors chained together with >>
 type Chain []*Selector
 
-// Legacy Parse function maintains the original behavior for backward compatibility
+// Parse parses a single selector string. It now routes through the full grammar
+// (same as ParseChain) so newer selector forms (text:, meta:, unique:) are
+// correctly classified rather than silently coerced to a path selector.
 func Parse(s string) (*Selector, error) {
-	return parseLegacy(s)
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, fmt.Errorf("selector is empty")
+	}
+	return parseSingleSelectorAllTypes(s)
 }
 
 // ParseChain parses a selector string that may contain chained selectors.
@@ -82,42 +88,9 @@ func ParseChain(s string) (*Chain, error) {
 	return &chain, nil
 }
 
-// parseLegacy keeps the original, backward-compatible parsing behavior
-func parseLegacy(s string) (*Selector, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return nil, fmt.Errorf("selector is empty")
-	}
-
-	for _, prefix := range []struct {
-		str string
-		typ Type
-	}{
-		{"name:", Name},
-		{"class:", Class},
-		{"group:", Group},
-	} {
-		if strings.HasPrefix(s, prefix.str) {
-			v := strings.TrimPrefix(s, prefix.str)
-			v = strings.TrimSpace(v)
-			if v == "" {
-				return nil, fmt.Errorf("selector %q has empty value", prefix.str)
-			}
-			return &Selector{Type: prefix.typ, Value: v}, nil
-		}
-	}
-
-	// No recognized prefix — treat as an exact node path.
-	return &Selector{Type: Path, Value: s}, nil
-}
-
-// parseSingleSelectorAllTypes parses a single selector with all available selector types
+// parseSingleSelectorAllTypes parses a single pre-trimmed, non-empty selector.
+// Callers (Parse, ParseChain) own the trim/empty guard.
 func parseSingleSelectorAllTypes(s string) (*Selector, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return nil, fmt.Errorf("selector is empty")
-	}
-
 	for _, prefix := range []struct {
 		str string
 		typ Type
