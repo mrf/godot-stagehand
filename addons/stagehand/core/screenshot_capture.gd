@@ -2,7 +2,7 @@
 class_name StagehandScreenshotCapture
 extends RefCounted
 
-const SelectorEngine := preload("res://addons/stagehand/core/selector_engine.gd")
+const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
 
 const DEFAULT_READY_FRAME_TIMEOUT: int = 8
 const MAX_READY_FRAME_TIMEOUT: int = 60
@@ -23,7 +23,7 @@ static func capture(tree: SceneTree, params: Dictionary) -> Dictionary:
 
 	if not full_page and params.has("selector"):
 		var selector_str: String = str(params["selector"])
-		var nodes: Array[Node] = SelectorEngine.query(tree, selector_str)
+		var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, selector_str)
 		if nodes.is_empty():
 			return _error("selector_not_found", "Selector not found: %s" % selector_str, {
 				"selector": selector_str,

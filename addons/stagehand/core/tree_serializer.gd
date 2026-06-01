@@ -2,7 +2,7 @@ class_name StagehandTreeSerializer
 extends RefCounted
 ## Serializes the scene tree and node properties into JSON-safe dictionaries.
 
-const SelectorEngine := preload("res://addons/stagehand/core/selector_engine.gd")
+const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
 
 
 ## Serialize a snapshot of the scene tree starting at [param root_node].
@@ -18,7 +18,7 @@ static func serialize_tree(root_node: Node, max_depth: int = 10, include_propert
 ## [param properties] is a list of property names to include per match.
 ## [param limit] caps the number of results.
 static func query_nodes(tree: SceneTree, selector: String, properties: Array[String] = [], limit: int = 50) -> Dictionary:
-	var nodes: Array[Node] = SelectorEngine.query(tree, selector)
+	var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, selector)
 	var results: Array[Dictionary] = []
 	var count: int = mini(nodes.size(), limit)
 	for i: int in range(count):

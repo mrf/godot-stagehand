@@ -2,8 +2,8 @@
 class_name StagehandPropertyHandler
 extends RefCounted
 
-const SelectorEngine := preload("res://addons/stagehand/core/selector_engine.gd")
-const StagehandTreeSerializer := preload("res://addons/stagehand/core/tree_serializer.gd")
+const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
+const TREE_SERIALIZER := preload("res://addons/stagehand/core/tree_serializer.gd")
 
 
 ## Get a property from a node matched by a selector.
@@ -15,17 +15,17 @@ static func get_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if selector.is_empty() or property.is_empty():
 		return {"error": "Missing selector or property"}
 
-	var nodes: Array[Node] = SelectorEngine.query(tree, selector)
+	var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, selector)
 	if nodes.is_empty():
 		return {"error": "Node not found for selector: %s" % selector}
 
 	var node: Node = nodes[0]
-	var value: Variant = StagehandTreeSerializer._get_property_deep(node, property)
+	var value: Variant = TREE_SERIALIZER._get_property_deep(node, property)
 	if value == null and not _has_property(node, property):
 		return {"error": "Property not found: %s" % property}
 
 	return {
-		"value": StagehandTreeSerializer._to_json_safe(value),
+		"value": TREE_SERIALIZER._to_json_safe(value),
 		"type": type_string(typeof(value)),
 	}
 
@@ -38,7 +38,7 @@ static func set_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if selector.is_empty() or property.is_empty():
 		return {"error": "Missing selector or property"}
 
-	var nodes: Array[Node] = SelectorEngine.query(tree, selector)
+	var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, selector)
 	if nodes.is_empty():
 		return {"error": "Node not found for selector: %s" % selector}
 
@@ -50,7 +50,7 @@ static func set_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 
 	return {
 		"success": true,
-		"previous_value": StagehandTreeSerializer._to_json_safe(previous),
+		"previous_value": TREE_SERIALIZER._to_json_safe(previous),
 	}
 
 
@@ -84,7 +84,7 @@ static func _get_property_at_level(node: Node, property: String) -> Variant:
 		var obj: Variant = node.get(top) if node != null else null
 		if obj == null:
 			return null
-		return StagehandTreeSerializer._get_property_deep(node, property)
+		return TREE_SERIALIZER._get_property_deep(node, property)
 	return node.get(property) if node != null else null
 
 

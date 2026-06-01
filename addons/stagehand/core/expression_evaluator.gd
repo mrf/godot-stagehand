@@ -10,8 +10,8 @@
 class_name StagehandExpressionEvaluator
 extends RefCounted
 
-const SelectorEngine := preload("res://addons/stagehand/core/selector_engine.gd")
-const StagehandTreeSerializer := preload("res://addons/stagehand/core/tree_serializer.gd")
+const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
+const TREE_SERIALIZER := preload("res://addons/stagehand/core/tree_serializer.gd")
 
 
 ## Evaluate an expression with the matched node available as `self`.
@@ -28,7 +28,7 @@ static func evaluate(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if context_node.is_empty():
 		base_node = tree.root
 	else:
-		var nodes: Array[Node] = SelectorEngine.query(tree, context_node)
+		var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, context_node)
 		if nodes.is_empty():
 			return {"error": "Node not found for context_node: %s" % context_node}
 		base_node = nodes[0]
@@ -43,6 +43,6 @@ static func evaluate(tree: SceneTree, params: Dictionary) -> Dictionary:
 		return {"error": "Execution error: %s" % expr.get_error_text()}
 
 	return {
-		"value": StagehandTreeSerializer._to_json_safe(result),
+		"value": TREE_SERIALIZER._to_json_safe(result),
 		"type": type_string(typeof(result)),
 	}

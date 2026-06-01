@@ -5,8 +5,8 @@
 class_name StagehandMethodHandler
 extends RefCounted
 
-const SelectorEngine := preload("res://addons/stagehand/core/selector_engine.gd")
-const StagehandTreeSerializer := preload("res://addons/stagehand/core/tree_serializer.gd")
+const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
+const TREE_SERIALIZER := preload("res://addons/stagehand/core/tree_serializer.gd")
 
 ## Methods that are always blocked regardless of context.
 const BLOCKED_METHODS: PackedStringArray = [
@@ -35,7 +35,7 @@ static func call_method(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if not err.is_empty():
 		return {"error": err}
 
-	var nodes: Array[Node] = SelectorEngine.query(tree, selector)
+	var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, selector)
 	if nodes.is_empty():
 		return {"error": "Node not found for selector: %s" % selector}
 
@@ -49,7 +49,7 @@ static func call_method(tree: SceneTree, params: Dictionary) -> Dictionary:
 
 	return {
 		"success": true,
-		"return_value": StagehandTreeSerializer._to_json_safe(result),
+		"return_value": TREE_SERIALIZER._to_json_safe(result),
 	}
 
 
