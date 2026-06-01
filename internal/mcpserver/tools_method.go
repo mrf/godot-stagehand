@@ -41,15 +41,17 @@ var changeSceneTool = mcp.NewTool("godot_change_scene",
 		mcp.Required(),
 		mcp.Description("Resource path to the new scene, e.g. \"res://scenes/main_menu.tscn\""),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handleChangeScene(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	scenePath, err := req.RequireString("scene_path")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	result, errResult := s.callGodot(ctx, "change_scene", map[string]any{
+	result, errResult := s.callGodotInstance(ctx, instanceID, "change_scene", map[string]any{
 		"scene_path": scenePath,
 	})
 	if errResult != nil {
@@ -76,9 +78,11 @@ var callMethodTool = mcp.NewTool("godot_call_method",
 		mcp.Description("Allow calling on multiple matched nodes"),
 		mcp.DefaultBool(false),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handleCallMethod(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	selector, err := req.RequireString("selector")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -107,7 +111,7 @@ func (s *Server) handleCallMethod(ctx context.Context, req mcp.CallToolRequest) 
 		params["allow_multiple"] = allowMultiple
 	}
 
-	result, errResult := s.callGodot(ctx, "call_method", params)
+	result, errResult := s.callGodotInstance(ctx, instanceID, "call_method", params)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -124,9 +128,11 @@ var evaluateTool = mcp.NewTool("godot_evaluate",
 	mcp.WithString("context_node",
 		mcp.Description("Optional node path to use as 'self' context"),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handleEvaluate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	expression, err := req.RequireString("expression")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -142,7 +148,7 @@ func (s *Server) handleEvaluate(ctx context.Context, req mcp.CallToolRequest) (*
 		params["context_node"] = ctxNode
 	}
 
-	result, errResult := s.callGodot(ctx, "evaluate", params)
+	result, errResult := s.callGodotInstance(ctx, instanceID, "evaluate", params)
 	if errResult != nil {
 		return errResult, nil
 	}

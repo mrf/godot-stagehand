@@ -36,6 +36,8 @@ func TestNew_RegistersAllTools(t *testing.T) {
 		"godot_connect",
 		"godot_launch",
 		"godot_status",
+		"godot_list_instances",
+		"godot_disconnect",
 		"godot_get_game_state",
 		"godot_get_tree",
 		"godot_find_nodes",
@@ -69,8 +71,8 @@ func TestNew_RegistersAllTools(t *testing.T) {
 		}
 	}
 
-	if len(tools) != len(expected) {
-		t.Errorf("expected %d tools, got %d", len(expected), len(tools))
+	if got, want := len(tools), len(expected); got != want {
+		t.Errorf("expected %d tools, got %d", want, got)
 	}
 }
 
@@ -329,7 +331,7 @@ func TestStatusWhenNotConnected(t *testing.T) {
 	if !ok {
 		t.Fatal("expected TextContent")
 	}
-	if !strings.Contains(text.Text, "not connected") {
+	if !strings.Contains(text.Text, "not connected") && !strings.Contains(text.Text, "No active") {
 		t.Errorf("expected 'not connected' in status output, got: %s", text.Text)
 	}
 }

@@ -37,9 +37,11 @@ var waitForNodeTool = mcp.NewTool("godot_wait_for_node",
 		mcp.Min(10),
 		mcp.Max(5000),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handleWaitForNode(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	selector, err := req.RequireString("selector")
 	if err != nil {
 		return mcp.NewToolResultError("Invalid 'selector' parameter: " + err.Error()), nil
@@ -61,7 +63,7 @@ func (s *Server) handleWaitForNode(ctx context.Context, req mcp.CallToolRequest)
 	waitCtx, cancel := context.WithTimeout(ctx, deadline)
 	defer cancel()
 
-	result, errResult := s.callGodot(waitCtx, "wait_for_node", params)
+	result, errResult := s.callGodotInstance(waitCtx, instanceID, "wait_for_node", params)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -84,9 +86,11 @@ var waitForSignalTool = mcp.NewTool("godot_wait_for_signal",
 		mcp.Min(1),
 		mcp.Max(60000),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handleWaitForSignal(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	selector, err := req.RequireString("selector")
 	if err != nil {
 		return mcp.NewToolResultError("Invalid 'selector' parameter: " + err.Error()), nil
@@ -112,7 +116,7 @@ func (s *Server) handleWaitForSignal(ctx context.Context, req mcp.CallToolReques
 	waitCtx, cancel := context.WithTimeout(ctx, deadline)
 	defer cancel()
 
-	result, errResult := s.callGodot(waitCtx, "wait_signal", params)
+	result, errResult := s.callGodotInstance(waitCtx, instanceID, "wait_signal", params)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -149,9 +153,11 @@ var waitForPropertyTool = mcp.NewTool("godot_wait_for_property",
 	mcp.WithAny("expected_value",
 		mcp.Description("Value to compare against based on operator"),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handleWaitForProperty(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	selector, err := req.RequireString("selector")
 	if err != nil {
 		return mcp.NewToolResultError("Invalid 'selector' parameter: " + err.Error()), nil
@@ -194,7 +200,7 @@ func (s *Server) handleWaitForProperty(ctx context.Context, req mcp.CallToolRequ
 	waitCtx, cancel := context.WithTimeout(ctx, deadline)
 	defer cancel()
 
-	result, errResult := s.callGodot(waitCtx, "wait_for_property", params)
+	result, errResult := s.callGodotInstance(waitCtx, instanceID, "wait_for_property", params)
 	if errResult != nil {
 		return errResult, nil
 	}

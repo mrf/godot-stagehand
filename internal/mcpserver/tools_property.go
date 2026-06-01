@@ -17,9 +17,11 @@ var getPropertyTool = mcp.NewTool("godot_get_property",
 		mcp.Required(),
 		mcp.Description("Property name, supports dot notation (e.g. \"position.x\")"),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handleGetProperty(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	selector, err := req.RequireString("selector")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -33,7 +35,7 @@ func (s *Server) handleGetProperty(ctx context.Context, req mcp.CallToolRequest)
 		return errResult, nil
 	}
 
-	result, errResult := s.callGodot(ctx, "get_property", map[string]any{
+	result, errResult := s.callGodotInstance(ctx, instanceID, "get_property", map[string]any{
 		"selector": selector,
 		"property": property,
 	})
@@ -58,9 +60,11 @@ var setPropertyTool = mcp.NewTool("godot_set_property",
 		mcp.Required(),
 		mcp.Description("New property value"),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handleSetProperty(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	selector, err := req.RequireString("selector")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -79,7 +83,7 @@ func (s *Server) handleSetProperty(ctx context.Context, req mcp.CallToolRequest)
 		return errResult, nil
 	}
 
-	result, errResult := s.callGodot(ctx, "set_property", map[string]any{
+	result, errResult := s.callGodotInstance(ctx, instanceID, "set_property", map[string]any{
 		"selector": selector,
 		"property": property,
 		"value":    value,

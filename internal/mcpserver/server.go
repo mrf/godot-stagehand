@@ -4,36 +4,40 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/mrf/godot-stagehand/internal/godotconn"
-	"github.com/mrf/godot-stagehand/internal/launch"
 	"github.com/mrf/godot-stagehand/internal/selector"
 )
 
-// Server wraps an MCP server and manages the Godot connection.
+// instanceIDOpt is the shared mcp.ToolOption that adds the optional instance_id
+// parameter to every tool that targets a specific Godot connection.
+var instanceIDOpt = mcp.WithString("instance_id",
+	mcp.Description(`Instance to target (default: "default"). Use distinct IDs to manage multiple simultaneous Godot connections.`),
+	mcp.DefaultString("default"),
+)
+
+// instanceIDFrom extracts the instance_id from a tool request, defaulting to "default".
+func instanceIDFrom(req mcp.CallToolRequest) string {
+	return req.GetString("instance_id", "default")
+}
+
+// Server wraps an MCP server and manages Godot connections.
 type Server struct {
-	mcp *server.MCPServer
-
-	mu   sync.RWMutex
-	conn *godotconn.Connection
-
-	muLaunch     sync.RWMutex
-	launchResult *launch.LaunchResult
+	mcp       *server.MCPServer
+	instances *instanceManager
 
 	// baselineDir is the directory where screenshot baselines are stored.
 	baselineDir string
-
-	// artifactDir is where failed-diff artifacts (the captured frame and the
-	// diff visualization) are written so downstream tooling can inspect them.
+	// artifactDir is where failed-diff artifacts are written.
 	artifactDir string
 }
 
 // New creates a new MCP server with all Godot tools registered.
 func New() *Server {
 	s := &Server{
+		instances:   newInstanceManager(),
 		baselineDir: "stagehand-baselines",
 		artifactDir: "stagehand-diffs",
 	}
@@ -49,71 +53,51 @@ func New() *Server {
 }
 
 // Serve runs the MCP server over stdio with signal-based graceful shutdown.
-func (s *Server) cleanup() {
-	s.killExistingLaunch()
-	s.clearConn()
-}
-
 func (s *Server) Serve() error {
-	defer s.cleanup()
+	defer s.instances.closeAll()
 	return server.ServeStdio(s.mcp)
 }
 
-// setConn stores a new Godot connection.
+// ── backward-compat wrappers used by tests ────────────────────────────────────
+
+// setConn stores conn as the "default" instance (used by tests).
 func (s *Server) setConn(conn *godotconn.Connection) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.conn = conn
+	h, p := parseHostPort(conn.Addr())
+	s.instances.add("default", h, p, conn, nil)
 }
 
-// clearConn closes and clears the current Godot connection.
+// clearConn closes and removes the "default" instance connection (used by tests).
 func (s *Server) clearConn() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.conn != nil {
-		s.conn.Close()
-		s.conn = nil
-	}
+	s.instances.remove("default")
 }
 
-// getConn returns the current Godot connection, or nil.
+// getConn returns the connection for the "default" instance, or nil (used by tests).
 func (s *Server) getConn() *godotconn.Connection {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.conn
-}
-
-// setLaunchResult stores the result of a successful godot_launch.
-func (s *Server) setLaunchResult(result *launch.LaunchResult) {
-	s.muLaunch.Lock()
-	defer s.muLaunch.Unlock()
-	s.launchResult = result
-}
-
-// getLaunchResult returns the current launch result, or nil.
-func (s *Server) getLaunchResult() *launch.LaunchResult {
-	s.muLaunch.RLock()
-	defer s.muLaunch.RUnlock()
-	return s.launchResult
-}
-
-// killExistingLaunch kills any previously launched Godot process and clears the launch result.
-func (s *Server) killExistingLaunch() {
-	s.muLaunch.Lock()
-	defer s.muLaunch.Unlock()
-	if s.launchResult != nil {
-		// Close the connection first.
-		if s.launchResult.Conn != nil {
-			s.launchResult.Conn.Close()
-		}
-		// Kill the process.
-		_ = s.launchResult.Kill()
-		s.launchResult = nil
+	if e := s.instances.get("default"); e != nil {
+		return e.conn
 	}
+	return nil
 }
+
+// ── connection helpers ────────────────────────────────────────────────────────
+
+// requireConnForInstance returns the connection for instanceID, or an MCP error.
+func (s *Server) requireConnForInstance(instanceID string) (*godotconn.Connection, *mcp.CallToolResult) {
+	e := s.instances.get(instanceID)
+	if e == nil {
+		if instanceID == "default" {
+			return nil, mcp.NewToolResultError("Not connected. Call godot_connect or godot_launch first.")
+		}
+		return nil, mcp.NewToolResultError(
+			fmt.Sprintf("Instance %q not found. Call godot_connect or godot_launch with instance_id=%q first.", instanceID, instanceID),
+		)
+	}
+	return e.conn, nil
+}
+
+// ── validation helpers ────────────────────────────────────────────────────────
 
 // validateSelector parses and validates a selector string via ParseChain.
-// Returns an MCP error result if invalid, nil if valid.
 func validateSelector(sel string) *mcp.CallToolResult {
 	if _, err := selector.ParseChain(sel); err != nil {
 		return mcp.NewToolResultError("invalid selector: " + err.Error())
@@ -121,9 +105,7 @@ func validateSelector(sel string) *mcp.CallToolResult {
 	return nil
 }
 
-// toolResultToError extracts the text from an MCP error result and returns it
-// as a Go error. Used by internal helpers that need to convert MCP-style errors
-// into standard errors.
+// toolResultToError extracts the text from an MCP error result as a Go error.
 func toolResultToError(result *mcp.CallToolResult, fallback string) error {
 	if len(result.Content) > 0 {
 		if tc, ok := mcp.AsTextContent(result.Content[0]); ok {
@@ -133,22 +115,7 @@ func toolResultToError(result *mcp.CallToolResult, fallback string) error {
 	return fmt.Errorf("%s", fallback)
 }
 
-// requireConn returns the connection or an MCP error result if not connected.
-func (s *Server) requireConn() (*godotconn.Connection, *mcp.CallToolResult) {
-	conn := s.getConn()
-	if conn == nil {
-		return nil, mcp.NewToolResultError(
-			"Not connected. Call godot_connect or godot_launch first.",
-		)
-	}
-	return conn, nil
-}
-
 // checkGodotResult inspects a raw JSON result for a top-level "error" key.
-// The GDScript addon returns handler-level errors as {"error": "..."} in an
-// otherwise successful JSON-RPC response. This helper surfaces them as MCP
-// errors so callers get a clear message instead of a confusing decode failure.
-// Returns nil when no error key is present.
 func checkGodotResult(raw json.RawMessage) *mcp.CallToolResult {
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &m); err != nil {
@@ -186,9 +153,9 @@ func formatGodotError(message string, code string, detailsMap map[string]any) st
 	return message
 }
 
-// callGodot sends a JSON-RPC method to the Godot addon and returns the raw result.
-func (s *Server) callGodot(ctx context.Context, method string, params any) (json.RawMessage, *mcp.CallToolResult) {
-	conn, errResult := s.requireConn()
+// callGodotInstance sends a JSON-RPC method to the named Godot instance.
+func (s *Server) callGodotInstance(ctx context.Context, instanceID, method string, params any) (json.RawMessage, *mcp.CallToolResult) {
+	conn, errResult := s.requireConnForInstance(instanceID)
 	if errResult != nil {
 		return nil, errResult
 	}
@@ -202,10 +169,19 @@ func (s *Server) callGodot(ctx context.Context, method string, params any) (json
 	return resp.Result, nil
 }
 
+// callGodot sends a JSON-RPC method to the default Godot instance.
+func (s *Server) callGodot(ctx context.Context, method string, params any) (json.RawMessage, *mcp.CallToolResult) {
+	return s.callGodotInstance(ctx, "default", method, params)
+}
+
+// ── tool registration ─────────────────────────────────────────────────────────
+
 func (s *Server) registerTools() {
 	s.mcp.AddTool(connectTool, s.handleConnect)
 	s.mcp.AddTool(launchTool, s.handleLaunch)
 	s.mcp.AddTool(statusTool, s.handleStatus)
+	s.mcp.AddTool(listInstancesTool, s.handleListInstances)
+	s.mcp.AddTool(disconnectTool, s.handleDisconnect)
 	s.mcp.AddTool(getGameStateTool, s.handleGetGameState)
 	s.mcp.AddTool(getTreeTool, s.handleGetTree)
 	s.mcp.AddTool(findNodesTool, s.handleFindNodes)

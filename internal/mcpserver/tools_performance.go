@@ -15,15 +15,17 @@ var getPerformanceTool = mcp.NewTool("godot_get_performance",
 		mcp.Description("Performance monitor names to query (e.g. TIME_FPS, MEMORY_STATIC). Returns a default set if omitted."),
 		mcp.WithStringItems(),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handleGetPerformance(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	params := map[string]any{}
 	if monitors := req.GetStringSlice("monitors", nil); len(monitors) > 0 {
 		params["monitors"] = monitors
 	}
 
-	result, errResult := s.callGodot(ctx, "get_performance", params)
+	result, errResult := s.callGodotInstance(ctx, instanceID, "get_performance", params)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -46,6 +48,7 @@ var assertPerformanceTool = mcp.NewTool("godot_assert_performance",
 		mcp.DefaultString("lte"),
 		mcp.Enum("lt", "lte", "gt", "gte", "eq"),
 	),
+	instanceIDOpt,
 )
 
 type assertPerformanceResult struct {
@@ -58,6 +61,7 @@ type assertPerformanceResult struct {
 }
 
 func (s *Server) handleAssertPerformance(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	monitor, err := req.RequireString("monitor")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -75,7 +79,7 @@ func (s *Server) handleAssertPerformance(ctx context.Context, req mcp.CallToolRe
 		"op":        op,
 	}
 
-	raw, errResult := s.callGodot(ctx, "assert_performance", params)
+	raw, errResult := s.callGodotInstance(ctx, instanceID, "assert_performance", params)
 	if errResult != nil {
 		return errResult, nil
 	}
