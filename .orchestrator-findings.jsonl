@@ -1,0 +1,2 @@
+{"title":"testdata/test_project/scenes/test_scene.tscn missing [gd_scene] header","body":"File starts directly with [node ...] with no [gd_scene load_steps=N format=3] header — broken for Godot 4 parsing. Needs same Godot 3→4 conversion as examples/minimal-game/Main.tscn.","priority":2,"labels":["bug"]}
+{"title":"testdata/screenshot_fixture/scenes/pixel_fixture.tscn missing uid in [gd_scene] header","body":"Header has format=3 but no uid= attribute, and may have other Godot 3 remnants. Should be audited and re-saved under Godot 4.6.","priority":3,"labels":["bug"]}
