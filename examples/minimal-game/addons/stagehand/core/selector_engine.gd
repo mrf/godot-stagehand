@@ -22,91 +22,78 @@ enum SelectorType {
 
 
 static func query(tree: SceneTree, selector: String) -> Array[Node]:
-	# Check if selector is a chained selector (contains >>)
 	if selector.contains(">>"):
 		return query_chained_selector(tree, selector)
-	else:
-		# For backward compatibility, use simple parsing
-		var parsed := parse(selector)
-		if parsed.is_empty():
-			return [] as Array[Node]
-		return _resolve(tree, parsed)
+	var parsed: Dictionary = parse(selector)
+	if parsed.is_empty():
+		return [] as Array[Node]
+	return _resolve(tree, parsed)
 
 
-# Split and process a chained selector string
 static func query_chained_selector(tree: SceneTree, selector_str: String) -> Array[Node]:
-	var parts := selector_str.split(">>", false)
-	
-	# Parse each part of the chain
-	var parsed_parts := [] as Array[Dictionary]
+	var parts: PackedStringArray = selector_str.split(">>", false)
+
+	var parsed_parts: Array[Dictionary] = []
 	for part: String in parts:
-		var trimmedPart := part.strip_edges()
-		if trimmedPart.is_empty():
+		var trimmed_part: String = part.strip_edges()
+		if trimmed_part.is_empty():
 			push_error("Invalid empty selector part in chain: %s" % selector_str)
 			return [] as Array[Node]
-		var parsed := parse(trimmedPart)  # Reuse existing parsing logic
+		var parsed: Dictionary = parse(trimmed_part)
 		if parsed.is_empty():
-			push_error("Failed to parse selector part: %s" % trimmedPart)
+			push_error("Failed to parse selector part: %s" % trimmed_part)
 			return [] as Array[Node]
 		parsed_parts.append(parsed)
-	
-	# Start with root for the first selector OR find initial matches
-	var current_matches: Array[Node] = []
-	if parsed_parts[0].type == SelectorType.PATH:
-		current_matches = _resolve_path(tree, parsed_parts[0].value)
-	else:
-		current_matches = _resolve(tree, parsed_parts[0])
-	
-	# Process the rest of the chain elements
-	for i in range(1, parsed_parts.size()):
+
+	var current_matches: Array[Node] = _resolve(tree, parsed_parts[0])
+
+	for i: int in range(1, parsed_parts.size()):
 		var next_result: Array[Node] = []
-		var current_selector = parsed_parts[i]
-		for node in current_matches:
-			# Scope the next selector only to the subtree of this node
-			var scoped_matches = _resolve_scoped(node, current_selector)
-			next_result.append_array(scoped_matches)
-		current_matches = next_result.duplicate()  # Update matches
-	
+		var current_selector: Dictionary = parsed_parts[i]
+		for node: Node in current_matches:
+			next_result.append_array(_resolve_scoped(node, current_selector))
+		current_matches = next_result
+
 	return current_matches
 
 
 static func parse(selector: String) -> Dictionary:
-	var trimmed := selector.strip_edges()
+	var trimmed: String = selector.strip_edges()
 	if trimmed.is_empty():
 		return {}
 
 	if trimmed.begins_with("name:"):
-		var pattern := trimmed.substr(5)
+		var pattern: String = trimmed.substr(5)
 		if pattern.is_empty():
 			return {}
 		return {type = SelectorType.NAME, value = pattern}
 
 	if trimmed.begins_with("class:"):
-		var class_name_ := trimmed.substr(6)
+		var class_name_: String = trimmed.substr(6)
 		if class_name_.is_empty():
 			return {}
 		return {type = SelectorType.CLASS, value = class_name_}
 
 	if trimmed.begins_with("group:"):
-		var group_name := trimmed.substr(6)
+		var group_name: String = trimmed.substr(6)
 		if group_name.is_empty():
 			return {}
 		return {type = SelectorType.GROUP, value = group_name}
 
 	if trimmed.begins_with("text:"):
-		var text_content := trimmed.substr(5)
+		var text_content: String = trimmed.substr(5)
 		if text_content.is_empty():
 			return {}
 		return {type = SelectorType.TEXT, value = text_content}
 
 	if trimmed.begins_with("meta:"):
-		var meta_data := trimmed.substr(5)
+		var meta_data: String = trimmed.substr(5)
 		if meta_data.is_empty():
 			return {}
 		return {type = SelectorType.META, value = meta_data}
 
 	if trimmed.begins_with("unique:"):
-		var unique_id := trimmed.substr(7)
+		var unique_id: String = trimmed.substr(7)
 		if unique_id.is_empty():
 			return {}
 		return {type = SelectorType.UNIQUE, value = unique_id}
@@ -138,7 +125,6 @@ static func _resolve(tree: SceneTree, parsed: Dictionary) -> Array[Node]:
 	return [] as Array[Node]
 
 
-# Resolve selector but only within and under a given node (for chaining)
 static func _resolve_scoped(parent_node: Node, parsed: Dictionary) -> Array[Node]:
 	var type: SelectorType = parsed.type
 	var value: String = parsed.value
@@ -163,17 +149,17 @@ static func _resolve_scoped(parent_node: Node, parsed: Dictionary) -> Array[Node
 
 
 static func _resolve_path(tree: SceneTree, path: String) -> Array[Node]:
-	var root := tree.root
+	var root: Window = tree.root
 	if root == null:
 		return [] as Array[Node]
-	var node := root.get_node_or_null(NodePath(path))
+	var node: Node = root.get_node_or_null(NodePath(path))
 	if node == null:
 		return [] as Array[Node]
 	return [node] as Array[Node]
 
 
 static func _resolve_name(tree: SceneTree, pattern: String) -> Array[Node]:
-	var root := tree.root
+	var root: Window = tree.root
 	if root == null:
 		return [] as Array[Node]
 	# find_children handles both glob patterns (*, ?) and exact names.
@@ -183,7 +169,7 @@ static func _resolve_name(tree: SceneTree, pattern: String) -> Array[Node]:
 
 
 static func _resolve_class(tree: SceneTree, class_name_: String) -> Array[Node]:
-	var root := tree.root
+	var root: Window = tree.root
 	if root == null:
 		return [] as Array[Node]
 	var results: Array[Node] = []
@@ -201,28 +187,12 @@ static func _resolve_group(tree: SceneTree, group_name: String) -> Array[Node]:
 
 
 static func _resolve_text(tree: SceneTree, text_pattern: String) -> Array[Node]:
-	var root := tree.root
+	var root: Window = tree.root
 	if root == null:
 		return [] as Array[Node]
 	var results: Array[Node] = []
 	_walk(root, func(node: Node) -> void:
-		# Check various text-related properties across different control types
-		var node_text := ""
-		
-		# Get text content based on node type
-		if node.has_method("get_text"):
-			node_text = node.get_text()
-		elif node.has_method("get_label"):
-			node_text = node.get_label()
-		elif node.has_method("get_title"):
-			node_text = node.get_title()
-		elif "text" in node:
-			node_text = node.text
-		elif "label" in node:
-			node_text = node.label
-		elif "title" in node:
-			node_text = node.title
-		
+		var node_text: String = _get_node_text(node)
 		if node_text != "" and _matches_pattern(node_text, text_pattern):
 			results.append(node)
 	)
@@ -230,80 +200,44 @@ static func _resolve_text(tree: SceneTree, text_pattern: String) -> Array[Node]:
 
 
 static func _resolve_meta(tree: SceneTree, meta_expr: String) -> Array[Node]:
-	var root := tree.root
+	var root: Window = tree.root
 	if root == null:
 		return [] as Array[Node]
 	var results: Array[Node] = []
-	
-	# Parse meta expression (key=value or key)
-	var meta_key := meta_expr
-	var expected_value: String = ""
-	if meta_expr.contains("="):
-		var parts := meta_expr.split("=", false, 1)
-		meta_key = parts[0]
-		expected_value = parts[1] if parts.size() > 1 else ""
-	
-	_walk(root, func(node: Node) -> void:
-		if meta_key in node:
-			var actual_value = node[meta_key]
-			if expected_value.is_empty():
-				results.append(node)
-			elif str(actual_value).match(expected_value):
-				results.append(node)
-		elif node.has_meta(meta_key):
-			var actual_value = node.get_meta(meta_key)
-			if expected_value.is_empty():
-				results.append(node)
-			elif str(actual_value).match(expected_value):
-				results.append(node)
-	)
-	return results
+	var parsed: Array = _parse_meta_expr(meta_expr)
+	var meta_key: String = parsed[0]
+	var expected_value: String = parsed[1]
 
-
-static func _resolve_unique(tree: SceneTree, unique_identifier: String) -> Array[Node]:
-	var root := tree.root
-	if root == null:
-		return [] as Array[Node]
-	var results: Array[Node] = []
 	_walk(root, func(node: Node) -> void:
-		# Look for unique identifiers like name patterns, specific properties, etc.
-		# Could be node.name, node.hint_tooltip, custom properties, etc.
-		var identifier_matches := false
-		
-		# Match against node name first
-		if _matches_pattern(node.name, unique_identifier):
-			identifier_matches = true
-		# Check other likely unique identifiers
-		elif "hint_tooltip" in node and node.hint_tooltip.match(unique_identifier):
-			identifier_matches = true
-		elif "placeholder_text" in node and node.placeholder_text.match(unique_identifier):
-			identifier_matches = true
-		elif "accessible_role" in node and str(node.accessible_role).to_lower().match(unique_identifier.to_lower()):
-			identifier_matches = true
-		
-		if identifier_matches:
+		if _node_matches_meta(node, meta_key, expected_value):
 			results.append(node)
 	)
 	return results
 
 
-# Scoped resolution helpers
+static func _resolve_unique(tree: SceneTree, unique_identifier: String) -> Array[Node]:
+	var root: Window = tree.root
+	if root == null:
+		return [] as Array[Node]
+	var results: Array[Node] = []
+	_walk(root, func(node: Node) -> void:
+		if _check_unique_match(node, unique_identifier):
+			results.append(node)
+	)
+	return results
+
 
 static func _resolve_path_from_parent(parent: Node, path: String) -> Array[Node]:
-	if not path.begins_with("/"):
-		# Relative path from parent
-		var node := parent.get_node_or_null(NodePath(path))
-		if node == null:
-			return [] as Array[Node]
-		return [node] as Array[Node]
-	else:
-		# Absolute path, return empty for parent-scoped search since root is defined
+	if path.begins_with("/"):
 		return [] as Array[Node]
+	var node: Node = parent.get_node_or_null(NodePath(path))
+	if node == null:
+		return [] as Array[Node]
+	return [node] as Array[Node]
 
 
 static func _resolve_name_from_parent(parent: Node, pattern: String) -> Array[Node]:
 	var results: Array[Node] = []
-	# Use find_children from the parent (this already searches descendants)
 	results.assign(parent.find_children(pattern))
 	return results
 
@@ -311,18 +245,17 @@ static func _resolve_name_from_parent(parent: Node, pattern: String) -> Array[No
 static func _resolve_class_from_parent(parent: Node, class_name_: String) -> Array[Node]:
 	var results: Array[Node] = []
 	_walk(parent, func(node: Node) -> void:
-		if node != parent and node.is_class(class_name_):  # Exclude the parent node itself
+		if node != parent and node.is_class(class_name_):
 			results.append(node)
 	)
 	return results
 
 
 static func _resolve_group_from_parent(parent: Node, group_name: String) -> Array[Node]:
-	# Get all nodes in the group, then filter for descendants of parent
-	var all_nodes_in_group = parent.tree.get_nodes_in_group(group_name)
+	var all_nodes_in_group: Array[Node] = parent.get_tree().get_nodes_in_group(group_name)
 	var results: Array[Node] = []
-	for node in all_nodes_in_group:
-		if _is_ancestor_of(node, parent) and node != parent:  # node is child/descendant of parent, exclude parent itself
+	for node: Node in all_nodes_in_group:
+		if node != parent and _is_ancestor_of(node, parent):
 			results.append(node)
 	return results
 
@@ -330,21 +263,8 @@ static func _resolve_group_from_parent(parent: Node, group_name: String) -> Arra
 static func _resolve_text_from_parent(parent: Node, text_pattern: String) -> Array[Node]:
 	var results: Array[Node] = []
 	_walk(parent, func(node: Node) -> void:
-		if node != parent:  # Exclude parent node itself
-			var node_text := ""
-			if node.has_method("get_text"):
-				node_text = node.get_text()
-			elif node.has_method("get_label"):
-				node_text = node.get_label()
-			elif node.has_method("get_title"):
-				node_text = node.get_title()
-			elif "text" in node:
-				node_text = node.text
-			elif "label" in node:
-				node_text = node.label
-			elif "title" in node:
-				node_text = node.title
-			
+		if node != parent:
+			var node_text: String = _get_node_text(node)
 			if node_text != "" and _matches_pattern(node_text, text_pattern):
 				results.append(node)
 	)
@@ -353,29 +273,13 @@ static func _resolve_text_from_parent(parent: Node, text_pattern: String) -> Arr
 
 static func _resolve_meta_from_parent(parent: Node, meta_expr: String) -> Array[Node]:
 	var results: Array[Node] = []
-	
-	# Parse meta expression (key=value or key)
-	var meta_key := meta_expr
-	var expected_value: String = ""
-	if meta_expr.contains("="):
-		var parts := meta_expr.split("=", false, 1)
-		meta_key = parts[0]
-		expected_value = parts[1] if parts.size() > 1 else ""
-	
+	var parsed: Array = _parse_meta_expr(meta_expr)
+	var meta_key: String = parsed[0]
+	var expected_value: String = parsed[1]
+
 	_walk(parent, func(node: Node) -> void:
-		if node != parent:  # Exclude parent node itself
-			if meta_key in node:
-				var actual_value = node[meta_key]
-				if expected_value.is_empty():
-					results.append(node)
-				elif str(actual_value).match(expected_value):
-					results.append(node)
-			elif node.has_meta(meta_key):
-				var actual_value = node.get_meta(meta_key)
-				if expected_value.is_empty():
-					results.append(node)
-				elif str(actual_value).match(expected_value):
-					results.append(node)
+		if node != parent and _node_matches_meta(node, meta_key, expected_value):
+			results.append(node)
 	)
 	return results
 
@@ -383,29 +287,62 @@ static func _resolve_meta_from_parent(parent: Node, meta_expr: String) -> Array[
 static func _resolve_unique_from_parent(parent: Node, unique_identifier: String) -> Array[Node]:
 	var results: Array[Node] = []
 	_walk(parent, func(node: Node) -> void:
-		if node != parent:  # Exclude parent node itself
-			var identifier_matches := false
-			
-			# Match against node name first
-			if _matches_pattern(node.name, unique_identifier):
-				identifier_matches = true
-			# Check other likely unique identifiers
-			elif "hint_tooltip" in node and node.hint_tooltip.match(unique_identifier):
-				identifier_matches = true
-			elif "placeholder_text" in node and node.placeholder_text.match(unique_identifier):
-				identifier_matches = true
-			elif "accessible_role" in node and str(node.accessible_role).to_lower().match(unique_identifier.to_lower()):
-				identifier_matches = true
-			
-			if identifier_matches:
-				results.append(node)
+		if node != parent and _check_unique_match(node, unique_identifier):
+			results.append(node)
 	)
 	return results
 
 
-# Check if first node is descendant of second node
+static func _get_node_text(node: Node) -> String:
+	if node.has_method("get_text"):
+		var val: Variant = node.call("get_text")
+		if val is String:
+			return val
+	elif node.has_method("get_label"):
+		var val: Variant = node.call("get_label")
+		if val is String:
+			return val
+	elif node.has_method("get_title"):
+		var val: Variant = node.call("get_title")
+		if val is String:
+			return val
+	elif "text" in node:
+		var val: Variant = node.get("text")
+		if val is String:
+			return val
+	elif "label" in node:
+		var val: Variant = node.get("label")
+		if val is String:
+			return val
+	elif "title" in node:
+		var val: Variant = node.get("title")
+		if val is String:
+			return val
+	return ""
+
+
+static func _check_unique_match(node: Node, unique_identifier: String) -> bool:
+	# Match against node name first
+	if _matches_pattern(node.name, unique_identifier):
+		return true
+	# Check other likely unique identifiers via get() to avoid type errors
+	if "hint_tooltip" in node:
+		var val: Variant = node.get("hint_tooltip")
+		if val is String and str(val).match(unique_identifier):
+			return true
+	if "placeholder_text" in node:
+		var val: Variant = node.get("placeholder_text")
+		if val is String and str(val).match(unique_identifier):
+			return true
+	if "accessible_role" in node:
+		var val: Variant = node.get("accessible_role")
+		if str(val).to_lower().match(unique_identifier.to_lower()):
+			return true
+	return false
+
+
 static func _is_ancestor_of(descendant: Node, ancestor: Node) -> bool:
-	var current = descendant.get_parent()
+	var current: Node = descendant.get_parent()
 	while current:
 		if current == ancestor:
 			return true
@@ -413,17 +350,39 @@ static func _is_ancestor_of(descendant: Node, ancestor: Node) -> bool:
 	return false
 
 
-# Helper function to check if string matches pattern (glob or exact)
 static func _matches_pattern(text: String, pattern: String) -> bool:
 	if text.is_empty() or pattern.is_empty():
 		return false
-	
-	# If pattern contains wildcards, use match
+
 	if pattern.contains("*") or pattern.contains("?") or pattern.contains("["):
 		return text.match(pattern)
-	else:
-		# Case-insensitive substring match
-		return text.to_lower().contains(pattern.to_lower())
+	return text.to_lower().contains(pattern.to_lower())
+
+
+## Parse a meta expression "key=value" or "key" into [key, expected_value].
+static func _parse_meta_expr(meta_expr: String) -> Array:
+	var meta_key: String = meta_expr
+	var expected_value: String = ""
+	if meta_expr.contains("="):
+		var eq_parts: PackedStringArray = meta_expr.split("=", false, 1)
+		meta_key = eq_parts[0]
+		expected_value = eq_parts[1] if eq_parts.size() > 1 else ""
+	return [meta_key, expected_value]
+
+
+## Check if a node matches a meta key/value pair.
+static func _node_matches_meta(node: Node, meta_key: String, expected_value: String) -> bool:
+	if meta_key in node:
+		var actual_value: Variant = node[meta_key]
+		if expected_value.is_empty():
+			return true
+		return str(actual_value).match(expected_value)
+	elif node.has_meta(meta_key):
+		var actual_value: Variant = node.get_meta(meta_key)
+		if expected_value.is_empty():
+			return true
+		return str(actual_value).match(expected_value)
+	return false
 
 
 ## Depth-first walk of the scene tree, calling visitor on every node.
