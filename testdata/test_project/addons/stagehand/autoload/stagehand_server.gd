@@ -6,6 +6,10 @@ extends Node
 
 const DEFAULT_PORT: int = 26700
 const VERSION: String = "0.1.0"
+## Exit code used when a game/CLI launch self-quits because the WebSocket port
+## could not be bound. Nonzero so the failure is distinguishable from a clean
+## shutdown. 70 == EX_SOFTWARE (sysexits.h).
+const BIND_FAILURE_EXIT_CODE: int = 70
 
 const StagehandCommandRouter := preload("res://addons/stagehand/core/command_router.gd")
 const StagehandInputRecorder := preload("res://addons/stagehand/core/input_recorder.gd")
@@ -42,6 +46,16 @@ func _ready() -> void:
 	if err != OK:
 		push_error("Stagehand: Failed to listen on port %d: %s" % [_port, error_string(err)])
 		set_process(false)
+		# A game/CLI launch (STAGEHAND_ENABLED env var or --stagehand flag) that
+		# cannot bind the port would otherwise run forever as a headless zombie
+		# with no server (~500MB each), accumulating on every port collision.
+		# Self-quit so the launcher's port is freed and no zombie lingers.
+		# The editor toolbar toggle (ProjectSettings activation) deliberately does
+		# NOT self-quit: an occupied port during interactive editor play must not
+		# tear down the running session.
+		if _enabled_via_game_launch():
+			push_error("Stagehand: Quitting (game launch) — port %d unavailable." % _port)
+			get_tree().quit(BIND_FAILURE_EXIT_CODE)
 		return
 
 	_active = true
@@ -509,13 +523,25 @@ func _stop() -> void:
 
 
 static func _is_enabled() -> bool:
+	if _enabled_via_game_launch():
+		return true
+	# Editor toolbar toggle persists activation here. This path enables the
+	# server but is NOT treated as a game launch (see _enabled_via_game_launch).
+	if ProjectSettings.get_setting("stagehand/server/enabled", false):
+		return true
+	return false
+
+
+## Whether the server was activated as an explicit game/CLI launch — the
+## STAGEHAND_ENABLED env var or the --stagehand CLI flag. This is the only
+## activation path that self-quits on a WebSocket bind failure; the editor
+## toolbar toggle (ProjectSettings) intentionally does not.
+static func _enabled_via_game_launch() -> bool:
 	if OS.get_environment("STAGEHAND_ENABLED") == "1":
 		return true
 	if "--stagehand" in OS.get_cmdline_args():
 		return true
 	if "--stagehand" in OS.get_cmdline_user_args():
-		return true
-	if ProjectSettings.get_setting("stagehand/server/enabled", false):
 		return true
 	return false
 
