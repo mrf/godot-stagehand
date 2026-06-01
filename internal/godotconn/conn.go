@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -40,7 +42,7 @@ type Connection struct {
 
 // Dial connects to a Godot addon WebSocket server at host:port.
 func Dial(ctx context.Context, host string, port int) (*Connection, error) {
-	addr := fmt.Sprintf("%s:%d", host, port)
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	c := &Connection{
 		addr:    addr,
 		state:   Connecting,

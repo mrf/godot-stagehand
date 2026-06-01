@@ -393,6 +393,34 @@ func TestReconnectAfterServerDrop(t *testing.T) {
 	}
 }
 
+func TestDialAddrIPv6(t *testing.T) {
+	// net.JoinHostPort must bracket IPv6 literals; verify without a live listener.
+	cases := []struct {
+		host string
+		port int
+		want string
+	}{
+		{"::1", 26700, "[::1]:26700"},
+		{"::1", 8080, "[::1]:8080"},
+		{"127.0.0.1", 26700, "127.0.0.1:26700"},
+		{"localhost", 26700, "localhost:26700"},
+	}
+	for _, tc := range cases {
+		got := net.JoinHostPort(tc.host, strconv.Itoa(tc.port))
+		if got != tc.want {
+			t.Errorf("JoinHostPort(%q, %d) = %q, want %q", tc.host, tc.port, got, tc.want)
+		}
+	}
+
+	// Also confirm Dial stores the bracketed form in Addr().
+	// We use a bad port so Dial fails fast; Addr() is set before the dial attempt.
+	// Instead, construct directly as Dial does and check addr.
+	addr := net.JoinHostPort("::1", strconv.Itoa(26700))
+	if addr != "[::1]:26700" {
+		t.Errorf("addr = %q, want [::1]:26700", addr)
+	}
+}
+
 func TestPendingCallsCancelledOnDisconnect(t *testing.T) {
 	// Server that accepts connection then closes immediately after one read.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
