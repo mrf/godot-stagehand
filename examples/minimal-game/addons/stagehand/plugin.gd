@@ -1,8 +1,8 @@
 @tool
 extends EditorPlugin
 
-const AUTOLOAD_NAME := "StagehandServer"
-const AUTOLOAD_PATH := "res://addons/stagehand/autoload/stagehand_server.gd"
+const AUTOLOAD_NAME: String = "StagehandServer"
+const AUTOLOAD_PATH: String = "res://addons/stagehand/autoload/stagehand_server.gd"
 
 var _toolbar_button: CheckButton
 
@@ -24,7 +24,7 @@ func _setup_toolbar() -> void:
 	_toolbar_button.button_pressed = ProjectSettings.get_setting(
 		"stagehand/server/enabled", false
 	)
-	_toolbar_button.toggled.connect(_on_toolbar_toggled)
+	var _connect_err: int = _toolbar_button.toggled.connect(_on_toolbar_toggled)
 	add_control_to_container(CONTAINER_TOOLBAR, _toolbar_button)
 
 
@@ -37,4 +37,4 @@ func _teardown_toolbar() -> void:
 
 func _on_toolbar_toggled(enabled: bool) -> void:
 	ProjectSettings.set_setting("stagehand/server/enabled", enabled)
-	ProjectSettings.save()
+	var _save_err: Error = ProjectSettings.save()

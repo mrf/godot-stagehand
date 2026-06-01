@@ -2,8 +2,8 @@
 class_name StagehandPropertyHandler
 extends RefCounted
 
-const SelectorEngine := preload("res://addons/stagehand/core/selector_engine.gd")
-const StagehandTreeSerializer := preload("res://addons/stagehand/core/tree_serializer.gd")
+const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
+const TREE_SERIALIZER := preload("res://addons/stagehand/core/tree_serializer.gd")
 
 
 ## Get a property from a node matched by a selector.
@@ -15,17 +15,17 @@ static func get_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if selector.is_empty() or property.is_empty():
 		return {"error": "Missing selector or property"}
 
-	var nodes: Array[Node] = SelectorEngine.query(tree, selector)
+	var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, selector)
 	if nodes.is_empty():
 		return {"error": "Node not found for selector: %s" % selector}
 
 	var node: Node = nodes[0]
-	var value: Variant = StagehandTreeSerializer._get_property_deep(node, property)
+	var value: Variant = TREE_SERIALIZER._get_property_deep(node, property)
 	if value == null and not _has_property(node, property):
 		return {"error": "Property not found: %s" % property}
 
 	return {
-		"value": StagehandTreeSerializer._to_json_safe(value),
+		"value": TREE_SERIALIZER._to_json_safe(value),
 		"type": type_string(typeof(value)),
 	}
 
@@ -38,19 +38,19 @@ static func set_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if selector.is_empty() or property.is_empty():
 		return {"error": "Missing selector or property"}
 
-	var nodes: Array[Node] = SelectorEngine.query(tree, selector)
+	var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, selector)
 	if nodes.is_empty():
 		return {"error": "Node not found for selector: %s" % selector}
 
 	var node: Node = nodes[0]
 	var previous: Variant = _get_property_at_level(node, property)
-	var success := _set_property_deep(node, property, params.get("value"))
+	var success: bool = _set_property_deep(node, property, params.get("value"))
 	if not success:
 		return {"error": "Failed to set property: %s" % property}
 
 	return {
 		"success": true,
-		"previous_value": StagehandTreeSerializer._to_json_safe(previous),
+		"previous_value": TREE_SERIALIZER._to_json_safe(previous),
 	}
 
 
@@ -61,12 +61,13 @@ static func _has_property(node: Node, property: String) -> bool:
 	for i: int in range(parts.size()):
 		var part: String = parts[i]
 		if current is Object:
-			if not current.get_property_list().any(
+			var obj: Object = current
+			if not obj.get_property_list().any(
 				func(info: Dictionary) -> bool: return info.get("name", "") == part
 			):
 				# For built-in properties that may not show up in get_property_list,
 				# fall through to get() if we haven't reached the last part.
-				var _tmp: Variant = current.get(part)
+				var _tmp: Variant = obj.get(part)
 				if _tmp == null:
 					return false
 				current = _tmp
@@ -80,11 +81,10 @@ static func _get_property_at_level(node: Node, property: String) -> Variant:
 	var dot_idx: int = property.find(".")
 	if dot_idx >= 0:
 		var top: String = property.substr(0, dot_idx)
-		var rest: String = property.substr(dot_idx + 1)
 		var obj: Variant = node.get(top) if node != null else null
 		if obj == null:
 			return null
-		return StagehandTreeSerializer._get_property_deep(node, property)
+		return TREE_SERIALIZER._get_property_deep(node, property)
 	return node.get(property) if node != null else null
 
 
@@ -106,10 +106,11 @@ static func _set_property_deep(node: Node, property: String, value: Variant) -> 
 	return _do_set(current, parts[parts.size() - 1], value)
 
 
+## Attempt to set a property on an object.
 static func _do_set(obj: Object, property: String, value: Variant) -> bool:
 	if obj == null:
 		return false
-	var has_property := obj.get_property_list().any(
+	var has_property: bool = obj.get_property_list().any(
 		func(info: Dictionary) -> bool: return info.get("name", "") == property
 	)
 	if has_property:
