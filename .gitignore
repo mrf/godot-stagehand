@@ -32,3 +32,10 @@ testdata/test_project/.godot/
 .pi
 .claude
 .codex
+
+# Orchestrator worktree artifacts (must never be tracked — a committed
+# sentinel poisons every new worktree with a false "done" signal)
+.orchestrator-done
+.orchestrator-note
+.orchestrator-findings.jsonl
+.orchestrator-findings.harvested.jsonl
