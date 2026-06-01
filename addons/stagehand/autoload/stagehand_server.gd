@@ -11,25 +11,36 @@ const VERSION: String = "0.1.0"
 ## shutdown. 70 == EX_SOFTWARE (sysexits.h).
 const BIND_FAILURE_EXIT_CODE: int = 70
 
-const StagehandCommandRouter := preload("res://addons/stagehand/core/command_router.gd")
-const StagehandInputRecorder := preload("res://addons/stagehand/core/input_recorder.gd")
-const StagehandInputSimulator := preload("res://addons/stagehand/core/input_simulator.gd")
-const StagehandJsonRpc := preload("res://addons/stagehand/protocol/json_rpc.gd")
-const StagehandExpressionEvaluator := preload("res://addons/stagehand/core/expression_evaluator.gd")
-const StagehandMethodHandler := preload("res://addons/stagehand/core/method_handler.gd")
-const StagehandPropertyHandler := preload("res://addons/stagehand/core/property_handler.gd")
-const StagehandSceneHandler := preload("res://addons/stagehand/core/scene_handler.gd")
-const StagehandScreenshotCapture := preload("res://addons/stagehand/core/screenshot_capture.gd")
-const StagehandTreeSerializer := preload("res://addons/stagehand/core/tree_serializer.gd")
-const StagehandWaiter := preload("res://addons/stagehand/core/waiter.gd")
+# These scripts are preloaded into SCREAMING_SNAKE_CASE constants rather than
+# referenced by their global `class_name`. Two constraints force this:
+#   1. In a headless game launch the project's global class cache may be empty
+#      (it is populated by the editor), so the global class_names are not
+#      resolvable as types — an explicit preload is required.
+#   2. A const named identically to a script's global class_name shadows that
+#      global identifier, which is an error under
+#      gdscript/warnings/exclude_addons=false + warnings-as-errors.
+# SCREAMING_SNAKE_CASE names satisfy both: they always resolve (case 1) and do
+# not collide with the PascalCase global class_names (case 2). This mirrors the
+# SELECTOR_ENGINE convention already used in core/waiter.gd.
+const COMMAND_ROUTER := preload("res://addons/stagehand/core/command_router.gd")
+const INPUT_RECORDER := preload("res://addons/stagehand/core/input_recorder.gd")
+const INPUT_SIMULATOR := preload("res://addons/stagehand/core/input_simulator.gd")
+const JSON_RPC := preload("res://addons/stagehand/protocol/json_rpc.gd")
+const EXPRESSION_EVALUATOR := preload("res://addons/stagehand/core/expression_evaluator.gd")
+const METHOD_HANDLER := preload("res://addons/stagehand/core/method_handler.gd")
+const PROPERTY_HANDLER := preload("res://addons/stagehand/core/property_handler.gd")
+const SCENE_HANDLER := preload("res://addons/stagehand/core/scene_handler.gd")
+const SCREENSHOT_CAPTURE := preload("res://addons/stagehand/core/screenshot_capture.gd")
+const TREE_SERIALIZER := preload("res://addons/stagehand/core/tree_serializer.gd")
+const WAITER := preload("res://addons/stagehand/core/waiter.gd")
 
 var _tcp_server: TCPServer
 var _clients: Dictionary = {}  # int -> WebSocketPeer
 var _next_peer_id: int = 0
-var _router: StagehandCommandRouter
+var _router: COMMAND_ROUTER
 var _port: int = DEFAULT_PORT
 var _active: bool = false
-var _recorder: StagehandInputRecorder
+var _recorder: INPUT_RECORDER
 
 
 func _ready() -> void:
@@ -37,7 +48,7 @@ func _ready() -> void:
 		set_process(false)
 		return
 
-	_router = StagehandCommandRouter.new()
+	_router = COMMAND_ROUTER.new()
 	_register_builtin_handlers()
 
 	_port = _get_port()
@@ -74,7 +85,7 @@ func _exit_tree() -> void:
 
 
 ## Return the command router so external code can register additional handlers.
-func get_router() -> StagehandCommandRouter:
+func get_router() -> COMMAND_ROUTER:
 	return _router
 
 
@@ -125,7 +136,7 @@ func _poll_clients() -> void:
 
 
 func _handle_message(peer_id: int, text: String) -> void:
-	var parsed: Dictionary = StagehandJsonRpc.parse_request(text)
+	var parsed: Dictionary = JSON_RPC.parse_request(text)
 	if parsed.has("error"):
 		var error_text: String = parsed["error"]
 		var _parse_send_error: Error = _send_to_peer(peer_id, error_text)
@@ -137,8 +148,8 @@ func _handle_message(peer_id: int, text: String) -> void:
 	var params: Variant = request.get("params", {})
 
 	if not _router.has_handler(method):
-		var _method_send_error: Error = _send_to_peer(peer_id, StagehandJsonRpc.make_error_response(
-			id, StagehandJsonRpc.METHOD_NOT_FOUND,
+		var _method_send_error: Error = _send_to_peer(peer_id, JSON_RPC.make_error_response(
+			id, JSON_RPC.METHOD_NOT_FOUND,
 			"Method not found: %s" % method
 		))
 		return
@@ -158,7 +169,7 @@ func _dispatch_and_respond(peer_id: int, id: Variant, method: String, params: Va
 	var result: Variant = await handler.call(params)
 	# Notifications (no id) get no response per JSON-RPC 2.0 spec.
 	if id != null:
-		var response_text: String = StagehandJsonRpc.make_response(id, result)
+		var response_text: String = JSON_RPC.make_response(id, result)
 		var send_error: Error = _send_to_peer(peer_id, response_text)
 		if send_error != OK:
 			var fallback_result: Dictionary = {
@@ -169,7 +180,7 @@ func _dispatch_and_respond(peer_id: int, id: Variant, method: String, params: Va
 					"next_action": "Reduce screenshot size/crop area or increase the WebSocket outbound buffer.",
 				},
 			}
-			var _fallback_send_error: Error = _send_to_peer(peer_id, StagehandJsonRpc.make_response(id, fallback_result))
+			var _fallback_send_error: Error = _send_to_peer(peer_id, JSON_RPC.make_response(id, fallback_result))
 
 
 func _send_to_peer(peer_id: int, text: String) -> Error:
@@ -218,37 +229,37 @@ func _register_builtin_handlers() -> void:
 
 func _handle_input_mouse(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	return StagehandInputSimulator.input_mouse(get_tree(), p)
+	return INPUT_SIMULATOR.input_mouse(get_tree(), p)
 
 
 func _handle_input_action(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	return StagehandInputSimulator.input_action(get_tree(), p)
+	return INPUT_SIMULATOR.input_action(get_tree(), p)
 
 
 func _handle_input_key(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	return StagehandInputSimulator.input_key(get_tree(), p)
+	return INPUT_SIMULATOR.input_key(get_tree(), p)
 
 
 func _handle_input_touch(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	return StagehandInputSimulator.input_touch(get_tree(), p)
+	return INPUT_SIMULATOR.input_touch(get_tree(), p)
 
 
 func _handle_input_text(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	return await StagehandInputSimulator.input_text(get_tree(), p)
+	return await INPUT_SIMULATOR.input_text(get_tree(), p)
 
 
 func _handle_input_mouse_move(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	return StagehandInputSimulator.input_mouse_move(get_tree(), p)
+	return INPUT_SIMULATOR.input_mouse_move(get_tree(), p)
 
 
 func _handle_screenshot(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	return await StagehandScreenshotCapture.capture(get_tree(), p)
+	return await SCREENSHOT_CAPTURE.capture(get_tree(), p)
 
 
 func _handle_ping(_unused_params: Variant) -> Dictionary:
@@ -278,7 +289,7 @@ func _handle_get_tree(params: Variant) -> Dictionary:
 	if root == null:
 		return {"error": "Root node not found: %s" % root_path}
 
-	return StagehandTreeSerializer.serialize_tree(root, max_depth, include_properties)
+	return TREE_SERIALIZER.serialize_tree(root, max_depth, include_properties)
 
 
 func _handle_query_nodes(params: Variant) -> Dictionary:
@@ -291,32 +302,32 @@ func _handle_query_nodes(params: Variant) -> Dictionary:
 		for item: Variant in p["properties"]:
 			properties.append(str(item))
 	var limit: int = p.get("limit", 50)
-	return StagehandTreeSerializer.query_nodes(get_tree(), selector, properties, limit)
+	return TREE_SERIALIZER.query_nodes(get_tree(), selector, properties, limit)
 
 
 func _handle_get_property(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	return StagehandPropertyHandler.get_property(get_tree(), p)
+	return PROPERTY_HANDLER.get_property(get_tree(), p)
 
 
 func _handle_set_property(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	return StagehandPropertyHandler.set_property(get_tree(), p)
+	return PROPERTY_HANDLER.set_property(get_tree(), p)
 
 
 func _handle_call_method(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	return StagehandMethodHandler.call_method(get_tree(), p)
+	return METHOD_HANDLER.call_method(get_tree(), p)
 
 
 func _handle_evaluate(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	return StagehandExpressionEvaluator.evaluate(get_tree(), p)
+	return EXPRESSION_EVALUATOR.evaluate(get_tree(), p)
 
 
 func _handle_change_scene(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	return StagehandSceneHandler.change_scene(get_tree(), p)
+	return SCENE_HANDLER.change_scene(get_tree(), p)
 
 
 func _handle_wait_signal(params: Variant) -> Dictionary:
@@ -328,7 +339,7 @@ func _handle_wait_signal(params: Variant) -> Dictionary:
 	if signal_name.is_empty():
 		return {"error": "Missing signal_name"}
 	var timeout_ms: int = p.get("timeout_ms", 5000)
-	var waiter: StagehandWaiter = StagehandWaiter.new()
+	var waiter: WAITER = WAITER.new()
 	add_child(waiter)
 	var result: Dictionary = await waiter.wait_for_signal(selector, signal_name, timeout_ms)
 	waiter.queue_free()
@@ -454,7 +465,7 @@ func _handle_wait_for_node(params: Variant) -> Dictionary:
 	var timeout_ms: int = p.get("timeout_ms", 10000)
 	var poll_interval_ms: int = p.get("poll_interval_ms", 100)
 
-	var waiter: StagehandWaiter = StagehandWaiter.new()
+	var waiter: WAITER = WAITER.new()
 	add_child(waiter)
 	var result: Dictionary = await waiter.wait_for_node(selector, state, timeout_ms, poll_interval_ms)
 	waiter.queue_free()
@@ -476,7 +487,7 @@ func _handle_wait_for_property(params: Variant) -> Dictionary:
 	var poll_interval_ms: int = p.get("poll_interval_ms", 100)
 	var expected_value: Variant = p.get("expected_value")
 
-	var waiter: StagehandWaiter = StagehandWaiter.new()
+	var waiter: WAITER = WAITER.new()
 	add_child(waiter)
 	var result: Dictionary = await waiter.wait_for_property(selector, property, operator, expected_value, timeout_ms, poll_interval_ms)
 	waiter.queue_free()
@@ -508,7 +519,7 @@ func _handle_replay(params: Variant) -> Dictionary:
 
 func _ensure_recorder() -> void:
 	if _recorder == null:
-		_recorder = StagehandInputRecorder.new()
+		_recorder = INPUT_RECORDER.new()
 		add_child(_recorder)
 
 
@@ -566,7 +577,11 @@ static func _params(params: Variant) -> Dictionary:
 	if not params is Dictionary:
 		push_warning("Stagehand: params must be a Dictionary (got %s); ignoring" % type_string(typeof(params)))
 		return {}
-	return params as Dictionary
+	# Assign through a typed local instead of `params as Dictionary`: an explicit
+	# `as` cast from Variant trips the unsafe_cast warning, whereas a checked
+	# assignment does not.
+	var dict: Dictionary = params
+	return dict
 
 
 static func _get_port() -> int:

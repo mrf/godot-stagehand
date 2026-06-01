@@ -36,8 +36,8 @@
 class_name StagehandExpressionEvaluator
 extends RefCounted
 
-const SelectorEngine := preload("res://addons/stagehand/core/selector_engine.gd")
-const StagehandTreeSerializer := preload("res://addons/stagehand/core/tree_serializer.gd")
+const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
+const TREE_SERIALIZER := preload("res://addons/stagehand/core/tree_serializer.gd")
 
 ## Lazily-built cache of engine singleton names, parallel to [member _singleton_objects].
 static var _singleton_names: PackedStringArray = PackedStringArray()
@@ -81,7 +81,7 @@ static func evaluate(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if selector.is_empty():
 		base_node = tree.root
 	else:
-		var nodes: Array[Node] = SelectorEngine.query(tree, selector)
+		var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, selector)
 		if nodes.is_empty():
 			return {"error": "Node not found for selector: %s" % selector}
 		base_node = nodes[0]
@@ -98,6 +98,6 @@ static func evaluate(tree: SceneTree, params: Dictionary) -> Dictionary:
 		return {"error": "Execution error: %s" % expr.get_error_text()}
 
 	return {
-		"value": StagehandTreeSerializer._to_json_safe(result),
+		"value": TREE_SERIALIZER._to_json_safe(result),
 		"type": type_string(typeof(result)),
 	}

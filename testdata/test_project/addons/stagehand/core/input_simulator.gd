@@ -2,7 +2,7 @@
 class_name StagehandInputSimulator
 extends RefCounted
 
-const SelectorEngine := preload("res://addons/stagehand/core/selector_engine.gd")
+const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
 
 const BUTTON_MAP: Dictionary = {
 	"left": MOUSE_BUTTON_LEFT,
@@ -25,7 +25,7 @@ static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var matched_count: int = 0
 	var clicked_node: Node = null
 	if has_selector:
-		var nodes: Array[Node] = SelectorEngine.query(tree, str(params["selector"]))
+		var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, str(params["selector"]))
 		if nodes.is_empty():
 			return {"error": "Node not found for selector"}
 		matched_count = nodes.size()
@@ -187,7 +187,7 @@ static func input_text(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var delay_ms: int = _v_int(params.get("delay_ms", 50))
 	# Optional selector to click first to gain focus
 	if params.has("selector"):
-		var nodes: Array[Node] = SelectorEngine.query(tree, str(params["selector"]))
+		var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, str(params["selector"]))
 		if nodes.is_empty():
 			return {"error": "Node not found for selector"}
 		# Prefer an interactive control so we focus the input, not a nearby label.
@@ -323,7 +323,7 @@ static func _touch_drag(from: Vector2, to: Vector2, index: int) -> void:
 static func input_mouse_move(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var pos: Vector2
 	if params.has("selector"):
-		var nodes: Array[Node] = SelectorEngine.query(tree, str(params["selector"]))
+		var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, str(params["selector"]))
 		if nodes.is_empty():
 			return {"error": "Node not found for selector"}
 		# Prefer an interactive control when the selector is ambiguous.
