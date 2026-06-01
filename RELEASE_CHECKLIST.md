@@ -2,6 +2,20 @@
 
 Use this checklist to ensure consistent and high-quality releases.
 
+## Asset Naming Convention
+
+Published assets use **version-less bare binary names**: `godot-stagehand-{platform}-{arch}[.exe]`
+
+| Asset | Type | URL suffix |
+|-------|------|------------|
+| `godot-stagehand-linux-amd64` | bare binary | `releases/latest/download/godot-stagehand-linux-amd64` |
+| `godot-stagehand-darwin-amd64.zip` | zip | `releases/latest/download/godot-stagehand-darwin-amd64.zip` |
+| `godot-stagehand-darwin-arm64.zip` | zip | `releases/latest/download/godot-stagehand-darwin-arm64.zip` |
+| `godot-stagehand-windows-amd64.exe` | bare binary | `releases/latest/download/godot-stagehand-windows-amd64.exe` |
+
+`build-release.sh` outputs these names directly into `build/`. The `release.yml` workflow zips the macOS
+binaries and copies the rest to the repo root before uploading to GitHub Releases.
+
 ## Pre-Build Checks
 - [ ] Update version in `plugin.cfg` (in `addons/stagehand/plugin.cfg`)
 - [ ] Update version in documentation if needed
