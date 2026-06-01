@@ -73,17 +73,17 @@ static func evaluate(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if expression_str.is_empty():
 		return {"error": "Missing expression"}
 
-	var selector: String = params.get("selector", "")
+	var context_node: String = params.get("context_node", "")
 
-	# Resolve the base node for expression context. If no selector is
+	# Resolve the base node for expression context. If no context_node is
 	# given, use the scene tree root.
 	var base_node: Node
-	if selector.is_empty():
+	if context_node.is_empty():
 		base_node = tree.root
 	else:
-		var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, selector)
+		var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, context_node)
 		if nodes.is_empty():
-			return {"error": "Node not found for selector: %s" % selector}
+			return {"error": "Node not found for context_node: %s" % context_node}
 		base_node = nodes[0]
 
 	_ensure_singletons()
