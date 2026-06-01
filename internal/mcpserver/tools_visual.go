@@ -25,6 +25,7 @@ var screenshotTool = mcp.NewTool("godot_screenshot",
 		mcp.Description("Capture the full viewport"),
 		mcp.DefaultBool(true),
 	),
+	instanceIDOpt,
 )
 
 var saveBaselineTool = mcp.NewTool("godot_screenshot_save_baseline",
@@ -38,6 +39,7 @@ var saveBaselineTool = mcp.NewTool("godot_screenshot_save_baseline",
 	mcp.WithString("selector",
 		mcp.Description("Crop the baseline to this node's bounding rect. Use the SAME selector when diffing so the bounds match."),
 	),
+	instanceIDOpt,
 )
 
 var screenshotDiffTool = mcp.NewTool("godot_screenshot_diff",
@@ -71,6 +73,7 @@ var screenshotDiffTool = mcp.NewTool("godot_screenshot_diff",
 		mcp.Min(0),
 		mcp.Max(1),
 	),
+	instanceIDOpt,
 )
 
 // screenshotResult is the expected shape of the Godot screenshot response.
@@ -88,6 +91,7 @@ type screenshotResult struct {
 }
 
 func (s *Server) handleScreenshot(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	params := map[string]any{
 		"full_page": req.GetBool("full_page", true),
 	}
@@ -99,7 +103,7 @@ func (s *Server) handleScreenshot(ctx context.Context, req mcp.CallToolRequest) 
 		params["full_page"] = false
 	}
 
-	raw, errResult := s.callGodot(ctx, "screenshot", params)
+	raw, errResult := s.callGodotInstance(ctx, instanceID, "screenshot", params)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -122,7 +126,7 @@ func (s *Server) handleScreenshot(ctx context.Context, req mcp.CallToolRequest) 
 	}, nil
 }
 
-func (s *Server) captureScreenshot(ctx context.Context, req mcp.CallToolRequest) ([]byte, error) {
+func (s *Server) captureScreenshot(ctx context.Context, instanceID string, req mcp.CallToolRequest) ([]byte, error) {
 	params := map[string]any{"full_page": true}
 	if sel := req.GetString("selector", ""); sel != "" {
 		if errResult := validateSelector(sel); errResult != nil {
@@ -132,7 +136,7 @@ func (s *Server) captureScreenshot(ctx context.Context, req mcp.CallToolRequest)
 		params["full_page"] = false
 	}
 
-	raw, errResult := s.callGodot(ctx, "screenshot", params)
+	raw, errResult := s.callGodotInstance(ctx, instanceID, "screenshot", params)
 	if errResult != nil {
 		return nil, toolResultToError(errResult, "godot screenshot failed")
 	}
@@ -207,12 +211,13 @@ type diffOutcome struct {
 }
 
 func (s *Server) handleSaveBaseline(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	name, err := req.RequireString("name")
 	if err != nil {
 		return mcp.NewToolResultError("Invalid 'name' parameter: " + err.Error()), nil
 	}
 
-	imgBytes, err := s.captureScreenshot(ctx, req)
+	imgBytes, err := s.captureScreenshot(ctx, instanceID, req)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -244,6 +249,7 @@ func (s *Server) handleSaveBaseline(ctx context.Context, req mcp.CallToolRequest
 }
 
 func (s *Server) handleScreenshotDiff(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	name, err := req.RequireString("name")
 	if err != nil {
 		return mcp.NewToolResultError("Invalid 'name' parameter: " + err.Error()), nil
@@ -271,7 +277,7 @@ func (s *Server) handleScreenshotDiff(ctx context.Context, req mcp.CallToolReque
 	}
 
 	// Capture current screenshot.
-	imgBytes, err := s.captureScreenshot(ctx, req)
+	imgBytes, err := s.captureScreenshot(ctx, instanceID, req)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -304,10 +310,7 @@ func (s *Server) handleScreenshotDiff(ctx context.Context, req mcp.CallToolReque
 		Selector:         req.GetString("selector", ""),
 	}
 
-	// On failure, persist artifacts so callers can inspect what changed:
-	// the actual captured frame and a diff visualization (changed pixels in
-	// red, unchanged pixels dimmed). Best-effort — a write failure is surfaced
-	// in the report but does not mask the regression itself.
+	// On failure, persist artifacts so callers can inspect what changed.
 	var artifactErr string
 	if !pass {
 		actualPath, diffPath, werr := s.writeDiffArtifacts(name, imgBytes, result.DiffImage)
@@ -338,9 +341,7 @@ func (s *Server) handleScreenshotDiff(ctx context.Context, req mcp.CallToolReque
 }
 
 // writeDiffArtifacts writes the actual captured frame and the diff
-// visualization to the artifact directory, returning their paths. The diff
-// image may be nil (identical images that still exceeded a negative-equivalent
-// threshold); in that case only the actual frame is written.
+// visualization to the artifact directory, returning their paths.
 func (s *Server) writeDiffArtifacts(name string, actualPNG []byte, diffImg image.Image) (actualPath, diffPath string, err error) {
 	if mkErr := os.MkdirAll(s.artifactDir, 0o755); mkErr != nil {
 		return "", "", fmt.Errorf("failed to create artifact directory: %w", mkErr)

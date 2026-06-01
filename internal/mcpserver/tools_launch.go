@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mrf/godot-stagehand/internal/launch"
@@ -23,8 +24,8 @@ var launchTool = mcp.NewTool("godot_launch",
 		mcp.DefaultString(launch.DefaultHost),
 	),
 	mcp.WithNumber("port",
-		mcp.Description("TCP port for the WebSocket server"),
-		mcp.DefaultNumber(26700),
+		mcp.Description("TCP port for the WebSocket server (0 = auto-assign a free port)"),
+		mcp.DefaultNumber(0),
 	),
 	mcp.WithBoolean("headless",
 		mcp.Description("Launch Godot in headless mode"),
@@ -43,6 +44,7 @@ var launchTool = mcp.NewTool("godot_launch",
 		mcp.DefaultNumber(30000),
 		mcp.Min(1000),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -52,14 +54,23 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 	}
 	godotBin := req.GetString("godot_bin", "")
 	host := req.GetString("host", launch.DefaultHost)
-	port := req.GetInt("port", 26700)
+	port := req.GetInt("port", 0)
 	headless := req.GetBool("headless", true)
 	expectScreenshots := req.GetBool("expect_screenshots", false)
 	extraArgs := req.GetStringSlice("extra_args", nil)
 	timeoutMs := req.GetInt("timeout_ms", 30000)
+	instanceID := req.GetString("instance_id", "default")
 
 	if headless && expectScreenshots {
 		return mcp.NewToolResultError("headless=true cannot be used with expect_screenshots=true; relaunch with headless=false and a visible Godot window for godot_screenshot, baselines, and diffs."), nil
+	}
+
+	if port == 0 {
+		p, err := findFreePort()
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to find a free port: %v", err)), nil
+		}
+		port = p
 	}
 
 	cfg := launch.Config{
@@ -72,25 +83,19 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 		TimeoutMs:   timeoutMs,
 	}
 
-	// Kill any existing launched process before launching a new one.
-	s.killExistingLaunch()
-
-	// Also close any existing connection under the write lock.
-	s.clearConn()
+	// Clean up any existing entry for this instanceID before launching.
+	s.instances.remove(instanceID)
 
 	result, err := launch.Launch(ctx, cfg)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to launch Godot: %v", err)), nil
 	}
 
-	// Store the launch result for later cleanup.
-	s.setLaunchResult(result)
+	// Store the new connection + launch metadata.
+	s.instances.add(instanceID, result.Host, result.Port, result.Conn, result)
 
-	// Store the connection from the launch result.
-	s.setConn(result.Conn)
-
-	// Return structured launch result as JSON.
 	jsonResult := map[string]any{
+		"instance_id":         instanceID,
 		"pid":                 result.PID,
 		"host":                result.Host,
 		"port":                result.Port,
@@ -103,9 +108,18 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 	}
 	jsonBytes, err := json.MarshalIndent(jsonResult, "", "  ")
 	if err != nil {
-		// fallback to plain text
 		return mcp.NewToolResultText(fmt.Sprintf("Launched Godot (pid=%d) at %s:%d, engine=%s, stagehand=%s",
 			result.PID, result.Host, result.Port, result.EngineVersion, result.StagehandVersion)), nil
 	}
 	return mcp.NewToolResultText(string(jsonBytes)), nil
+}
+
+// findFreePort returns a free TCP port on 127.0.0.1.
+func findFreePort() (int, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
 }

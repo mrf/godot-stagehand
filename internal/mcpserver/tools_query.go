@@ -23,9 +23,11 @@ var getTreeTool = mcp.NewTool("godot_get_tree",
 		mcp.Description("Property names to include per node"),
 		mcp.WithStringItems(),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handleGetTree(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	params := map[string]any{
 		"root_path": req.GetString("root_path", "/root"),
 		"max_depth": req.GetInt("max_depth", 10),
@@ -34,7 +36,7 @@ func (s *Server) handleGetTree(ctx context.Context, req mcp.CallToolRequest) (*m
 		params["properties"] = props
 	}
 
-	result, errResult := s.callGodot(ctx, "get_tree", params)
+	result, errResult := s.callGodotInstance(ctx, instanceID, "get_tree", params)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -58,9 +60,11 @@ var findNodesTool = mcp.NewTool("godot_find_nodes",
 		mcp.Min(1),
 		mcp.Max(500),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handleFindNodes(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	selector, err := req.RequireString("selector")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -78,7 +82,7 @@ func (s *Server) handleFindNodes(ctx context.Context, req mcp.CallToolRequest) (
 		params["properties"] = props
 	}
 
-	result, errResult := s.callGodot(ctx, "query_nodes", params)
+	result, errResult := s.callGodotInstance(ctx, instanceID, "query_nodes", params)
 	if errResult != nil {
 		return errResult, nil
 	}

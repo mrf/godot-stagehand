@@ -27,9 +27,11 @@ var clickTool = mcp.NewTool("godot_click",
 		mcp.Description("Whether to double-click"),
 		mcp.DefaultBool(false),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handleClick(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	args := req.GetArguments()
 	selector, hasSelector := args["selector"]
 	position, hasPosition := args["position"]
@@ -59,7 +61,7 @@ func (s *Server) handleClick(ctx context.Context, req mcp.CallToolRequest) (*mcp
 		params["position"] = position
 	}
 
-	result, errResult := s.callGodot(ctx, "input_mouse", params)
+	result, errResult := s.callGodotInstance(ctx, instanceID, "input_mouse", params)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -81,9 +83,11 @@ var pressKeyTool = mcp.NewTool("godot_press_key",
 		mcp.DefaultNumber(100),
 		mcp.Min(0),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handlePressKey(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	key, err := req.RequireString("key")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -97,7 +101,7 @@ func (s *Server) handlePressKey(ctx context.Context, req mcp.CallToolRequest) (*
 		params["modifiers"] = mods
 	}
 
-	result, errResult := s.callGodot(ctx, "input_key", params)
+	result, errResult := s.callGodotInstance(ctx, instanceID, "input_key", params)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -121,9 +125,11 @@ var pressActionTool = mcp.NewTool("godot_press_action",
 		mcp.DefaultNumber(100),
 		mcp.Min(0),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handlePressAction(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	action, err := req.RequireString("action")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -135,7 +141,7 @@ func (s *Server) handlePressAction(ctx context.Context, req mcp.CallToolRequest)
 		"hold_ms":  req.GetInt("hold_ms", 100),
 	}
 
-	result, errResult := s.callGodot(ctx, "input_action", params)
+	result, errResult := s.callGodotInstance(ctx, instanceID, "input_action", params)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -156,9 +162,11 @@ var typeTextTool = mcp.NewTool("godot_type_text",
 	mcp.WithString("selector",
 		mcp.Description("Optional node to click first to gain focus"),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handleTypeText(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	text, err := req.RequireString("text")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -180,7 +188,7 @@ func (s *Server) handleTypeText(ctx context.Context, req mcp.CallToolRequest) (*
 		params["selector"] = sel
 	}
 
-	result, errResult := s.callGodot(ctx, "input_text", params)
+	result, errResult := s.callGodotInstance(ctx, instanceID, "input_text", params)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -199,6 +207,7 @@ var mouseMoveTool = mcp.NewTool("godot_mouse_move",
 			"y": map[string]any{"type": "number", "description": "Y coordinate"},
 		}),
 	),
+	instanceIDOpt,
 )
 
 var touchTool = mcp.NewTool("godot_touch",
@@ -234,9 +243,11 @@ var touchTool = mcp.NewTool("godot_touch",
 		mcp.DefaultNumber(100),
 		mcp.Min(0),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handleTouch(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	args := req.GetArguments()
 	position, hasPosition := args["position"]
 	if !hasPosition {
@@ -253,7 +264,7 @@ func (s *Server) handleTouch(ctx context.Context, req mcp.CallToolRequest) (*mcp
 		params["drag_to"] = dragTo
 	}
 
-	result, errResult := s.callGodot(ctx, "input_touch", params)
+	result, errResult := s.callGodotInstance(ctx, instanceID, "input_touch", params)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -261,6 +272,7 @@ func (s *Server) handleTouch(ctx context.Context, req mcp.CallToolRequest) (*mcp
 }
 
 func (s *Server) handleMouseMove(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	args := req.GetArguments()
 	selector, hasSelector := args["selector"]
 	coords, hasCoords := args["coordinates"]
@@ -280,7 +292,6 @@ func (s *Server) handleMouseMove(ctx context.Context, req mcp.CallToolRequest) (
 	}
 
 	params := map[string]any{}
-
 	if hasSelector {
 		params["selector"] = selector
 	}
@@ -288,7 +299,7 @@ func (s *Server) handleMouseMove(ctx context.Context, req mcp.CallToolRequest) (
 		params["coordinates"] = coords
 	}
 
-	result, errResult := s.callGodot(ctx, "input_mouse_move", params)
+	result, errResult := s.callGodotInstance(ctx, instanceID, "input_mouse_move", params)
 	if errResult != nil {
 		return errResult, nil
 	}

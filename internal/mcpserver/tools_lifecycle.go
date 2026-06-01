@@ -19,14 +19,13 @@ var connectTool = mcp.NewTool("godot_connect",
 		mcp.Description("WebSocket port"),
 		mcp.DefaultNumber(26700),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handleConnect(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	host := req.GetString("host", launch.DefaultHost)
 	port := req.GetInt("port", 26700)
-
-	// Close any existing connection under the write lock.
-	s.clearConn()
+	instanceID := req.GetString("instance_id", "default")
 
 	conn, err := godotconn.Dial(ctx, host, port)
 	if err != nil {
@@ -34,25 +33,43 @@ func (s *Server) handleConnect(ctx context.Context, req mcp.CallToolRequest) (*m
 			fmt.Sprintf("Failed to connect to Godot at %s:%d: %v\n\n%s", host, port, err, connectionGuidance()),
 		), nil
 	}
-	s.setConn(conn)
 
 	// Ping to verify the connection and get engine info.
-	result, errResult := s.callGodot(ctx, "ping", nil)
+	result, errResult := func() ([]byte, *mcp.CallToolResult) {
+		tempEntry := &instanceEntry{conn: conn}
+		_ = tempEntry
+		resp, err := conn.Call(ctx, "ping", nil)
+		if err != nil {
+			conn.Close()
+			return nil, mcp.NewToolResultError(
+				fmt.Sprintf("Failed to connect to Godot at %s:%d: %v\n\n%s", host, port, err, connectionGuidance()),
+			)
+		}
+		if errResult := checkGodotResult(resp.Result); errResult != nil {
+			conn.Close()
+			return nil, errResult
+		}
+		return resp.Result, nil
+	}()
 	if errResult != nil {
-		s.clearConn()
 		return errResult, nil
 	}
 
-	return mcp.NewToolResultText(fmt.Sprintf("Connected to Godot at %s:%d\n%s", host, port, string(result))), nil
+	// Replace any existing entry for this instanceID (closes old conn/process).
+	s.instances.add(instanceID, host, port, conn, nil)
+
+	return mcp.NewToolResultText(fmt.Sprintf("Connected to Godot at %s:%d (instance_id=%q)\n%s", host, port, instanceID, string(result))), nil
 }
 
 var getGameStateTool = mcp.NewTool("godot_get_game_state",
 	mcp.WithDescription("Get the current game state: scene, FPS, physics state, window size"),
 	mcp.WithReadOnlyHintAnnotation(true),
+	instanceIDOpt,
 )
 
 func (s *Server) handleGetGameState(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	result, errResult := s.callGodot(ctx, "get_game_state", nil)
+	instanceID := req.GetString("instance_id", "default")
+	result, errResult := s.callGodotInstance(ctx, instanceID, "get_game_state", nil)
 	if errResult != nil {
 		return errResult, nil
 	}

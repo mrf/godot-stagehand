@@ -12,15 +12,17 @@ var recordStartTool = mcp.NewTool("godot_record_start",
 		mcp.Required(),
 		mcp.Description("File path where the recording will be saved, e.g. \"res://recordings/run1.json\""),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handleRecordStart(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	outputPath, err := req.RequireString("output_path")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	result, errResult := s.callGodot(ctx, "record_start", map[string]any{
+	result, errResult := s.callGodotInstance(ctx, instanceID, "record_start", map[string]any{
 		"output_path": outputPath,
 	})
 	if errResult != nil {
@@ -31,10 +33,12 @@ func (s *Server) handleRecordStart(ctx context.Context, req mcp.CallToolRequest)
 
 var recordStopTool = mcp.NewTool("godot_record_stop",
 	mcp.WithDescription("Stop an active recording in the running Godot game"),
+	instanceIDOpt,
 )
 
 func (s *Server) handleRecordStop(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	result, errResult := s.callGodot(ctx, "record_stop", nil)
+	instanceID := req.GetString("instance_id", "default")
+	result, errResult := s.callGodotInstance(ctx, instanceID, "record_stop", nil)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -47,15 +51,17 @@ var replayTool = mcp.NewTool("godot_replay",
 		mcp.Required(),
 		mcp.Description("File path of the recording to replay, e.g. \"res://recordings/run1.json\""),
 	),
+	instanceIDOpt,
 )
 
 func (s *Server) handleReplay(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
 	inputPath, err := req.RequireString("input_path")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	result, errResult := s.callGodot(ctx, "replay", map[string]any{
+	result, errResult := s.callGodotInstance(ctx, instanceID, "replay", map[string]any{
 		"input_path": inputPath,
 	})
 	if errResult != nil {
