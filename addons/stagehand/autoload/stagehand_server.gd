@@ -252,11 +252,16 @@ func _handle_screenshot(params: Variant) -> Dictionary:
 
 
 func _handle_ping(_unused_params: Variant) -> Dictionary:
+	# Echo the per-launch instance token so the launcher can prove the process it
+	# spawned is the one it connected to. Empty when launched without a token
+	# (e.g. manual --stagehand runs); the launcher only asserts it for launches
+	# it initiated.
 	return {
 		"status": "ok",
 		"engine": "godot",
 		"engine_version": Engine.get_version_info()["string"],
 		"stagehand_version": VERSION,
+		"instance_token": OS.get_environment("STAGEHAND_INSTANCE_TOKEN"),
 	}
 
 
