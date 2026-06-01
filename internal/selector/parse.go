@@ -15,9 +15,10 @@ const (
 	Name
 	Class
 	Group
-	Text   // text: for label text content matching (Phase 2)
-	Meta   // meta: for metadata attribute matching (Phase 2)
-	Unique // unique: for unique UI element identification (Phase 2)
+	Text      // text: for label text content matching, substring + case-insensitive (Phase 2)
+	Meta      // meta: for metadata attribute matching (Phase 2)
+	Unique    // unique: for unique UI element identification (Phase 2)
+	TextExact // text= for exact (whitespace-trimmed, case-sensitive) label text matching
 )
 
 func (t Type) String() string {
@@ -36,6 +37,8 @@ func (t Type) String() string {
 		return "meta"
 	case Unique:
 		return "unique"
+	case TextExact:
+		return "text_exact"
 	}
 	return fmt.Sprintf("SelectorType(%d)", int(t))
 }
@@ -98,6 +101,7 @@ func parseSingleSelectorAllTypes(s string) (*Selector, error) {
 		{"name:", Name},
 		{"class:", Class},
 		{"group:", Group},
+		{"text=", TextExact},
 		{"text:", Text},
 		{"meta:", Meta},
 		{"unique:", Unique},

@@ -140,6 +140,59 @@ func TestParseUnique(t *testing.T) {
 	}
 }
 
+func TestParseTextExact(t *testing.T) {
+	s, err := Parse("text=CONTINUE")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if s.Type != TextExact {
+		t.Errorf("type = %v, want TextExact", s.Type)
+	}
+	if s.Value != "CONTINUE" {
+		t.Errorf("value = %q, want CONTINUE", s.Value)
+	}
+}
+
+// TestParseTextExactVsLoose verifies text= and text: are distinct selector types
+// and do not collide with one another's prefix.
+func TestParseTextExactVsLoose(t *testing.T) {
+	loose, err := Parse("text:CONTINUE")
+	if err != nil {
+		t.Fatalf("unexpected error parsing loose: %v", err)
+	}
+	if loose.Type != Text {
+		t.Errorf("text: type = %v, want Text", loose.Type)
+	}
+
+	exact, err := Parse("text=CONTINUE")
+	if err != nil {
+		t.Fatalf("unexpected error parsing exact: %v", err)
+	}
+	if exact.Type != TextExact {
+		t.Errorf("text= type = %v, want TextExact", exact.Type)
+	}
+}
+
+func TestParseTextExactEmptyValue(t *testing.T) {
+	_, err := Parse("text=")
+	if err == nil {
+		t.Fatal("expected error for empty text= value")
+	}
+}
+
+func TestParseTextExactInChain(t *testing.T) {
+	s, err := ParseChain("name:Dialog >> text=OK")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(*s) != 2 {
+		t.Fatalf("expected 2 selectors in chain, got %d", len(*s))
+	}
+	if (*s)[1].Type != TextExact || (*s)[1].Value != "OK" {
+		t.Errorf("second selector = %v, %q; want TextExact, OK", (*s)[1].Type, (*s)[1].Value)
+	}
+}
+
 func TestParseChain(t *testing.T) {
 	// Test simple chain
 	s, err := ParseChain("name:Container >> text:Ok")
@@ -244,6 +297,9 @@ func TestTypeString(t *testing.T) {
 	}
 	if Unique.String() != "unique" {
 		t.Errorf("Unique.String() = %q", Unique.String())
+	}
+	if TextExact.String() != "text_exact" {
+		t.Errorf("TextExact.String() = %q", TextExact.String())
 	}
 	typ := Type(99)
 	if typ.String() != "SelectorType(99)" {

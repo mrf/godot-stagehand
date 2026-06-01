@@ -33,13 +33,43 @@ Example: `group:buttons` finds all nodes in the "buttons" group.
 
 Additional selectors added in Phase 2 to better target dynamic content.
 
-### Text: `"text:Hello"`
-Finds nodes that display the specified text content. This works with any control that shows text labels, such as Label, Button, TextEdit, LineEdit, etc.
+### Text: `"text:Hello"` (loose) and `"text=Hello"` (exact)
+Finds nodes that display the specified text content. This works with any control
+that shows text labels, such as Label, Button, TextEdit, LineEdit, etc.
+
+There are two matching modes:
+
+- **`text:` — loose match (substring, case-insensitive).** Matches if the node's
+  text *contains* the value, ignoring case. If the value contains glob
+  metacharacters (`*`, `?`, `[`) it is instead treated as a glob pattern via
+  `String.match()`. Convenient, but loose: `text:Continue` matches *both* a
+  Button captioned "CONTINUE" *and* a Label reading "Continue from day 8?".
+- **`text=` — exact match (whole string, case-sensitive).** Matches only when the
+  node's text, after trimming surrounding whitespace, equals the value exactly.
+  Use this to disambiguate a button caption from a descriptive label. Glob
+  metacharacters are *not* interpreted in exact mode — they must match literally.
 
 Examples:
-- `text:Login` - finds elements showing the word "Login"
-- `text:*Save*` - finds elements with text containing "Save"
-- `text:Continue?` - finds elements showing "Continue?" (with question mark)
+- `text:Login` - any element whose text contains "login" (case-insensitive)
+- `text:*Save*` - glob: elements whose text contains "Save"
+- `text=CONTINUE` - only elements whose exact text is "CONTINUE"
+- `text=Continue?` - only elements whose exact text is the literal "Continue?"
+
+> **Note on the `?` glob caveat:** under `text:`, a trailing `?` is a single-char
+> glob wildcard (so `text:Continue?` matches "Continued", "Continues", etc.).
+> Use `text=Continue?` when you need the literal question mark.
+
+#### Disambiguation on click
+
+`godot_click` (and `godot_mouse_move`, and `godot_type_text`'s focus selector)
+rank matches before acting: **interactive controls win**. The order is
+`BaseButton` and its subclasses first, then other Controls that receive mouse
+input (`mouse_filter != IGNORE`), then everything else — so a non-interactive
+Label never gets clicked ahead of the real Button it shares a word with. The
+`godot_click` result reports `matched` (how many nodes matched), `clicked_node`
+(the path of the node actually clicked), and `ambiguous: true` when the selector
+resolved to more than one node. Prefer `text=` or a chained/`name:`/`meta:`
+selector when you need a guaranteed-unique target.
 
 ### Meta: `"meta:key=value"` or `"meta:someKey"`
 Finds nodes based on metadata values attached to them. This includes exported variables, custom properties, or Godot's built-in metadata.

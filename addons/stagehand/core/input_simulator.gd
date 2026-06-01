@@ -22,16 +22,23 @@ static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
 		return {"error": "Missing selector or position"}
 
 	var pos: Vector2
+	var matched_count: int = 0
+	var clicked_node: Node = null
 	if has_selector:
 		var nodes: Array[Node] = SelectorEngine.query(tree, str(params["selector"]))
 		if nodes.is_empty():
 			return {"error": "Node not found for selector"}
-		var node: Node = nodes[0]
-		if node is Control:
-			var ctrl: Control = node
+		matched_count = nodes.size()
+		# When a selector resolves to several nodes (e.g. a descriptive Label and
+		# the actual Button both containing the word), prefer the interactive one
+		# instead of silently clicking the first match in tree order.
+		var ranked: Array[Node] = SelectorEngine.rank_for_interaction(nodes)
+		clicked_node = ranked[0]
+		if clicked_node is Control:
+			var ctrl: Control = clicked_node
 			pos = ctrl.global_position + ctrl.size / 2.0
-		elif node is Node2D:
-			var n2d: Node2D = node
+		elif clicked_node is Node2D:
+			var n2d: Node2D = clicked_node
 			pos = n2d.global_position
 		else:
 			return {"error": "Node type does not support clicking"}
@@ -47,11 +54,18 @@ static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var hold_ms: int = _v_int(params.get("hold_ms", 100))
 	_release_mouse_after(tree, pos, btn, hold_ms / 1000.0)
 
-	return {
+	var result: Dictionary = {
 		"success": true,
 		"clicked_at": {"x": pos.x, "y": pos.y},
 		"button": btn_str,
 	}
+	if has_selector:
+		result["matched"] = matched_count
+		result["clicked_node"] = str(clicked_node.get_path())
+		# Surface ambiguity so callers know the selector was not unique.
+		if matched_count > 1:
+			result["ambiguous"] = true
+	return result
 
 
 ## Simulate pressing and releasing an input action.
@@ -177,7 +191,8 @@ static func input_text(tree: SceneTree, params: Dictionary) -> Dictionary:
 		var nodes: Array[Node] = SelectorEngine.query(tree, str(params["selector"]))
 		if nodes.is_empty():
 			return {"error": "Node not found for selector"}
-		var node: Node = nodes[0]
+		# Prefer an interactive control so we focus the input, not a nearby label.
+		var node: Node = SelectorEngine.rank_for_interaction(nodes)[0]
 		# Click the node to give it focus before typing
 		var pos: Vector2
 		if node is Control:
@@ -315,7 +330,8 @@ static func input_mouse_move(tree: SceneTree, params: Dictionary) -> Dictionary:
 		var nodes: Array[Node] = SelectorEngine.query(tree, str(params["selector"]))
 		if nodes.is_empty():
 			return {"error": "Node not found for selector"}
-		var node: Node = nodes[0]
+		# Prefer an interactive control when the selector is ambiguous.
+		var node: Node = SelectorEngine.rank_for_interaction(nodes)[0]
 
 		if node is Control:
 			var ctrl: Control = node
