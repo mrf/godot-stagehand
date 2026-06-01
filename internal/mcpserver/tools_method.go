@@ -115,7 +115,7 @@ func (s *Server) handleCallMethod(ctx context.Context, req mcp.CallToolRequest) 
 }
 
 var evaluateTool = mcp.NewTool("godot_evaluate",
-	mcp.WithDescription("Evaluate a GDScript expression in the running Godot game. DANGEROUS — only works when Stagehand is enabled."),
+	mcp.WithDescription("Evaluate a GDScript expression in the running Godot game. Engine singletons (Engine, OS, Time, Input, DisplayServer, ProjectSettings, …) are available. NOTE: conditional/ternary expressions ('a if c else b') are NOT supported by Godot's Expression parser — split them into separate calls. DANGEROUS — only works when Stagehand is enabled."),
 	mcp.WithDestructiveHintAnnotation(true),
 	mcp.WithString("expression",
 		mcp.Required(),
