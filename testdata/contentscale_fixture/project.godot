@@ -1,0 +1,30 @@
+; Engine configuration file for the Stagehand content-scale click fixture.
+;
+; This project exists to prove that selector-based clicks land on target when
+; the window size differs from the content-scale (render/viewport) size — i.e.
+; under content-scale stretch. See godot-stagehand-phase3-vrj.19.
+;
+; The main scene contains a single toggle Button positioned away from the
+; origin. internal/launch/contentscale_click_test.go launches this project
+; headless (where window.size != content_scale_size is inherent), clicks the
+; button by selector, and asserts the button actually toggled. A click computed
+; in viewport/canvas space instead of window space lands off-target and the
+; assertion fails — which is the regression this fixture guards against.
+
+config_version=5
+
+[application]
+
+config/name="Stagehand Content-Scale Click Fixture"
+run/main_scene="res://scenes/main.tscn"
+
+[autoload]
+
+StagehandServer="*res://addons/stagehand/autoload/stagehand_server.gd"
+
+[display]
+
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
