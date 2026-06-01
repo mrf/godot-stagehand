@@ -33,13 +33,12 @@ jobs:
 
       - name: Package artifacts
         run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
           BUILD="build"
 
-          cp  "$BUILD/godot-stagehand-${VERSION}-linux-amd64"          godot-stagehand-linux-amd64
-          zip godot-stagehand-darwin-amd64.zip -j "$BUILD/godot-stagehand-${VERSION}-darwin-amd64"
-          zip godot-stagehand-darwin-arm64.zip  -j "$BUILD/godot-stagehand-${VERSION}-darwin-arm64"
-          cp  "$BUILD/godot-stagehand-${VERSION}-windows-amd64.exe"    godot-stagehand-windows-amd64.exe
+          cp  "$BUILD/godot-stagehand-linux-amd64"          godot-stagehand-linux-amd64
+          zip godot-stagehand-darwin-amd64.zip -j "$BUILD/godot-stagehand-darwin-amd64"
+          zip godot-stagehand-darwin-arm64.zip  -j "$BUILD/godot-stagehand-darwin-arm64"
+          cp  "$BUILD/godot-stagehand-windows-amd64.exe"    godot-stagehand-windows-amd64.exe
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
