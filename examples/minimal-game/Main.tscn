@@ -1,38 +1,33 @@
-[ext_resource type="Script" path="res://Main.gd" id="1"]
+[gd_scene load_steps=3 format=3 uid="uid://cbq6jxw6bthx1"]
 
-[sub_resource type="RectangleShape2D" id="1214821349073987779"]
-extents = Vector2(100, 100)
+[ext_resource type="Script" uid="uid://b5m6q3n3vopqt" path="res://Main.gd" id="1_abc12"]
 
-[node]
-type = "Node2D"
-name = "Main"
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_xyz34"]
+size = Vector2(200, 200)
 
-[node name="CanvasLayer" type="CanvasLayer"]
-owner = "."
+[node name="Main" type="Node2D"]
+script = ExtResource("1_abc12")
 
-[node name="CanvasLayer/VBoxContainer" type="VBoxContainer"]
-owner = "."
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer"]
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = -135.5
 offset_top = -70.0
 offset_right = -34.5
 offset_bottom = 381.0
-theme = null
 
-[node name="CanvasLayer/VBoxContainer/Label" type="Label"]
-owner = "."
+[node name="Label" type="Label" parent="CanvasLayer/VBoxContainer"]
 text = "Hello from Stagehand!"
 
-[node name="CanvasLayer/VBoxContainer/Button" type="Button"]
-owner = "."
+[node name="Button" type="Button" parent="CanvasLayer/VBoxContainer"]
 text = "Test Button"
-pressed.connect(self.button_pressed)
 
-[node name="Node2D" type="Node2D"]
-owner = "."
+[node name="Node2D" type="Node2D" parent="."]
 position = Vector2(300, 100)
 
-[node name="Node2D/CollisionShape2D" type="CollisionShape2D"]
-owner = "."
-shape = SubResource("1214821349073987779")
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Node2D"]
+shape = SubResource("RectangleShape2D_xyz34")
+
+[connection signal="pressed" from="CanvasLayer/VBoxContainer/Button" to="." method="button_pressed"]
