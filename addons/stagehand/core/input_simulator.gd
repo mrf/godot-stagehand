@@ -27,12 +27,9 @@ static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
 		if nodes.is_empty():
 			return {"error": "Node not found for selector"}
 		var node: Node = nodes[0]
-		if node is Control:
-			var ctrl: Control = node
-			pos = ctrl.global_position + ctrl.size / 2.0
-		elif node is Node2D:
-			var n2d: Node2D = node
-			pos = n2d.global_position
+		if node is CanvasItem:
+			var ci: CanvasItem = node
+			pos = _node_window_position(ci)
 		else:
 			return {"error": "Node type does not support clicking"}
 	else:
@@ -180,12 +177,9 @@ static func input_text(tree: SceneTree, params: Dictionary) -> Dictionary:
 		var node: Node = nodes[0]
 		# Click the node to give it focus before typing
 		var pos: Vector2
-		if node is Control:
-			var ctrl: Control = node
-			pos = ctrl.global_position + ctrl.size / 2.0
-		elif node is Node2D:
-			var n2d: Node2D = node
-			pos = n2d.global_position
+		if node is CanvasItem:
+			var ci: CanvasItem = node
+			pos = _node_window_position(ci)
 		else:
 			return {"error": "Node type does not support focusing"}
 
@@ -317,12 +311,9 @@ static func input_mouse_move(tree: SceneTree, params: Dictionary) -> Dictionary:
 			return {"error": "Node not found for selector"}
 		var node: Node = nodes[0]
 
-		if node is Control:
-			var ctrl: Control = node
-			pos = ctrl.global_position + ctrl.size / 2.0
-		elif node is Node2D:
-			var n2d: Node2D = node
-			pos = n2d.global_position
+		if node is CanvasItem:
+			var ci: CanvasItem = node
+			pos = _node_window_position(ci)
 		else:
 			return {"error": "Node type does not support mouse positioning"}
 	elif params.has("coordinates"):
@@ -342,6 +333,29 @@ static func input_mouse_move(tree: SceneTree, params: Dictionary) -> Dictionary:
 		"moved_to": {"x": pos.x, "y": pos.y},
 		"mode": "by_selector" if params.has("selector") else "absolute",
 	}
+
+
+## Converts a selector-matched node's click target into window/display coordinates.
+##
+## Selector-derived node rects live in the viewport's canvas (content-scale) space,
+## but [method Input.parse_input_event] delivers events in window/display pixels.
+## When the project uses content-scale stretch (window size differs from the
+## content scale size), those spaces diverge, so a position computed in canvas
+## space lands off-target by the stretch ratio (see godot-stagehand-phase3-vrj.19).
+## We map canvas -> window via the viewport's stretch transform.
+## [method CanvasItem.get_global_transform_with_canvas] resolves the node's
+## on-canvas position, honoring CanvasLayer and Camera2D transforms; for a
+## [Control] the target is its center, for a [Node2D] its origin.
+static func _node_window_position(node: CanvasItem) -> Vector2:
+	var local_target: Vector2 = Vector2.ZERO
+	if node is Control:
+		var ctrl: Control = node
+		local_target = ctrl.size / 2.0
+	var canvas_point: Vector2 = node.get_global_transform_with_canvas() * local_target
+	var viewport: Viewport = node.get_viewport()
+	if viewport == null:
+		return canvas_point
+	return viewport.get_stretch_transform() * canvas_point
 
 
 static func _v_int(v: Variant) -> int:
