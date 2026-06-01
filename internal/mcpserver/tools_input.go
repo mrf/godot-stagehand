@@ -9,7 +9,7 @@ import (
 var clickTool = mcp.NewTool("godot_click",
 	mcp.WithDescription("Click on a node or at screen coordinates in the Godot game"),
 	mcp.WithString("selector",
-		mcp.Description("Node to click, supports selectors like \"class:Button\", \"name:OkBtn\", \"text:Submit\", \"meta:id=confirm\", or \"div >> text:Submit\""),
+		mcp.Description("Node to click, supports selectors like \"class:Button\", \"name:OkBtn\", \"text:Submit\" (loose substring match), \"text=Submit\" (exact match), \"meta:id=confirm\", or \"div >> text:Submit\". When a selector matches multiple nodes, interactive controls (buttons etc.) are clicked first; the result reports \"matched\" (count), \"clicked_node\" (path), and \"ambiguous\":true when more than one node matched."),
 	),
 	mcp.WithObject("position",
 		mcp.Description("Screen coordinates {x, y} to click at"),
