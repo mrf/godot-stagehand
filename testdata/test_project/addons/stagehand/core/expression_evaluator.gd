@@ -60,7 +60,7 @@ static func _ensure_singletons() -> void:
 		var singleton: Object = Engine.get_singleton(singleton_name)
 		if singleton == null:
 			continue
-		names.append(singleton_name)
+		var _appended: bool = names.append(singleton_name)
 		objects.append(singleton)
 
 	_singleton_names = names

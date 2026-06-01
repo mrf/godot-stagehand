@@ -32,7 +32,7 @@ static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
 		# When a selector resolves to several nodes (e.g. a descriptive Label and
 		# the actual Button both containing the word), prefer the interactive one
 		# instead of silently clicking the first match in tree order.
-		var ranked: Array[Node] = SelectorEngine.rank_for_interaction(nodes)
+		var ranked: Array[Node] = SELECTOR_ENGINE.rank_for_interaction(nodes)
 		clicked_node = ranked[0]
 		if clicked_node is CanvasItem:
 			# Selector rects live in canvas (content-scale) space; translate the
@@ -191,7 +191,7 @@ static func input_text(tree: SceneTree, params: Dictionary) -> Dictionary:
 		if nodes.is_empty():
 			return {"error": "Node not found for selector"}
 		# Prefer an interactive control so we focus the input, not a nearby label.
-		var node: Node = SelectorEngine.rank_for_interaction(nodes)[0]
+		var node: Node = SELECTOR_ENGINE.rank_for_interaction(nodes)[0]
 		# Click the node to give it focus before typing
 		var pos: Vector2
 		if node is CanvasItem:
@@ -327,7 +327,7 @@ static func input_mouse_move(tree: SceneTree, params: Dictionary) -> Dictionary:
 		if nodes.is_empty():
 			return {"error": "Node not found for selector"}
 		# Prefer an interactive control when the selector is ambiguous.
-		var node: Node = SelectorEngine.rank_for_interaction(nodes)[0]
+		var node: Node = SELECTOR_ENGINE.rank_for_interaction(nodes)[0]
 
 		if node is CanvasItem:
 			var ci: CanvasItem = node
