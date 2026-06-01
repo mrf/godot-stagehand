@@ -2,11 +2,15 @@ package launch
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -88,6 +92,22 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		timeout = defaultTimeout * time.Millisecond
 	}
 
+	// Fail fast if something already holds the port. Otherwise the process we
+	// spawn cannot bind it, and dialGodotWhenReady would happily connect to the
+	// pre-existing squatter instead — silently attaching to the wrong process.
+	if err := assertPortFree(host, port); err != nil {
+		return nil, err
+	}
+
+	// Generate a per-launch nonce so we can prove the process we connect to is
+	// the one we spawned: we pass it via env and the addon echoes it back in the
+	// ping response. A different instance holding the port would echo a
+	// different (or empty) token, which we reject below.
+	instanceToken, err := newInstanceToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate instance token: %w", err)
+	}
+
 	// Prepare command line arguments.
 	args := []string{}
 	if cfg.Headless {
@@ -105,6 +125,7 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 	cmd.Env = append(os.Environ(),
 		"STAGEHAND_ENABLED=1",
 		fmt.Sprintf("STAGEHAND_PORT=%d", port),
+		fmt.Sprintf("STAGEHAND_INSTANCE_TOKEN=%s", instanceToken),
 	)
 	// Redirect stdout/stderr to a log file (or discard?). For now, discard.
 	// We could optionally capture logs, but we'll discard.
@@ -131,22 +152,24 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		<-wait // ensure goroutine completes
 		return nil, fmt.Errorf("Godot failed to become ready: %w", err)
 	}
-	// We will keep the connection open; caller is responsible for closing it.
+	// We will keep the connection open on success; caller is responsible for
+	// closing it. cleanup tears everything down on any post-connect failure.
+	cleanup := func() {
+		conn.Close()
+		_ = cmd.Process.Kill()
+		<-wait
+	}
 
 	// Get engine info via ping.
 	pingCtx, pingCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer pingCancel()
 	pingResp, err := conn.Call(pingCtx, "ping", nil)
 	if err != nil {
-		conn.Close()
-		_ = cmd.Process.Kill()
-		<-wait
+		cleanup()
 		return nil, fmt.Errorf("ping failed after launch: %w", err)
 	}
 	if pingResp.Error != nil {
-		conn.Close()
-		_ = cmd.Process.Kill()
-		<-wait
+		cleanup()
 		return nil, fmt.Errorf("ping returned error: %v", pingResp.Error)
 	}
 
@@ -155,18 +178,22 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		Engine           string `json:"engine"`
 		EngineVersion    string `json:"engine_version"`
 		StagehandVersion string `json:"stagehand_version"`
+		InstanceToken    string `json:"instance_token"`
 	}
 	if err := json.Unmarshal(pingResp.Result, &ping); err != nil {
-		conn.Close()
-		_ = cmd.Process.Kill()
-		<-wait
+		cleanup()
 		return nil, fmt.Errorf("malformed ping response: %w", err)
 	}
 	if ping.Status != "ok" || ping.Engine != "godot" {
-		conn.Close()
-		_ = cmd.Process.Kill()
-		<-wait
+		cleanup()
 		return nil, fmt.Errorf("unexpected ping response: status=%q, engine=%q", ping.Status, ping.Engine)
+	}
+	// Prove the instance we connected to is the one we spawned. If the token
+	// does not match, we reached a different Stagehand instance (e.g. a stale
+	// process that still holds the port) and our own process failed to bind.
+	if err := verifyInstanceToken(ping.InstanceToken, instanceToken, host, port); err != nil {
+		cleanup()
+		return nil, err
 	}
 
 	return &LaunchResult{
@@ -187,6 +214,41 @@ func normalizeHost(host string) string {
 		return DefaultHost
 	}
 	return trimmed
+}
+
+// newInstanceToken returns a random hex token used to prove that the process we
+// spawn is the one we end up connected to.
+func newInstanceToken() (string, error) {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
+}
+
+// assertPortFree returns an actionable error if something is already listening
+// on host:port. This catches the common case where a stale Godot instance still
+// holds the port, before we spawn a new process that cannot bind it.
+func assertPortFree(host string, port int) error {
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
+	conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
+	if err != nil {
+		// Nothing accepting connections: the port is free to use.
+		return nil
+	}
+	_ = conn.Close()
+	return fmt.Errorf("port %d on %s is already in use; another Godot/Stagehand instance is likely still running — free the port (kill the stale instance) or choose another port before launching", port, host)
+}
+
+// verifyInstanceToken asserts that the token echoed by the addon in its ping
+// response matches the per-launch token we passed via env. A mismatch (or empty
+// echoed token) means we connected to a different instance than the one we
+// spawned.
+func verifyInstanceToken(got, want, host string, port int) error {
+	if got == want {
+		return nil
+	}
+	return fmt.Errorf("connected to a different Stagehand instance on %s:%d (instance token mismatch): the process we launched failed to bind the port — free the port (kill the stale instance) or choose another port", host, port)
 }
 
 // Kill terminates the Godot process and waits for it to exit.

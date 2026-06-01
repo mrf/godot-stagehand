@@ -59,12 +59,19 @@ func TestIntegrationLaunchHeadless(t *testing.T) {
 		Engine           string `json:"engine"`
 		EngineVersion    string `json:"engine_version"`
 		StagehandVersion string `json:"stagehand_version"`
+		InstanceToken    string `json:"instance_token"`
 	}
 	if err := json.Unmarshal(pingResp.Result, &ping); err != nil {
 		t.Fatalf("unmarshal ping result: %v; raw=%s", err, pingResp.Result)
 	}
 	if ping.Status != "ok" || ping.Engine != "godot" {
 		t.Fatalf("unexpected ping response: %+v", ping)
+	}
+	// The real addon must echo a non-empty instance token; a successful Launch
+	// already proves it matched the one we passed via env, so any failure here
+	// would have been an error from Launch above.
+	if ping.InstanceToken == "" {
+		t.Errorf("ping response missing instance_token: %+v", ping)
 	}
 	if ping.EngineVersion == "" || ping.StagehandVersion == "" {
 		t.Fatalf("ping response missing version fields: %+v", ping)
