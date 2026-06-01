@@ -24,6 +24,8 @@ const BLOCKED_METHODS: PackedStringArray = [
 
 
 ## Call a method on a node matched by a selector.
+## When allow_multiple is true, calls the method on all matched nodes and returns
+## a "results" array with one entry per node; otherwise operates on the first match.
 static func call_method(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var selector: String = params.get("selector", "")
 	var method: String = params.get("method", "")
@@ -39,17 +41,32 @@ static func call_method(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if nodes.is_empty():
 		return {"error": "Node not found for selector: %s" % selector}
 
-	var node: Node = nodes[0]
-
-	if not node.has_method(method):
-		return {"error": "Method not found: %s" % method}
-
 	var args: Array = params.get("args", [])
-	var result: Variant = node.callv(method, args)
+	var allow_multiple: bool = params.get("allow_multiple", false)
+
+	if not allow_multiple:
+		var node: Node = nodes[0]
+		if not node.has_method(method):
+			return {"error": "Method not found: %s" % method}
+		var result: Variant = node.callv(method, args)
+		return {
+			"success": true,
+			"return_value": TREE_SERIALIZER._to_json_safe(result),
+		}
+
+	var results: Array[Dictionary] = []
+	for node: Node in nodes:
+		if not node.has_method(method):
+			return {"error": "Method not found on node '%s': %s" % [node.get_path(), method]}
+		var result: Variant = node.callv(method, args)
+		results.append({
+			"node_path": str(node.get_path()),
+			"return_value": TREE_SERIALIZER._to_json_safe(result),
+		})
 
 	return {
 		"success": true,
-		"return_value": TREE_SERIALIZER._to_json_safe(result),
+		"results": results,
 	}
 
 
