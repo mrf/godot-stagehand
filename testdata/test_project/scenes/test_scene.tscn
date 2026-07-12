@@ -1,5 +1,7 @@
 [gd_scene format=3 uid="uid://test_scene"]
 
+[ext_resource type="Script" path="res://scripts/property_target.gd" id="1"]
+
 [node name="TestScene" type="Node2D"]
 
 [node name="UICanvas" type="Control" parent="."]
@@ -75,3 +77,6 @@ scale = Vector2(1.0, 1.0)
 rotation = 0.0
 position = Vector2(100, 150)
 name = "TestSprite"
+
+[node name="PropertyTarget" type="Node" parent="."]
+script = ExtResource("1")

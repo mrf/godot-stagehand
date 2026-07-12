@@ -580,6 +580,192 @@ func TestSmokeGetProperty(t *testing.T) {
 	t.Logf("Property modification verified successfully")
 }
 
+// TestSmokeSetPropertyFalsyValues is the regression test for godot-stagehand-jzs:
+// set_property must actually apply falsy JSON values (false, 0, "", null) and
+// not silently no-op while still reporting success:true. Each case starts the
+// target property at a truthy value, sets it to the falsy counterpart, and
+// reads it back to confirm the write actually took effect.
+func TestSmokeSetPropertyFalsyValues(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping Godot smoke test in short mode")
+	}
+
+	godotBin, err := findGodotBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if godotBin == "" {
+		t.Skip("Godot binary not found; set GODOT_BIN, GODOT_PATH, or STAGEHAND_GODOT_BIN, or put godot/godot4 in PATH")
+	}
+
+	projectRoot := findProjectRoot(t)
+	projectDir := prepareGodotTestProject(t, projectRoot)
+	port := freeTCPPort(t)
+	logPath := filepath.Join(t.TempDir(), "godot.log")
+
+	cmd, wait := launchGodot(t, godotBin, projectDir, port, logPath)
+	t.Cleanup(func() {
+		stopProcess(cmd, wait)
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), godotStartupTimeout)
+	defer cancel()
+
+	conn := dialGodotWhenReady(t, ctx, port, wait, logPath)
+	defer conn.Close()
+
+	// Path selector, not "name:PropertyTarget": empirically, "name:" selectors
+	// currently match zero nodes at all in this headless test project (even
+	// for pre-existing nodes like testCheckBox) — a separate, unconfirmed,
+	// pre-existing bug out of scope for godot-stagehand-jzs.
+	const selector = "/root/TestScene/PropertyTarget"
+
+	cases := []struct {
+		name     string
+		property string
+		value    any
+	}{
+		{"bool_false", "flag_prop", false},
+		{"int_zero", "count_prop", 0},
+		{"empty_string", "text_prop", ""},
+		{"null", "variant_prop", nil},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setResp, err := conn.Call(ctx, "set_property", map[string]any{
+				"selector": selector,
+				"property": tc.property,
+				"value":    tc.value,
+			})
+			if err != nil {
+				t.Fatalf("set_property call failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
+			}
+
+			var setResult struct {
+				Success       bool `json:"success"`
+				PreviousValue any  `json:"previous_value"`
+			}
+			if err := json.Unmarshal(setResp.Result, &setResult); err != nil {
+				t.Fatalf("unmarshal set_property result: %v; raw=%s", err, setResp.Result)
+			}
+			if !setResult.Success {
+				t.Fatalf("set_property returned success=false: %+v", setResult)
+			}
+
+			getResp, err := conn.Call(ctx, "get_property", map[string]any{
+				"selector": selector,
+				"property": tc.property,
+			})
+			if err != nil {
+				t.Fatalf("get_property call failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
+			}
+
+			var getResult struct {
+				Value any    `json:"value"`
+				Type  string `json:"type"`
+			}
+			if err := json.Unmarshal(getResp.Result, &getResult); err != nil {
+				t.Fatalf("unmarshal get_property result: %v; raw=%s", err, getResp.Result)
+			}
+
+			// Round-trip tc.value through JSON to normalize types (e.g. Go int
+			// vs. the float64 the JSON get_property response decodes numbers
+			// into) before comparing against the read-back value.
+			wantJSON, err := json.Marshal(tc.value)
+			if err != nil {
+				t.Fatalf("marshal want value: %v", err)
+			}
+			var want any
+			if err := json.Unmarshal(wantJSON, &want); err != nil {
+				t.Fatalf("unmarshal want value: %v", err)
+			}
+
+			if getResult.Value != want {
+				t.Fatalf("set_property silently no-op: wanted %s=%#v after set, read back %#v (previous_value reported: %#v)",
+					tc.property, want, getResult.Value, setResult.PreviousValue)
+			}
+		})
+	}
+}
+
+// TestSmokeSetPropertyReportsFailureOnRejectedSet is a regression test for
+// godot-stagehand-jzs: when the underlying write doesn't actually take effect
+// (e.g. a custom GDScript setter that rejects the assignment, mirroring the
+// keystone-reported SimManager.running incident), set_property must report
+// success:false instead of blindly reporting success because the property
+// was found and Object.set() was called without error.
+func TestSmokeSetPropertyReportsFailureOnRejectedSet(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping Godot smoke test in short mode")
+	}
+
+	godotBin, err := findGodotBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if godotBin == "" {
+		t.Skip("Godot binary not found; set GODOT_BIN, GODOT_PATH, or STAGEHAND_GODOT_BIN, or put godot/godot4 in PATH")
+	}
+
+	projectRoot := findProjectRoot(t)
+	projectDir := prepareGodotTestProject(t, projectRoot)
+	port := freeTCPPort(t)
+	logPath := filepath.Join(t.TempDir(), "godot.log")
+
+	cmd, wait := launchGodot(t, godotBin, projectDir, port, logPath)
+	t.Cleanup(func() {
+		stopProcess(cmd, wait)
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), godotStartupTimeout)
+	defer cancel()
+
+	conn := dialGodotWhenReady(t, ctx, port, wait, logPath)
+	defer conn.Close()
+
+	const selector = "/root/TestScene/PropertyTarget"
+
+	setResp, err := conn.Call(ctx, "set_property", map[string]any{
+		"selector": selector,
+		"property": "guarded_flag",
+		"value":    false,
+	})
+	if err != nil {
+		t.Fatalf("set_property call failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
+	}
+
+	var setResult struct {
+		Success       bool `json:"success"`
+		PreviousValue any  `json:"previous_value"`
+	}
+	if err := json.Unmarshal(setResp.Result, &setResult); err != nil {
+		t.Fatalf("unmarshal set_property result: %v; raw=%s", err, setResp.Result)
+	}
+
+	if setResult.Success {
+		t.Fatalf("set_property reported success:true for a write the setter rejected: %+v", setResult)
+	}
+
+	getResp, err := conn.Call(ctx, "get_property", map[string]any{
+		"selector": selector,
+		"property": "guarded_flag",
+	})
+	if err != nil {
+		t.Fatalf("get_property call failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
+	}
+
+	var getResult struct {
+		Value any `json:"value"`
+	}
+	if err := json.Unmarshal(getResp.Result, &getResult); err != nil {
+		t.Fatalf("unmarshal get_property result: %v; raw=%s", err, getResp.Result)
+	}
+	if getResult.Value != true {
+		t.Fatalf("expected guarded_flag to remain true (setter rejects false), got %#v", getResult.Value)
+	}
+}
+
 // TestSmokeScreenshot tests the screenshot functionality
 func TestSmokeScreenshot(t *testing.T) {
 	if testing.Short() {
@@ -976,6 +1162,8 @@ func TestSmokePressAction(t *testing.T) {
 func TestSmokeAllMvpTools(t *testing.T) {
 	t.Run("find_nodes", TestSmokeFindNodes)
 	t.Run("get_set_property", TestSmokeGetProperty)
+	t.Run("set_property_falsy_values", TestSmokeSetPropertyFalsyValues)
+	t.Run("set_property_rejected_set", TestSmokeSetPropertyReportsFailureOnRejectedSet)
 	t.Run("screenshot", TestSmokeScreenshot)
 	t.Run("click", TestSmokeClick)
 	t.Run("press_key", TestSmokePressKey)

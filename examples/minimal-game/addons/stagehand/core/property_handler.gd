@@ -31,6 +31,10 @@ static func get_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 
 
 ## Set a property on a node matched by a selector.
+## `success` reflects a post-set read-back against the requested value, not
+## merely that the property was found — a custom setter, a read-only
+## property, or a type mismatch can make `Object.set()` a silent no-op, and a
+## found-only check would misreport that as success (godot-stagehand-jzs).
 static func set_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var selector: String = params.get("selector", "")
 	var property: String = params.get("property", "")
@@ -44,12 +48,15 @@ static func set_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 
 	var node: Node = nodes[0]
 	var previous: Variant = _get_property_at_level(node, property)
-	var success: bool = _set_property_deep(node, property, params.get("value"))
-	if not success:
+	var requested_value: Variant = params.get("value")
+	var found: bool = _set_property_deep(node, property, requested_value)
+	if not found:
 		return {"error": "Failed to set property: %s" % property}
 
+	var applied_value: Variant = _get_property_at_level(node, property)
+
 	return {
-		"success": true,
+		"success": applied_value == requested_value,
 		"previous_value": TREE_SERIALIZER._to_json_safe(previous),
 	}
 
