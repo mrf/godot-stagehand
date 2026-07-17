@@ -20,6 +20,8 @@ import (
 
 var upgrader = websocket.Upgrader{}
 
+const testMCPAuthToken = "mcp-e2e-auth-token"
+
 // stubCall records a single method call received by the stub.
 type stubCall struct {
 	Method string
@@ -94,6 +96,8 @@ func (s *stubGodot) lastCallParams(method string) json.RawMessage {
 func (s *stubGodot) handleReq(req godotconn.Request) godotconn.Response {
 	resp := godotconn.Response{JSONRPC: "2.0", ID: req.ID}
 	switch req.Method {
+	case "authenticate":
+		resp.Result = rawJSON(`{"authenticated":true}`)
 	case "ping":
 		resp.Result = rawJSON(`{"status":"ok","engine":"godot","engine_version":"4.2.1"}`)
 	case "get_tree":
@@ -240,8 +244,9 @@ func setupE2ETest(t *testing.T) (*Server, *stubGodot) {
 	ctx := context.Background()
 
 	result, err := srv.handleConnect(ctx, toolReq(map[string]any{
-		"host": host,
-		"port": float64(port),
+		"host":       host,
+		"port":       float64(port),
+		"auth_token": testMCPAuthToken,
 	}))
 	if err != nil {
 		t.Fatalf("setupE2ETest: handleConnect error: %v", err)
@@ -1133,6 +1138,9 @@ func blockingStubGodot(t *testing.T, dropConn bool) (host string, port int, clos
 				return
 			}
 			switch req.Method {
+			case "authenticate":
+				result, _ := json.Marshal(map[string]bool{"authenticated": true})
+				_ = ws.WriteJSON(godotconn.Response{JSONRPC: "2.0", ID: req.ID, Result: result})
 			case "wait_signal", "wait_for_node", "wait_for_property":
 				// Block until closeCh is signalled.
 				<-closeCh
@@ -1144,7 +1152,7 @@ func blockingStubGodot(t *testing.T, dropConn bool) (host string, port int, clos
 				select {}
 			default:
 				result, _ := json.Marshal(map[string]string{"status": "ok"})
-				ws.WriteJSON(godotconn.Response{JSONRPC: "2.0", ID: req.ID, Result: result})
+				_ = ws.WriteJSON(godotconn.Response{JSONRPC: "2.0", ID: req.ID, Result: result})
 			}
 		}
 	}))
@@ -1201,8 +1209,9 @@ func TestE2E_WaitDisconnectDuringWait(t *testing.T) {
 
 			srv := New()
 			connResult, err := srv.handleConnect(context.Background(), toolReq(map[string]any{
-				"host": host,
-				"port": float64(port),
+				"host":       host,
+				"port":       float64(port),
+				"auth_token": testMCPAuthToken,
 			}))
 			if err != nil || connResult.IsError {
 				t.Fatalf("connect failed: err=%v result=%+v", err, connResult)
@@ -1279,8 +1288,9 @@ func TestE2E_WaitGoSideTimeoutOnFrozenGodot(t *testing.T) {
 
 			srv := New()
 			connResult, err := srv.handleConnect(context.Background(), toolReq(map[string]any{
-				"host": host,
-				"port": float64(port),
+				"host":       host,
+				"port":       float64(port),
+				"auth_token": testMCPAuthToken,
 			}))
 			if err != nil || connResult.IsError {
 				t.Fatalf("connect failed: err=%v result=%+v", err, connResult)

@@ -84,6 +84,12 @@ jobs:
       - name: MCP → Godot type round-trip
         run: go test -tags=godot ./internal/mcpserver -run '^TestMCPSetPropertyPreservesJSONTypes$' -count=1 -timeout=2m
 
+      - name: Stagehand security boundary
+        run: go test -tags=godot ./internal/godotconn -run '^TestStagehand' -count=1 -timeout=2m
+
+      - name: Secure launch handshake
+        run: go test -tags=godot ./internal/launch -run '^TestLaunch(EstablishesAuthenticatedSafeConnection|CanExplicitlyEnableUnsafeMethods)$' -count=1 -timeout=2m
+
   # ── Cross-platform release builds ────────────────────────────────────────
   build-matrix:
     name: Build (${{ matrix.goos }}-${{ matrix.goarch }})

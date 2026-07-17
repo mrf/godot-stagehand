@@ -20,6 +20,7 @@ func setupNamedInstance(t *testing.T, srv *Server, instanceID string) *stubGodot
 	result, err := srv.handleConnect(ctx, toolReq(map[string]any{
 		"host":        host,
 		"port":        float64(port),
+		"auth_token":  testMCPAuthToken,
 		"instance_id": instanceID,
 	}))
 	if err != nil {

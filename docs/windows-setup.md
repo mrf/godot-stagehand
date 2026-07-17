@@ -22,7 +22,16 @@ networkingMode=mirrored
 ```
 Restart WSL (`wsl --shutdown`). After this, `localhost` in WSL reaches Windows ports directly — no firewall changes needed.
 
-**Option B: Firewall rule**
+**Option B: Explicit remote bind + firewall rule**
+
+Stagehand binds only to `127.0.0.1` by default. For WSL NAT/default networking,
+opt into a non-loopback listener in the Windows environment before starting
+Godot:
+
+```powershell
+$env:STAGEHAND_BIND_ADDRESS = "0.0.0.0"
+$env:STAGEHAND_ALLOW_REMOTE = "1"
+```
 
 Run in PowerShell as Administrator:
 ```powershell
@@ -31,9 +40,13 @@ New-NetFirewallRule -DisplayName "Stagehand Godot" -Direction Inbound -LocalPort
 
 Then connect with the Windows host IP:
 ```json
-{ "name": "godot_connect", "arguments": { "host": "172.x.x.x" } }
+{ "name": "godot_connect", "arguments": { "host": "172.x.x.x", "auth_token": "<token printed by Godot>" } }
 ```
 Find your WSL gateway IP with: `ip route show default | awk '{print $3}'`
+
+Remote bind prints a warning because it exposes the port beyond loopback. Keep
+the session token private and scope the Windows firewall rule to trusted hosts
+or networks where possible.
 
 ## Launching Godot from WSL
 

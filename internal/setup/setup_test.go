@@ -126,6 +126,11 @@ func TestRun_EndToEnd(t *testing.T) {
 	if !strings.Contains(out.String(), "--stagehand") {
 		t.Errorf("output missing run-your-game guidance:\n%s", out.String())
 	}
+	for _, want := range []string{"Authentication token", "auth_token", "godot_connect"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output missing security guidance %q:\n%s", want, out.String())
+		}
+	}
 }
 
 func TestRun_Idempotent(t *testing.T) {

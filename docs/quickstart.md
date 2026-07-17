@@ -131,8 +131,12 @@ godot --path /path/to/your/project --stagehand
 
 **You're good if:** The Godot output panel (or terminal) shows:
 ```
-Stagehand: Server listening on port 26700
+Stagehand: Authentication token: <one-session-token>
+Stagehand: Server listening on port 26700 (127.0.0.1)
 ```
+
+Keep that token private. You will give it to Claude in the next step; a new
+token is generated each time unless you explicitly set `STAGEHAND_AUTH_TOKEN`.
 
 **Try this if not:**
 - Make sure the Stagehand plugin is enabled (Step 3).
@@ -144,9 +148,10 @@ Stagehand: Server listening on port 26700
 
 With your game running, go to Claude and ask it:
 
-> "Connect to my Godot game and show me the scene tree."
+> "Connect to my Godot game using auth token `<one-session-token>` and show me the scene tree."
 
-Claude will call `godot_connect` to attach to your running game, then `godot_get_tree` to read the scene structure.
+Claude will pass the token to `godot_connect`, then call `godot_get_tree` to read
+the scene structure. `godot_launch` handles its fresh token automatically.
 
 **What you should see:**
 
@@ -164,6 +169,9 @@ Scene tree:
 ```
 
 **If you see "Connection refused":** The game isn't running with Stagehand enabled, or it hasn't finished loading yet. Check the output panel for `Stagehand: Server listening`.
+
+**If you see "Authentication required" or "Authentication failed":** Use the
+token printed by the currently running Godot session, not one from an earlier run.
 
 **If you're on Windows with Claude running in WSL:** See [Windows / WSL Setup](windows-setup.md) for networking instructions — you'll need one extra step to bridge the network stacks.
 

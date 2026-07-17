@@ -39,8 +39,8 @@ Stagehand fixes that. It gives AI agents, test runners, and CI pipelines a real 
 
 | Tool | Description |
 |------|-------------|
-| `godot_connect` | Connect to a running game |
-| `godot_launch` | Launch Godot and connect |
+| `godot_connect` | Authenticate and connect to a running game |
+| `godot_launch` | Launch Godot with a fresh session secret and connect |
 | `godot_status` | Connection status |
 | `godot_get_tree` | Snapshot the scene tree |
 | `godot_find_nodes` | Find nodes by selector |
@@ -112,13 +112,16 @@ also prints WSL-specific connection guidance.
 
 > The old `./copy-addon.sh` script is deprecated; it now forwards to
 > `godot-stagehand setup`.
+
 ### 3. Run your game with Stagehand enabled
 
 ```bash
 godot --path /path/to/your/project --stagehand
 ```
 
-You should see `Stagehand: Server listening on port 26700` in the output.
+You should see a one-session authentication token followed by
+`Stagehand: Server listening on port 26700 (127.0.0.1)` in the output. Keep the
+token private; use it as the `auth_token` argument to `godot_connect`.
 
 ### 4. Add to your MCP client
 
@@ -135,7 +138,10 @@ The `setup` command prints this snippet for you; add it to your MCP client confi
 }
 ```
 
-Call `godot_connect` to attach to the running game. Local Linux/macOS and Linux Godot inside WSL use `127.0.0.1` by default. For Windows Godot controlled from WSL, use `localhost` with WSL mirrored networking or the WSL default gateway IP with NAT/default networking.
+Call `godot_connect` with the startup `auth_token` to attach to the running
+game. Local Linux/macOS and Linux Godot inside WSL use `127.0.0.1` by default.
+For Windows Godot controlled from WSL, see the remote-bind opt-in in the
+[Windows setup guide](docs/windows-setup.md).
 
 > **Windows / WSL?** See the [Windows setup guide](docs/windows-setup.md).
 
@@ -147,10 +153,35 @@ Call `godot_connect` to attach to the running game. Local Linux/macOS and Linux 
 | Env var | `STAGEHAND_ENABLED=1 godot ...` |
 | Editor toggle | Stagehand button in toolbar |
 | Custom port | `STAGEHAND_PORT=9999` or `--stagehand-port=9999` |
+| Fixed authentication token | `STAGEHAND_AUTH_TOKEN=<secret>` (otherwise a fresh token is generated and printed) |
+| Bind address | `STAGEHAND_BIND_ADDRESS=127.0.0.1` (loopback is the default) |
+| Remote access | `STAGEHAND_BIND_ADDRESS=0.0.0.0 STAGEHAND_ALLOW_REMOTE=1` |
+| Unsafe methods | `STAGEHAND_ALLOW_UNSAFE=1` or `godot_launch(allow_unsafe=true)` |
+
+## Security boundary
+
+Stagehand is a development automation control plane, not a public game
+endpoint. It binds to `127.0.0.1` by default and rejects every command on each
+WebSocket peer until that peer supplies the current session token. `godot_launch`
+creates and authenticates with a fresh secret automatically; manual/editor
+starts generate one and print it in the local Godot output.
+
+Remote binding requires both a non-loopback `STAGEHAND_BIND_ADDRESS` and
+`STAGEHAND_ALLOW_REMOTE=1`, and emits a prominent warning. Use it only on a
+trusted network with an appropriate host firewall, and never publish the token.
+The WebSocket transport is not encrypted; this boundary is not a substitute for
+TLS, network isolation, or a trustworthy local host.
+Expression evaluation and arbitrary method calls are disabled unless the
+session separately opts into unsafe capabilities. Authentication limits who can
+reach automation; unsafe opt-in controls what an authenticated peer may execute.
 
 ## Troubleshooting
 
 **"Connection refused"** — Game isn't running with `--stagehand`, or wrong host/port.
+
+**"Authentication required/failed"** — Pass the token printed by this Godot
+session, or its configured `STAGEHAND_AUTH_TOKEN`, as
+`godot_connect(auth_token=...)`. Generated tokens from prior runs do not work.
 
 **"Connection reset"** — Godot started but `_process` isn't ticking (common in headless with heavy scenes). Use a visible window or a lighter scene.
 

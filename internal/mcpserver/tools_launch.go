@@ -35,6 +35,10 @@ var launchTool = mcp.NewTool("godot_launch",
 		mcp.Description("Set true for screenshot/baseline/diff workflows; rejects headless launches because screenshots need a visible rendered window"),
 		mcp.DefaultBool(false),
 	),
+	mcp.WithBoolean("allow_unsafe",
+		mcp.Description("Explicitly enable godot_evaluate and arbitrary godot_call_method requests for this launched session"),
+		mcp.DefaultBool(false),
+	),
 	mcp.WithArray("extra_args",
 		mcp.Description("Extra command-line arguments to pass to the Godot binary"),
 		mcp.WithStringItems(),
@@ -57,6 +61,7 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 	port := req.GetInt("port", 0)
 	headless := req.GetBool("headless", true)
 	expectScreenshots := req.GetBool("expect_screenshots", false)
+	allowUnsafe := req.GetBool("allow_unsafe", false)
 	extraArgs := req.GetStringSlice("extra_args", nil)
 	timeoutMs := req.GetInt("timeout_ms", 30000)
 	instanceID := req.GetString("instance_id", "default")
@@ -79,6 +84,7 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 		Host:        host,
 		Port:        port,
 		Headless:    headless,
+		AllowUnsafe: allowUnsafe,
 		ExtraArgs:   extraArgs,
 		TimeoutMs:   timeoutMs,
 	}
@@ -95,13 +101,14 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 	s.instances.add(instanceID, result.Host, result.Port, result.Conn, result)
 
 	jsonResult := map[string]any{
-		"instance_id":         instanceID,
-		"pid":                 result.PID,
-		"host":                result.Host,
-		"port":                result.Port,
-		"engine_version":      result.EngineVersion,
-		"stagehand_version":   result.StagehandVersion,
-		"connection_guidance": connectionGuidance(),
+		"instance_id":            instanceID,
+		"pid":                    result.PID,
+		"host":                   result.Host,
+		"port":                   result.Port,
+		"engine_version":         result.EngineVersion,
+		"stagehand_version":      result.StagehandVersion,
+		"unsafe_methods_enabled": allowUnsafe,
+		"connection_guidance":    connectionGuidance(),
 	}
 	if headless {
 		jsonResult["warnings"] = []string{headlessScreenshotWarning}

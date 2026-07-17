@@ -2,6 +2,7 @@ package godotconn
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -33,6 +34,7 @@ type Connection struct {
 	state       State
 	pending     map[int64]chan *Response
 	reconnected chan struct{} // closed when reconnect succeeds
+	authToken   string
 
 	writeMu   sync.Mutex // serializes WebSocket writes
 	nextID    atomic.Int64
@@ -49,17 +51,16 @@ func Dial(ctx context.Context, host string, port int) (*Connection, error) {
 		pending: make(map[int64]chan *Response),
 		done:    make(chan struct{}),
 	}
-	if err := c.dialWebSocket(ctx); err != nil {
+	if err := c.dialWebSocket(ctx, Connected); err != nil {
 		return nil, fmt.Errorf("dial %s: %w", addr, err)
 	}
 	go c.readLoop()
 	return c, nil
 }
 
-// dialWebSocket dials the WebSocket and, on success, stores the connection
-// and transitions to Connected. It does not manage the pre-dial state;
-// callers set Connecting or Reconnecting before calling.
-func (c *Connection) dialWebSocket(ctx context.Context) error {
+// dialWebSocket dials the WebSocket and stores it with the caller-selected
+// lifecycle state. Reconnects remain Reconnecting until re-authentication.
+func (c *Connection) dialWebSocket(ctx context.Context, nextState State) error {
 	u := url.URL{Scheme: "ws", Host: c.addr}
 	ws, _, err := websocket.DefaultDialer.DialContext(ctx, u.String(), nil)
 	if err != nil {
@@ -68,7 +69,7 @@ func (c *Connection) dialWebSocket(ctx context.Context) error {
 
 	c.mu.Lock()
 	c.ws = ws
-	c.state = Connected
+	c.state = nextState
 	c.mu.Unlock()
 	return nil
 }
@@ -79,12 +80,42 @@ func (c *Connection) Call(ctx context.Context, method string, params any) (*Resp
 	if err := c.waitConnected(ctx); err != nil {
 		return nil, err
 	}
+	return c.callCurrent(ctx, method, params, false)
+}
+
+// Authenticate proves this connection knows the server's per-session secret.
+// A successful token is retained so reconnects authenticate their new peer
+// before queued calls are released.
+func (c *Connection) Authenticate(ctx context.Context, token string) error {
+	if token == "" {
+		return fmt.Errorf("authentication token is required")
+	}
+	resp, err := c.Call(ctx, "authenticate", map[string]string{"token": token})
+	if err != nil {
+		return fmt.Errorf("authenticate: %w", err)
+	}
+	if err := validateAuthenticationResponse(resp); err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	c.authToken = token
+	c.mu.Unlock()
+	return nil
+}
+
+func (c *Connection) callCurrent(
+	ctx context.Context,
+	method string,
+	params any,
+	allowReconnecting bool,
+) (*Response, error) {
 
 	id := c.nextID.Add(1)
 	ch := make(chan *Response, 1)
 
 	c.mu.Lock()
-	if c.state != Connected {
+	if c.state != Connected && !(allowReconnecting && c.state == Reconnecting) {
 		c.mu.Unlock()
 		return nil, ErrNotConnected
 	}
@@ -118,6 +149,19 @@ func (c *Connection) Call(ctx context.Context, method string, params any) (*Resp
 	case <-c.done:
 		return nil, ErrClosed
 	}
+}
+
+func validateAuthenticationResponse(resp *Response) error {
+	var result struct {
+		Authenticated bool `json:"authenticated"`
+	}
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		return fmt.Errorf("decode authentication response: %w", err)
+	}
+	if !result.Authenticated {
+		return fmt.Errorf("server did not confirm authentication")
+	}
+	return nil
 }
 
 func (c *Connection) waitConnected(ctx context.Context) error {

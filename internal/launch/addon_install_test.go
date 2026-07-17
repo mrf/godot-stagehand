@@ -17,6 +17,8 @@ import (
 	"github.com/mrf/godot-stagehand/internal/godotconn"
 )
 
+const addonInstallAuthToken = "stagehand-addon-install-auth-token"
+
 // TestAddonInstallation is a smoke test that verifies the stagehand addon can be
 // installed into a fresh (non-test-project) Godot project, starts without parse
 // errors, and optionally accepts a WebSocket ping.
@@ -53,6 +55,7 @@ func TestAddonInstallation(t *testing.T) {
 	cmd.Env = append(os.Environ(),
 		"STAGEHAND_ENABLED=1",
 		fmt.Sprintf("STAGEHAND_PORT=%d", port),
+		"STAGEHAND_AUTH_TOKEN="+addonInstallAuthToken,
 	)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
@@ -92,6 +95,10 @@ func TestAddonInstallation(t *testing.T) {
 		return
 	}
 	defer conn.Close()
+	if err := conn.Authenticate(context.Background(), addonInstallAuthToken); err != nil {
+		log := readGodotLog(logPath)
+		t.Fatalf("authenticate after addon install: %v\nGodot log:\n%s", err, log)
+	}
 
 	// Ping to confirm the addon is fully operational.
 	pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second)

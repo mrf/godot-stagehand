@@ -36,6 +36,10 @@ const (
 	CodeMethodNotFound = -32601
 	CodeInvalidParams  = -32602
 	CodeInternalError  = -32603
+
+	CodeAuthenticationRequired = -32001
+	CodeAuthenticationFailed   = -32002
+	CodeUnsafeCapability       = -32003
 )
 
 func newRequest(id int64, method string, params any) *Request {

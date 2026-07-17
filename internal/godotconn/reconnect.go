@@ -87,21 +87,46 @@ func (c *Connection) reconnectLoop() {
 			}
 		}()
 
-		err := c.dialWebSocket(ctx)
+		err := c.dialWebSocket(ctx, Reconnecting)
 		cancel()
 		if err != nil {
 			continue
 		}
 
+		// The server authenticates each WebSocket peer independently. Keep the
+		// public state Reconnecting until the new peer has proven the same token,
+		// so queued calls cannot race ahead of the handshake.
+		go c.readLoop()
+		c.mu.Lock()
+		authToken := c.authToken
+		c.mu.Unlock()
+		if authToken != "" {
+			authCtx, authCancel := context.WithTimeout(context.Background(), queueTimeout)
+			resp, authErr := c.callCurrent(authCtx, "authenticate", map[string]string{"token": authToken}, true)
+			authCancel()
+			if authErr == nil {
+				authErr = validateAuthenticationResponse(resp)
+			}
+			if authErr != nil {
+				c.mu.Lock()
+				ws := c.ws
+				c.mu.Unlock()
+				if ws != nil {
+					_ = ws.Close()
+				}
+				return
+			}
+		}
+
 		// Signal waiters that reconnection succeeded.
 		c.mu.Lock()
+		c.state = Connected
 		ch := c.reconnected
 		c.mu.Unlock()
 		if ch != nil {
 			close(ch)
 		}
 
-		go c.readLoop()
 		return
 	}
 }

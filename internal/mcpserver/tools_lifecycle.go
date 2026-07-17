@@ -11,6 +11,10 @@ import (
 
 var connectTool = mcp.NewTool("godot_connect",
 	mcp.WithDescription("Connect to a running Godot game with the stagehand addon enabled"),
+	mcp.WithString("auth_token",
+		mcp.Required(),
+		mcp.Description("Authentication token for the current Godot session: the token printed at startup when generated, or the configured STAGEHAND_AUTH_TOKEN"),
+	),
 	mcp.WithString("host",
 		mcp.Description(hostSelectionDescription),
 		mcp.DefaultString(launch.DefaultHost),
@@ -23,6 +27,10 @@ var connectTool = mcp.NewTool("godot_connect",
 )
 
 func (s *Server) handleConnect(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	authToken, err := req.RequireString("auth_token")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 	host := req.GetString("host", launch.DefaultHost)
 	port := req.GetInt("port", 26700)
 	instanceID := req.GetString("instance_id", "default")
@@ -31,6 +39,12 @@ func (s *Server) handleConnect(ctx context.Context, req mcp.CallToolRequest) (*m
 	if err != nil {
 		return mcp.NewToolResultError(
 			fmt.Sprintf("Failed to connect to Godot at %s:%d: %v\n\n%s", host, port, err, connectionGuidance()),
+		), nil
+	}
+	if err := conn.Authenticate(ctx, authToken); err != nil {
+		_ = conn.Close()
+		return mcp.NewToolResultError(
+			fmt.Sprintf("Failed to authenticate with Godot at %s:%d: %v", host, port, err),
 		), nil
 	}
 

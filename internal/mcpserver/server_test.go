@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -17,7 +18,15 @@ import (
 
 const testPNG1x1Base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
 
-var hostGuidanceTokens = []string{"127.0.0.1", "localhost", "WSL", "gateway"}
+var hostGuidanceTokens = []string{
+	"127.0.0.1",
+	"localhost",
+	"WSL",
+	"gateway",
+	"STAGEHAND_BIND_ADDRESS=0.0.0.0",
+	"STAGEHAND_ALLOW_REMOTE=1",
+	"auth_token",
+}
 
 func assertContainsAll(t *testing.T, text string, wants []string) {
 	t.Helper()
@@ -225,8 +234,20 @@ func TestConnectClearsConnOnPingFailure(t *testing.T) {
 		if err != nil {
 			return
 		}
-		// Accept the WebSocket handshake but immediately close — ping will fail.
-		ws.Close()
+		defer ws.Close()
+		var authRequest godotconn.Request
+		if err := ws.ReadJSON(&authRequest); err != nil {
+			return
+		}
+		authResult, _ := json.Marshal(map[string]bool{"authenticated": true})
+		if err := ws.WriteJSON(godotconn.Response{JSONRPC: "2.0", ID: authRequest.ID, Result: authResult}); err != nil {
+			return
+		}
+		// Authentication succeeds, then the peer closes before answering ping.
+		var pingRequest godotconn.Request
+		if err := ws.ReadJSON(&pingRequest); err != nil {
+			return
+		}
 	}))
 	defer srv.Close()
 
@@ -238,8 +259,9 @@ func TestConnectClearsConnOnPingFailure(t *testing.T) {
 
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
-		"host": "127.0.0.1",
-		"port": float64(port),
+		"host":       "127.0.0.1",
+		"port":       float64(port),
+		"auth_token": testMCPAuthToken,
 	}
 	result, err := s.handleConnect(ctx, req)
 	if err != nil {
@@ -255,14 +277,148 @@ func TestConnectClearsConnOnPingFailure(t *testing.T) {
 	}
 }
 
+func TestSecurityControlsAreExposedByConnectionTools(t *testing.T) {
+	authProperty, ok := connectTool.InputSchema.Properties["auth_token"]
+	if !ok {
+		t.Fatal("godot_connect schema must expose auth_token")
+	}
+	authSchema, ok := authProperty.(map[string]any)
+	if !ok {
+		t.Fatalf("godot_connect auth_token schema has type %T, want map[string]any", authProperty)
+	}
+	authDescription, _ := authSchema["description"].(string)
+	if !strings.Contains(authDescription, "STAGEHAND_AUTH_TOKEN") {
+		t.Fatalf("godot_connect auth_token description must document fixed tokens: %q", authDescription)
+	}
+	authRequired := false
+	for _, name := range connectTool.InputSchema.Required {
+		if name == "auth_token" {
+			authRequired = true
+			break
+		}
+	}
+	if !authRequired {
+		t.Fatal("godot_connect auth_token must be required")
+	}
+
+	property, ok := launchTool.InputSchema.Properties["allow_unsafe"]
+	if !ok {
+		t.Fatal("godot_launch schema must expose allow_unsafe")
+	}
+	propertySchema, ok := property.(map[string]any)
+	if !ok {
+		t.Fatalf("godot_launch allow_unsafe schema has type %T, want map[string]any", property)
+	}
+	if got := propertySchema["default"]; got != false {
+		t.Fatalf("godot_launch allow_unsafe default = %v, want false", got)
+	}
+}
+
+func TestConnectAuthenticatesBeforePing(t *testing.T) {
+	const authToken = "mcp-connect-auth-token"
+	methods := make(chan string, 2)
+	upgrader := websocket.Upgrader{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+
+		authenticated := false
+		for {
+			var req godotconn.Request
+			if err := ws.ReadJSON(&req); err != nil {
+				return
+			}
+			methods <- req.Method
+			if req.Method == "authenticate" {
+				params, _ := req.Params.(map[string]any)
+				if params["token"] != authToken {
+					_ = ws.WriteJSON(godotconn.Response{
+						JSONRPC: "2.0",
+						ID:      req.ID,
+						Error:   &godotconn.RPCError{Code: godotconn.CodeAuthenticationFailed, Message: "authentication failed"},
+					})
+					continue
+				}
+				authenticated = true
+				result, _ := json.Marshal(map[string]bool{"authenticated": true})
+				_ = ws.WriteJSON(godotconn.Response{JSONRPC: "2.0", ID: req.ID, Result: result})
+				continue
+			}
+			if !authenticated {
+				_ = ws.WriteJSON(godotconn.Response{
+					JSONRPC: "2.0",
+					ID:      req.ID,
+					Error:   &godotconn.RPCError{Code: godotconn.CodeAuthenticationRequired, Message: "authentication required"},
+				})
+				continue
+			}
+			result, _ := json.Marshal(map[string]string{"status": "ok", "engine": "godot"})
+			_ = ws.WriteJSON(godotconn.Response{JSONRPC: "2.0", ID: req.ID, Result: result})
+		}
+	}))
+	defer srv.Close()
+	_, port := serverHostPort(t, srv)
+
+	s := New()
+	defer s.clearConn()
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{
+		"host":       "127.0.0.1",
+		"port":       float64(port),
+		"auth_token": authToken,
+	}
+	result, err := s.handleConnect(context.Background(), req)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	if result.IsError {
+		text, _ := mcp.AsTextContent(result.Content[0])
+		t.Fatalf("connect returned tool error: %s", text.Text)
+	}
+	for index, want := range []string{"authenticate", "ping"} {
+		select {
+		case got := <-methods:
+			if got != want {
+				t.Fatalf("method %d = %q, want %q", index, got, want)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for method %q", want)
+		}
+	}
+}
+
+func TestConnectRequiresAuthenticationToken(t *testing.T) {
+	s := New()
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{
+		"host": "127.0.0.1",
+		"port": float64(1),
+	}
+	result, err := s.handleConnect(context.Background(), req)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected missing auth_token to be rejected")
+	}
+	text, _ := mcp.AsTextContent(result.Content[0])
+	if !strings.Contains(text.Text, "auth_token") {
+		t.Fatalf("missing-token error must mention auth_token: %s", text.Text)
+	}
+}
+
 func TestConnectReturnsErrorForUnreachableHost(t *testing.T) {
 	s := New()
 	ctx := context.Background()
 
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
-		"host": "localhost",
-		"port": float64(19999), // unlikely to have anything listening
+		"host":       "localhost",
+		"port":       float64(19999), // unlikely to have anything listening
+		"auth_token": testMCPAuthToken,
 	}
 	result, err := s.handleConnect(ctx, req)
 	if err != nil {
@@ -314,6 +470,7 @@ func TestLaunchWarningsAndGuidanceDocumentScreenshotHosts(t *testing.T) {
 
 	guidance := connectionGuidance()
 	assertContainsAll(t, guidance, hostGuidanceTokens)
+	assertContainsAll(t, hostSelectionDescription, hostGuidanceTokens)
 }
 
 func TestStatusWhenNotConnected(t *testing.T) {

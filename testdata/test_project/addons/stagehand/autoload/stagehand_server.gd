@@ -5,7 +5,11 @@ extends Node
 ## or the editor toolbar toggle is on.
 
 const DEFAULT_PORT: int = 26700
+const DEFAULT_BIND_ADDRESS: String = "127.0.0.1"
 const VERSION: String = "0.1.0"
+const AUTHENTICATION_REQUIRED: int = -32001
+const AUTHENTICATION_FAILED: int = -32002
+const UNSAFE_CAPABILITY_REQUIRED: int = -32003
 ## Exit code used when a game/CLI launch self-quits because the WebSocket port
 ## could not be bound. Nonzero so the failure is distinguishable from a clean
 ## shutdown. 70 == EX_SOFTWARE (sysexits.h).
@@ -36,9 +40,13 @@ const WAITER := preload("res://addons/stagehand/core/waiter.gd")
 
 var _tcp_server: TCPServer
 var _clients: Dictionary = {}  # int -> WebSocketPeer
+var _authenticated_peers: Dictionary = {}  # int -> true
 var _next_peer_id: int = 0
 var _router: COMMAND_ROUTER
 var _port: int = DEFAULT_PORT
+var _bind_address: String = DEFAULT_BIND_ADDRESS
+var _auth_token: String = ""
+var _allow_unsafe: bool = false
 var _active: bool = false
 var _recorder: INPUT_RECORDER
 
@@ -52,8 +60,15 @@ func _ready() -> void:
 	_register_builtin_handlers()
 
 	_port = _get_port()
+	_bind_address = _get_bind_address()
+	_auth_token = _get_auth_token()
+	_allow_unsafe = OS.get_environment("STAGEHAND_ALLOW_UNSAFE") == "1"
+	if OS.get_environment("STAGEHAND_AUTH_TOKEN").is_empty():
+		print("Stagehand: Authentication token: %s" % _auth_token)
+	if _allow_unsafe:
+		push_warning("Stagehand: WARNING: unsafe evaluate and call_method capabilities are enabled")
 	_tcp_server = TCPServer.new()
-	var err: Error = _tcp_server.listen(_port)
+	var err: Error = _tcp_server.listen(_port, _bind_address)
 	if err != OK:
 		push_error("Stagehand: Failed to listen on port %d: %s" % [_port, error_string(err)])
 		set_process(false)
@@ -70,7 +85,7 @@ func _ready() -> void:
 		return
 
 	_active = true
-	print("Stagehand: Server listening on port %d" % _port)
+	print("Stagehand: Server listening on port %d (%s)" % [_port, _bind_address])
 
 
 func _process(_delta: float) -> void:
@@ -133,6 +148,7 @@ func _poll_clients() -> void:
 				disconnected.append(peer_id)
 	for peer_id: int in disconnected:
 		var _erased: bool = _clients.erase(peer_id)
+		var _auth_erased: bool = _authenticated_peers.erase(peer_id)
 
 
 func _handle_message(peer_id: int, text: String) -> void:
@@ -146,6 +162,27 @@ func _handle_message(peer_id: int, text: String) -> void:
 	var id: Variant = request.get("id")
 	var method: String = request["method"]
 	var params: Variant = request.get("params", {})
+	if method == "authenticate":
+		_authenticate_peer(peer_id, id, params)
+		return
+
+	if not _authenticated_peers.has(peer_id):
+		_send_rpc_error(
+			peer_id,
+			id,
+			AUTHENTICATION_REQUIRED,
+			"Authentication required before calling Stagehand methods"
+		)
+		return
+
+	if _is_unsafe_method(method) and not _allow_unsafe:
+		_send_rpc_error(
+			peer_id,
+			id,
+			UNSAFE_CAPABILITY_REQUIRED,
+			"Unsafe method disabled; relaunch with an explicit unsafe-capability opt-in"
+		)
+		return
 
 	if not _router.has_handler(method):
 		var _method_send_error: Error = _send_to_peer(peer_id, JSON_RPC.make_error_response(
@@ -158,6 +195,34 @@ func _handle_message(peer_id: int, text: String) -> void:
 	# This avoids the "coroutine not awaited" strict-mode warning and keeps
 	# the WebSocket poll loop running every frame.
 	call_deferred("_dispatch_and_respond", peer_id, id, method, params)
+
+
+func _authenticate_peer(peer_id: int, id: Variant, params: Variant) -> void:
+	var p: Dictionary = _params(params)
+	var supplied: Variant = p.get("token")
+	if supplied is not String:
+		_send_rpc_error(peer_id, id, AUTHENTICATION_FAILED, "Authentication failed")
+		return
+	var supplied_token: String = supplied
+	if supplied_token != _auth_token:
+		_send_rpc_error(peer_id, id, AUTHENTICATION_FAILED, "Authentication failed")
+		return
+	_authenticated_peers[peer_id] = true
+	if id != null:
+		var _auth_send_error: Error = _send_to_peer(peer_id, JSON_RPC.make_response(
+			id, {"authenticated": true}
+		))
+
+
+func _send_rpc_error(peer_id: int, id: Variant, code: int, message: String) -> void:
+	if id != null:
+		var _rpc_send_error: Error = _send_to_peer(
+			peer_id, JSON_RPC.make_error_response(id, code, message)
+		)
+
+
+static func _is_unsafe_method(method: String) -> bool:
+	return method == "evaluate" or method == "call_method"
 
 
 func _dispatch_and_respond(peer_id: int, id: Variant, method: String, params: Variant) -> void:
@@ -263,11 +328,16 @@ func _handle_screenshot(params: Variant) -> Dictionary:
 
 
 func _handle_ping(_unused_params: Variant) -> Dictionary:
+	# Echo the per-launch instance token so the launcher can prove the process it
+	# spawned is the one it connected to. Empty when launched without a token
+	# (e.g. manual --stagehand runs); the launcher only asserts it for launches
+	# it initiated.
 	return {
 		"status": "ok",
 		"engine": "godot",
 		"engine_version": Engine.get_version_info()["string"],
 		"stagehand_version": VERSION,
+		"instance_token": OS.get_environment("STAGEHAND_INSTANCE_TOKEN"),
 	}
 
 
@@ -527,6 +597,7 @@ func _stop() -> void:
 		var ws: WebSocketPeer = _clients[peer_id]
 		ws.close()
 	_clients.clear()
+	_authenticated_peers.clear()
 	if _tcp_server:
 		_tcp_server.stop()
 	_active = false
@@ -589,3 +660,30 @@ static func _get_port() -> int:
 			if port_str.is_valid_int():
 				return port_str.to_int()
 	return DEFAULT_PORT
+
+
+static func _get_bind_address() -> String:
+	var requested: String = OS.get_environment("STAGEHAND_BIND_ADDRESS").strip_edges()
+	if requested.is_empty():
+		return DEFAULT_BIND_ADDRESS
+	if requested.begins_with("127.") or requested == "::1":
+		return requested
+	if OS.get_environment("STAGEHAND_ALLOW_REMOTE") == "1":
+		push_warning(
+			"Stagehand: WARNING: non-loopback bind address %s explicitly enabled; " % requested
+			+ "any network peer still needs the session authentication token"
+		)
+		return requested
+	push_warning(
+		"Stagehand: Ignoring non-loopback bind address %s without STAGEHAND_ALLOW_REMOTE=1; " % requested
+		+ "binding to %s" % DEFAULT_BIND_ADDRESS
+	)
+	return DEFAULT_BIND_ADDRESS
+
+
+static func _get_auth_token() -> String:
+	var configured: String = OS.get_environment("STAGEHAND_AUTH_TOKEN")
+	if not configured.is_empty():
+		return configured
+	var entropy: PackedByteArray = OS.get_entropy(32)
+	return entropy.hex_encode()

@@ -23,6 +23,10 @@ STAGEHAND_ENABLED=1 godot --path .
 godot --path . --stagehand
 ```
 
+Godot prints a fresh authentication token at startup. Pass it as `auth_token`
+when calling `godot_connect`. The listener is loopback-only unless remote access
+is explicitly enabled.
+
 ### Step 2: Start the Stagehand MCP server
 From the main godot-stagehand directory:
 ```bash

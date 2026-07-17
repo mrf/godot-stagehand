@@ -28,6 +28,8 @@ func printGuidance(out io.Writer, opts Options) {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Run your game with:")
 	fmt.Fprintf(out, "  godot --path %s --stagehand\n", opts.ProjectPath)
+	fmt.Fprintln(out, "  Godot prints a one-session Authentication token at startup.")
+	fmt.Fprintln(out, "  Pass that token to godot_connect as auth_token.")
 
 	if opts.IsWSL {
 		fmt.Fprintln(out)
@@ -37,6 +39,7 @@ func printGuidance(out io.Writer, opts Options) {
 		fmt.Fprintf(out, "      godot.exe --path \"$(wslpath -w %s)\" --stagehand\n", opts.ProjectPath)
 		fmt.Fprintln(out, "      - mirrored networking: host localhost")
 		fmt.Fprintln(out, "      - default/NAT networking: host = WSL default gateway IP")
+		fmt.Fprintln(out, "        and explicitly set STAGEHAND_BIND_ADDRESS=0.0.0.0 plus STAGEHAND_ALLOW_REMOTE=1")
 		fmt.Fprintln(out, "        (find it with: ip route show default | awk '{print $3}')")
 	}
 }

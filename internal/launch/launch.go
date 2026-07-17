@@ -29,6 +29,8 @@ type Config struct {
 	Port int
 	// Headless launches Godot in headless mode (--headless flag). Default true.
 	Headless bool
+	// AllowUnsafe enables expression evaluation and arbitrary method calls.
+	AllowUnsafe bool
 	// ExtraArgs are additional command-line arguments passed to the Godot binary.
 	ExtraArgs []string
 	// TimeoutMs is the maximum time to wait for Godot to start and become ready, in milliseconds.
@@ -107,6 +109,10 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate instance token: %w", err)
 	}
+	authToken, err := newInstanceToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate authentication token: %w", err)
+	}
 
 	// Prepare command line arguments.
 	args := []string{}
@@ -121,11 +127,17 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		args = append(args, cfg.ExtraArgs...)
 	}
 
+	unsafeSetting := "0"
+	if cfg.AllowUnsafe {
+		unsafeSetting = "1"
+	}
 	cmd := exec.Command(godotBin, args...)
 	cmd.Env = append(os.Environ(),
 		"STAGEHAND_ENABLED=1",
 		fmt.Sprintf("STAGEHAND_PORT=%d", port),
 		fmt.Sprintf("STAGEHAND_INSTANCE_TOKEN=%s", instanceToken),
+		fmt.Sprintf("STAGEHAND_AUTH_TOKEN=%s", authToken),
+		fmt.Sprintf("STAGEHAND_ALLOW_UNSAFE=%s", unsafeSetting),
 	)
 	// Redirect stdout/stderr to a log file (or discard?). For now, discard.
 	// We could optionally capture logs, but we'll discard.
@@ -158,6 +170,10 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		conn.Close()
 		_ = cmd.Process.Kill()
 		<-wait
+	}
+	if err := conn.Authenticate(launchCtx, authToken); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("Stagehand authentication failed after launch: %w", err)
 	}
 
 	// Get engine info via ping.

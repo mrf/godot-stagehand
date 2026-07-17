@@ -16,6 +16,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const testConnectionAuthToken = "connection-auth-token"
+
 var testUpgrader = websocket.Upgrader{}
 
 // echoServer returns an httptest.Server that upgrades to WebSocket and echoes
@@ -88,6 +90,142 @@ func TestDialAndCall(t *testing.T) {
 	}
 	if result["method"] != "ping" {
 		t.Errorf("result method = %q, want ping", result["method"])
+	}
+}
+
+func TestAuthenticate(t *testing.T) {
+	methods := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := testUpgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+
+		var req Request
+		if err := ws.ReadJSON(&req); err != nil {
+			return
+		}
+		methods <- req.Method
+		params, _ := req.Params.(map[string]any)
+		if req.Method != "authenticate" || params["token"] != testConnectionAuthToken {
+			_ = ws.WriteJSON(Response{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Error:   &RPCError{Code: CodeAuthenticationFailed, Message: "authentication failed"},
+			})
+			return
+		}
+		result, _ := json.Marshal(map[string]bool{"authenticated": true})
+		_ = ws.WriteJSON(Response{JSONRPC: "2.0", ID: req.ID, Result: result})
+	}))
+	defer srv.Close()
+	host, port := serverHostPort(t, srv)
+
+	conn, err := Dial(context.Background(), host, port)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	if err := conn.Authenticate(context.Background(), testConnectionAuthToken); err != nil {
+		t.Fatalf("authenticate: %v", err)
+	}
+	if got := <-methods; got != "authenticate" {
+		t.Fatalf("first method = %q, want authenticate", got)
+	}
+}
+
+func TestAuthenticatePersistsAcrossReconnect(t *testing.T) {
+	authenticatedConnections := make(chan struct{}, 2)
+	firstConnection := make(chan *websocket.Conn, 1)
+	var connectionMu sync.Mutex
+	connectionCount := 0
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := testUpgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+
+		connectionMu.Lock()
+		connectionCount++
+		connectionNumber := connectionCount
+		connectionMu.Unlock()
+		if connectionNumber == 1 {
+			firstConnection <- ws
+		}
+
+		authenticated := false
+		for {
+			var req Request
+			if err := ws.ReadJSON(&req); err != nil {
+				return
+			}
+			if req.Method == "authenticate" {
+				params, _ := req.Params.(map[string]any)
+				if params["token"] != testConnectionAuthToken {
+					_ = ws.WriteJSON(Response{
+						JSONRPC: "2.0",
+						ID:      req.ID,
+						Error:   &RPCError{Code: CodeAuthenticationFailed, Message: "authentication failed"},
+					})
+					continue
+				}
+				authenticated = true
+				authenticatedConnections <- struct{}{}
+				result, _ := json.Marshal(map[string]bool{"authenticated": true})
+				_ = ws.WriteJSON(Response{JSONRPC: "2.0", ID: req.ID, Result: result})
+				continue
+			}
+			if !authenticated {
+				_ = ws.WriteJSON(Response{
+					JSONRPC: "2.0",
+					ID:      req.ID,
+					Error:   &RPCError{Code: CodeAuthenticationRequired, Message: "authentication required"},
+				})
+				continue
+			}
+			result, _ := json.Marshal(map[string]string{"status": "ok"})
+			_ = ws.WriteJSON(Response{JSONRPC: "2.0", ID: req.ID, Result: result})
+		}
+	}))
+	defer srv.Close()
+	host, port := serverHostPort(t, srv)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := Dial(ctx, host, port)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	if err := conn.Authenticate(ctx, testConnectionAuthToken); err != nil {
+		t.Fatalf("authenticate initial connection: %v", err)
+	}
+	<-authenticatedConnections
+	if _, err := conn.Call(ctx, "ping", nil); err != nil {
+		t.Fatalf("initial authenticated call: %v", err)
+	}
+
+	if err := (<-firstConnection).Close(); err != nil {
+		t.Fatalf("drop first connection: %v", err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for conn.State() == Connected && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if conn.State() == Connected {
+		t.Fatal("connection did not enter reconnecting state")
+	}
+
+	if _, err := conn.Call(ctx, "ping", nil); err != nil {
+		t.Fatalf("call after authenticated reconnect: %v", err)
+	}
+	select {
+	case <-authenticatedConnections:
+	case <-ctx.Done():
+		t.Fatal("reconnected socket was not authenticated before use")
 	}
 }
 

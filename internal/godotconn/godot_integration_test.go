@@ -18,6 +18,7 @@ import (
 )
 
 const godotStartupTimeout = 30 * time.Second
+const testAuthToken = "stagehand-integration-auth-token"
 
 // setupGodotTest prepares a headless Godot instance with the stagehand addon
 // and returns a connected WebSocket connection. Cleanup is registered automatically.
@@ -284,6 +285,21 @@ func freeTCPPort(t *testing.T) int {
 
 func launchGodot(t *testing.T, godotBin, projectDir string, port int, logPath string) (*exec.Cmd, <-chan error) {
 	t.Helper()
+	return launchGodotWithEnvironment(t, godotBin, projectDir, port, logPath, []string{
+		"STAGEHAND_AUTH_TOKEN=" + testAuthToken,
+		"STAGEHAND_ALLOW_UNSAFE=1",
+	})
+}
+
+func launchGodotWithEnvironment(
+	t *testing.T,
+	godotBin string,
+	projectDir string,
+	port int,
+	logPath string,
+	extraEnvironment []string,
+) (*exec.Cmd, <-chan error) {
+	t.Helper()
 	logFile, err := os.Create(logPath)
 	if err != nil {
 		t.Fatalf("create Godot log %s: %v", logPath, err)
@@ -294,6 +310,7 @@ func launchGodot(t *testing.T, godotBin, projectDir string, port int, logPath st
 		"STAGEHAND_ENABLED=1",
 		fmt.Sprintf("STAGEHAND_PORT=%d", port),
 	)
+	cmd.Env = append(cmd.Env, extraEnvironment...)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 
@@ -311,6 +328,22 @@ func launchGodot(t *testing.T, godotBin, projectDir string, port int, logPath st
 }
 
 func dialGodotWhenReady(t *testing.T, ctx context.Context, port int, wait <-chan error, logPath string) *Connection {
+	t.Helper()
+	conn := dialUnauthenticatedGodotWhenReady(t, ctx, port, wait, logPath)
+	if err := conn.Authenticate(ctx, testAuthToken); err != nil {
+		_ = conn.Close()
+		t.Fatalf("authenticate with Godot: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
+	}
+	return conn
+}
+
+func dialUnauthenticatedGodotWhenReady(
+	t *testing.T,
+	ctx context.Context,
+	port int,
+	wait <-chan error,
+	logPath string,
+) *Connection {
 	t.Helper()
 	var lastErr error
 	ticker := time.NewTicker(100 * time.Millisecond)
