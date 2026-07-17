@@ -13,6 +13,9 @@ set -euo pipefail
 
 GODOT_VERSION="${GODOT_VERSION:-4.3.stable}"
 GODOT_CACHE_DIR="${GODOT_CACHE_DIR:-${HOME}/.cache/godot-ci}"
+if [[ "${GODOT_CACHE_DIR}" == \~ || "${GODOT_CACHE_DIR}" == \~/* ]]; then
+    GODOT_CACHE_DIR="${HOME}${GODOT_CACHE_DIR:1}"
+fi
 
 # Parse version components from e.g. "4.3.stable" or "4.3.1.stable"
 # Godot release filenames use underscores: Godot_v4.3-stable_linux.x86_64
