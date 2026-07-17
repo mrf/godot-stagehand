@@ -49,15 +49,204 @@ static func set_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var node: Node = nodes[0]
 	var previous: Variant = _get_property_at_level(node, property)
 	var requested_value: Variant = params.get("value")
-	var found: bool = _set_property_deep(node, property, requested_value)
+	var target_type: int = _declared_property_type(node, property, previous)
+	var converted: Dictionary = _coerce_json_value(requested_value, target_type)
+	if not _conversion_succeeded(converted):
+		var conversion_error: String = converted.get(
+			"error", "Invalid value for property: %s" % property
+		)
+		return {"error": conversion_error}
+
+	var converted_value: Variant = converted.get("value")
+	var found: bool = _set_property_deep(node, property, converted_value)
 	if not found:
 		return {"error": "Failed to set property: %s" % property}
 
 	var applied_value: Variant = _get_property_at_level(node, property)
 
 	return {
-		"success": applied_value == requested_value,
+		"success": is_same(applied_value, converted_value),
 		"previous_value": TREE_SERIALIZER._to_json_safe(previous),
+	}
+
+
+## Convert JSON-safe MCP values to the existing property's Godot value type.
+## JSON has no Vector or Color types, and some MCP clients serialize an
+## unconstrained boolean as a String. Conversion is target-aware so a String
+## property whose value is literally "false" remains a String.
+static func _declared_property_type(node: Node, property: String, current: Variant) -> int:
+	if property.find(".") >= 0:
+		return typeof(current)
+	for info: Dictionary in node.get_property_list():
+		if info.get("name", "") == property:
+			var declared_type: Variant = info.get("type", typeof(current))
+			if declared_type is int:
+				var type_id: int = declared_type
+				return type_id
+	return typeof(current)
+
+
+static func _coerce_json_value(value: Variant, target_type: int) -> Dictionary:
+	if value == null or typeof(value) == target_type:
+		return {"success": true, "value": value}
+
+	match target_type:
+		TYPE_BOOL:
+			if value is String:
+				var bool_text: String = value
+				match bool_text.strip_edges().to_lower():
+					"true":
+						return {"success": true, "value": true}
+					"false":
+						return {"success": true, "value": false}
+			return _conversion_failure(target_type)
+		TYPE_FLOAT:
+			return _coerce_float(value)
+		TYPE_INT:
+			return _coerce_int(value)
+		TYPE_VECTOR2:
+			return _coerce_vector2(value)
+		TYPE_VECTOR2I:
+			return _coerce_vector2i(value)
+		TYPE_VECTOR3:
+			return _coerce_vector3(value)
+		TYPE_COLOR:
+			return _coerce_color(value)
+
+	return {"success": true, "value": value}
+
+
+static func _coerce_vector2(value: Variant) -> Dictionary:
+	var x: Dictionary = _float_component(value, "x", 0)
+	var y: Dictionary = _float_component(value, "y", 1)
+	if not _conversion_succeeded(x) or not _conversion_succeeded(y):
+		return _conversion_failure(TYPE_VECTOR2)
+	return {"success": true, "value": Vector2(_result_float(x), _result_float(y))}
+
+
+static func _coerce_vector2i(value: Variant) -> Dictionary:
+	var x: Dictionary = _int_component(value, "x", 0)
+	var y: Dictionary = _int_component(value, "y", 1)
+	if not _conversion_succeeded(x) or not _conversion_succeeded(y):
+		return _conversion_failure(TYPE_VECTOR2I)
+	return {"success": true, "value": Vector2i(_result_int(x), _result_int(y))}
+
+
+static func _coerce_vector3(value: Variant) -> Dictionary:
+	var x: Dictionary = _float_component(value, "x", 0)
+	var y: Dictionary = _float_component(value, "y", 1)
+	var z: Dictionary = _float_component(value, "z", 2)
+	if (
+		not _conversion_succeeded(x)
+		or not _conversion_succeeded(y)
+		or not _conversion_succeeded(z)
+	):
+		return _conversion_failure(TYPE_VECTOR3)
+	return {
+		"success": true,
+		"value": Vector3(_result_float(x), _result_float(y), _result_float(z)),
+	}
+
+
+static func _coerce_color(value: Variant) -> Dictionary:
+	var red: Dictionary = _float_component(value, "r", 0)
+	var green: Dictionary = _float_component(value, "g", 1)
+	var blue: Dictionary = _float_component(value, "b", 2)
+	var alpha: Dictionary = _float_component(value, "a", 3)
+	if (
+		not _conversion_succeeded(red)
+		or not _conversion_succeeded(green)
+		or not _conversion_succeeded(blue)
+		or not _conversion_succeeded(alpha)
+	):
+		return _conversion_failure(TYPE_COLOR)
+	return {
+		"success": true,
+		"value": Color(
+			_result_float(red),
+			_result_float(green),
+			_result_float(blue),
+			_result_float(alpha)
+		),
+	}
+
+
+static func _float_component(value: Variant, key: String, index: int) -> Dictionary:
+	var component: Dictionary = _json_component(value, key, index)
+	if not _conversion_succeeded(component):
+		return component
+	return _coerce_float(component.get("value"))
+
+
+static func _int_component(value: Variant, key: String, index: int) -> Dictionary:
+	var component: Dictionary = _json_component(value, key, index)
+	if not _conversion_succeeded(component):
+		return component
+	return _coerce_int(component.get("value"))
+
+
+static func _json_component(value: Variant, key: String, index: int) -> Dictionary:
+	if value is Dictionary:
+		var dictionary: Dictionary = value
+		if dictionary.has(key):
+			return {"success": true, "value": dictionary.get(key)}
+	elif value is Array:
+		var array: Array = value
+		if index >= 0 and index < array.size():
+			return {"success": true, "value": array[index]}
+	return {"success": false}
+
+
+static func _coerce_float(value: Variant) -> Dictionary:
+	if value is float:
+		var float_value: float = value
+		return {"success": true, "value": float_value}
+	if value is int:
+		var int_value: int = value
+		return {"success": true, "value": float(int_value)}
+	return {"success": false}
+
+
+static func _coerce_int(value: Variant) -> Dictionary:
+	if value is int:
+		var int_value: int = value
+		return {"success": true, "value": int_value}
+	if value is float:
+		var float_value: float = value
+		var converted: int = int(float_value)
+		if is_equal_approx(float_value, float(converted)):
+			return {"success": true, "value": converted}
+	return {"success": false}
+
+
+static func _conversion_succeeded(result: Dictionary) -> bool:
+	var success_value: Variant = result.get("success", false)
+	if success_value is bool:
+		var success: bool = success_value
+		return success
+	return false
+
+
+static func _result_float(result: Dictionary) -> float:
+	var value: Variant = result.get("value", 0.0)
+	if value is float:
+		var float_value: float = value
+		return float_value
+	return 0.0
+
+
+static func _result_int(result: Dictionary) -> int:
+	var value: Variant = result.get("value", 0)
+	if value is int:
+		var int_value: int = value
+		return int_value
+	return 0
+
+
+static func _conversion_failure(target_type: int) -> Dictionary:
+	return {
+		"success": false,
+		"error": "Value cannot be converted to %s" % type_string(target_type),
 	}
 
 

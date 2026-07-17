@@ -5,9 +5,15 @@
 extends Node
 
 var flag_prop: bool = true
+var string_bool_prop: bool = true
 var count_prop: int = 5
 var text_prop: String = "initial"
 var variant_prop: Variant = "not_null"
+var variant_bool_prop: Variant = true
+var vector2_prop: Vector2 = Vector2(1.0, 2.0)
+var vector3_prop: Vector3 = Vector3(1.0, 2.0, 3.0)
+var vector2i_prop: Vector2i = Vector2i(1, 2)
+var color_prop: Color = Color(1.0, 1.0, 1.0, 1.0)
 
 ## Custom setter that silently rejects a falsy assignment — models the
 ## keystone-reported SimManager.running incident (godot-stagehand-jzs): a

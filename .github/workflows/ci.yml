@@ -45,6 +45,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Cache Godot binary
         id: godot-cache
         uses: actions/cache@v6
@@ -74,6 +80,9 @@ jobs:
             grep -E "SCRIPT ERROR|Parse Error" godot-parse.log
             exit 1
           fi
+
+      - name: MCP → Godot type round-trip
+        run: go test -tags=godot ./internal/mcpserver -run '^TestMCPSetPropertyPreservesJSONTypes$' -count=1 -timeout=2m
 
   # ── Cross-platform release builds ────────────────────────────────────────
   build-matrix:
