@@ -157,6 +157,16 @@ For Windows Godot controlled from WSL, see the remote-bind opt-in in the
 | Bind address | `STAGEHAND_BIND_ADDRESS=127.0.0.1` (loopback is the default) |
 | Remote access | `STAGEHAND_BIND_ADDRESS=0.0.0.0 STAGEHAND_ALLOW_REMOTE=1` |
 | Unsafe methods | `STAGEHAND_ALLOW_UNSAFE=1` or `godot_launch(allow_unsafe=true)` |
+| Ordinary RPC timeout | `STAGEHAND_CALL_TIMEOUT_MS=30000` (default; 1–86400000 milliseconds) |
+
+Ordinary Godot tool calls time out after 30 seconds so a frozen game cannot
+occupy an MCP worker indefinitely. Set `STAGEHAND_CALL_TIMEOUT_MS` on the MCP
+server process to deliberately change that default. The `godot_wait_*` tools
+instead honor their explicit `timeout_ms` values plus a short transport buffer.
+At most four remote Godot operations run concurrently, preserving one MCP
+worker for local status and disconnect requests if the game freezes.
+The WebSocket transport sends a ping every 10 seconds and requires a pong or
+other inbound message within 30 seconds; a silent peer triggers reconnection.
 
 ## Security boundary
 

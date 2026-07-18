@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -354,6 +355,145 @@ func TestCallContextCancellation(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("expected DeadlineExceeded, got %v", err)
 	}
+	conn.mu.Lock()
+	pending := len(conn.pending)
+	conn.mu.Unlock()
+	if pending != 0 {
+		t.Fatalf("pending calls after deadline = %d, want 0", pending)
+	}
+}
+
+func TestKeepaliveMaintainsResponsiveConnection(t *testing.T) {
+	srv := echoServer(t)
+	defer srv.Close()
+	host, port := serverHostPort(t, srv)
+	liveness := livenessConfig{
+		pingInterval: 10 * time.Millisecond,
+		pongWait:     60 * time.Millisecond,
+		writeTimeout: 20 * time.Millisecond,
+	}
+
+	conn, err := dialWithLiveness(context.Background(), host, port, liveness)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	time.Sleep(3 * liveness.pongWait)
+
+	if conn.State() != Connected {
+		t.Fatalf("responsive peer state = %s, want Connected", conn.State())
+	}
+	if _, err := conn.Call(context.Background(), "ping", nil); err != nil {
+		t.Fatalf("call after healthy keepalive: %v", err)
+	}
+}
+
+func TestKeepaliveReconnectsAndRecoversFromSilentPeer(t *testing.T) {
+	var connectionCount atomic.Int32
+	releaseSilentPeer := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := testUpgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+		if connectionCount.Add(1) == 1 {
+			// Never read frames: this models a half-open or frozen peer that does
+			// not process ping control frames or application requests.
+			<-releaseSilentPeer
+			return
+		}
+		for {
+			var req Request
+			if err := ws.ReadJSON(&req); err != nil {
+				return
+			}
+			result, _ := json.Marshal(map[string]string{"status": "ok"})
+			if err := ws.WriteJSON(Response{JSONRPC: "2.0", ID: req.ID, Result: result}); err != nil {
+				return
+			}
+		}
+	}))
+	t.Cleanup(func() {
+		close(releaseSilentPeer)
+		srv.Close()
+	})
+	host, port := serverHostPort(t, srv)
+
+	conn, err := dialWithLiveness(context.Background(), host, port, livenessConfig{
+		pingInterval: 10 * time.Millisecond,
+		pongWait:     50 * time.Millisecond,
+		writeTimeout: 20 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if connectionCount.Load() >= 2 && conn.State() == Connected {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if connectionCount.Load() < 2 {
+		t.Fatal("silent peer did not trigger a reconnect")
+	}
+	if conn.State() != Connected {
+		t.Fatalf("state after liveness recovery = %s, want Connected", conn.State())
+	}
+	if _, err := conn.Call(context.Background(), "ping", nil); err != nil {
+		t.Fatalf("call after liveness recovery: %v", err)
+	}
+}
+
+func TestKeepaliveStopsAfterClose(t *testing.T) {
+	var pingCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := testUpgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+		ws.SetPingHandler(func(data string) error {
+			pingCount.Add(1)
+			return ws.WriteControl(websocket.PongMessage, []byte(data), time.Now().Add(time.Second))
+		})
+		for {
+			if _, _, err := ws.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+	host, port := serverHostPort(t, srv)
+	liveness := livenessConfig{
+		pingInterval: 10 * time.Millisecond,
+		pongWait:     100 * time.Millisecond,
+		writeTimeout: 20 * time.Millisecond,
+	}
+	conn, err := dialWithLiveness(context.Background(), host, port, liveness)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for pingCount.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if pingCount.Load() < 2 {
+		t.Fatal("keepalive did not send ping frames")
+	}
+	if err := conn.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	time.Sleep(2 * liveness.pingInterval)
+	closedCount := pingCount.Load()
+	time.Sleep(5 * liveness.pingInterval)
+	if got := pingCount.Load(); got != closedCount {
+		t.Fatalf("keepalive continued after close: ping count %d -> %d", closedCount, got)
+	}
 }
 
 func TestDialFailure(t *testing.T) {
@@ -487,7 +627,7 @@ func TestReconnectAfterServerDrop(t *testing.T) {
 	// Restart server on same port with a fresh handler (no dropConn).
 	ln2, err := net.Listen("tcp", "127.0.0.1:"+portStr)
 	if err != nil {
-		t.Skipf("could not rebind port %s: %v", portStr, err)
+		t.Fatalf("could not rebind port %s: %v", portStr, err)
 	}
 	srv2 := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ws, err := testUpgrader.Upgrade(w, r, nil)

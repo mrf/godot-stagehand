@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -34,45 +35,51 @@ func (s *Server) handleConnect(ctx context.Context, req mcp.CallToolRequest) (*m
 	host := req.GetString("host", launch.DefaultHost)
 	port := req.GetInt("port", 26700)
 	instanceID := req.GetString("instance_id", "default")
+	release, errResult := s.beginGodotCall()
+	if errResult != nil {
+		return errResult, nil
+	}
+	defer release()
 
-	conn, err := godotconn.Dial(ctx, host, port)
+	connectCtx, cancel, appliedTimeout := s.withGodotCallDeadline(ctx)
+	defer cancel()
+	formatFailure := func(action string, err error) string {
+		if appliedTimeout > 0 && errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Sprintf("%s timed out after %s", action, appliedTimeout)
+		}
+		return fmt.Sprintf("%s: %v", action, err)
+	}
+
+	conn, err := godotconn.Dial(connectCtx, host, port)
 	if err != nil {
 		return mcp.NewToolResultError(
-			fmt.Sprintf("Failed to connect to Godot at %s:%d: %v\n\n%s", host, port, err, connectionGuidance()),
+			fmt.Sprintf("%s\n\n%s", formatFailure(fmt.Sprintf("Connection to Godot at %s:%d", host, port), err), connectionGuidance()),
 		), nil
 	}
-	if err := conn.Authenticate(ctx, authToken); err != nil {
+	if err := conn.Authenticate(connectCtx, authToken); err != nil {
 		_ = conn.Close()
 		return mcp.NewToolResultError(
-			fmt.Sprintf("Failed to authenticate with Godot at %s:%d: %v", host, port, err),
+			formatFailure(fmt.Sprintf("Authentication with Godot at %s:%d", host, port), err),
 		), nil
 	}
 
 	// Ping to verify the connection and get engine info.
-	result, errResult := func() ([]byte, *mcp.CallToolResult) {
-		tempEntry := &instanceEntry{conn: conn}
-		_ = tempEntry
-		resp, err := conn.Call(ctx, "ping", nil)
-		if err != nil {
-			conn.Close()
-			return nil, mcp.NewToolResultError(
-				fmt.Sprintf("Failed to connect to Godot at %s:%d: %v\n\n%s", host, port, err, connectionGuidance()),
-			)
-		}
-		if errResult := checkGodotResult(resp.Result); errResult != nil {
-			conn.Close()
-			return nil, errResult
-		}
-		return resp.Result, nil
-	}()
-	if errResult != nil {
+	resp, err := conn.Call(connectCtx, "ping", nil)
+	if err != nil {
+		_ = conn.Close()
+		return mcp.NewToolResultError(
+			fmt.Sprintf("%s\n\n%s", formatFailure(fmt.Sprintf("Ping to Godot at %s:%d", host, port), err), connectionGuidance()),
+		), nil
+	}
+	if errResult := checkGodotResult(resp.Result); errResult != nil {
+		_ = conn.Close()
 		return errResult, nil
 	}
 
 	// Replace any existing entry for this instanceID (closes old conn/process).
 	s.instances.add(instanceID, host, port, conn, nil)
 
-	return mcp.NewToolResultText(fmt.Sprintf("Connected to Godot at %s:%d (instance_id=%q)\n%s", host, port, instanceID, string(result))), nil
+	return mcp.NewToolResultText(fmt.Sprintf("Connected to Godot at %s:%d (instance_id=%q)\n%s", host, port, instanceID, string(resp.Result))), nil
 }
 
 var getGameStateTool = mcp.NewTool("godot_get_game_state",

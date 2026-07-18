@@ -190,6 +190,33 @@ func TestStagehandBindPolicy(t *testing.T) {
 	})
 }
 
+func TestStagehandWebSocketKeepalive(t *testing.T) {
+	_, port, _ := startSecurityGodot(t, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	liveness := livenessConfig{
+		pingInterval: 25 * time.Millisecond,
+		pongWait:     250 * time.Millisecond,
+		writeTimeout: 100 * time.Millisecond,
+	}
+	conn, err := dialWithLiveness(ctx, "127.0.0.1", port, liveness)
+	if err != nil {
+		t.Fatalf("dial keepalive connection: %v", err)
+	}
+	defer conn.Close()
+	if err := conn.Authenticate(ctx, testAuthToken); err != nil {
+		t.Fatalf("authenticate keepalive connection: %v", err)
+	}
+
+	time.Sleep(3 * liveness.pongWait)
+	if conn.State() != Connected {
+		t.Fatalf("Godot connection state after keepalive window = %s, want Connected", conn.State())
+	}
+	if _, err := conn.Call(ctx, "ping", nil); err != nil {
+		t.Fatalf("ping after WebSocket keepalive window: %v", err)
+	}
+}
+
 func startSecurityGodot(t *testing.T, extraEnvironment []string) (*Connection, int, string) {
 	t.Helper()
 	environment := append([]string{"STAGEHAND_AUTH_TOKEN=" + testAuthToken}, extraEnvironment...)

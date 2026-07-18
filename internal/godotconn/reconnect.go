@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 // State represents the connection lifecycle state.
@@ -51,12 +53,17 @@ func backoffDuration(attempt int) time.Duration {
 
 // handleDisconnect transitions to Reconnecting, cancels pending calls,
 // and starts the reconnect loop in a goroutine.
-func (c *Connection) handleDisconnect() {
+func (c *Connection) handleDisconnect(disconnected *websocket.Conn) {
 	c.mu.Lock()
+	if c.ws != disconnected || c.state == Disconnected {
+		c.mu.Unlock()
+		return
+	}
 	c.cancelPendingLocked()
 	c.state = Reconnecting
 	c.reconnected = make(chan struct{})
 	c.mu.Unlock()
+	_ = disconnected.Close()
 
 	go c.reconnectLoop()
 }
@@ -87,7 +94,7 @@ func (c *Connection) reconnectLoop() {
 			}
 		}()
 
-		err := c.dialWebSocket(ctx, Reconnecting)
+		ws, err := c.dialWebSocket(ctx, Reconnecting)
 		cancel()
 		if err != nil {
 			continue
@@ -96,7 +103,7 @@ func (c *Connection) reconnectLoop() {
 		// The server authenticates each WebSocket peer independently. Keep the
 		// public state Reconnecting until the new peer has proven the same token,
 		// so queued calls cannot race ahead of the handshake.
-		go c.readLoop()
+		go c.readLoop(ws)
 		c.mu.Lock()
 		authToken := c.authToken
 		c.mu.Unlock()

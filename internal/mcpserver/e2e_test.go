@@ -241,6 +241,7 @@ func setupE2ETest(t *testing.T) (*Server, *stubGodot) {
 
 	host, port := serverHostPort(t, stub.Server)
 	srv := New()
+	t.Cleanup(srv.clearConn)
 	ctx := context.Background()
 
 	result, err := srv.handleConnect(ctx, toolReq(map[string]any{
@@ -1126,6 +1127,7 @@ func TestE2E_DisconnectMidSession(t *testing.T) {
 func blockingStubGodot(t *testing.T, dropConn bool) (host string, port int, closeCh chan struct{}) {
 	t.Helper()
 	closeCh = make(chan struct{})
+	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ws, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -1148,8 +1150,8 @@ func blockingStubGodot(t *testing.T, dropConn bool) (host string, port int, clos
 					return // close the WebSocket without sending a response
 				}
 				// Frozen: keep the connection open, never respond.
-				// Block forever (the test's context or Go-side timeout will cancel).
-				select {}
+				<-release
+				return
 			default:
 				result, _ := json.Marshal(map[string]string{"status": "ok"})
 				_ = ws.WriteJSON(godotconn.Response{JSONRPC: "2.0", ID: req.ID, Result: result})
@@ -1157,6 +1159,14 @@ func blockingStubGodot(t *testing.T, dropConn bool) (host string, port int, clos
 		}
 	}))
 	t.Cleanup(srv.Close)
+	t.Cleanup(func() {
+		select {
+		case <-closeCh:
+		default:
+			close(closeCh)
+		}
+		close(release)
+	})
 	addr := srv.Listener.Addr().String()
 	h, p, _ := net.SplitHostPort(addr)
 	portNum, _ := strconv.Atoi(p)
@@ -1208,6 +1218,7 @@ func TestE2E_WaitDisconnectDuringWait(t *testing.T) {
 			host, port, closeCh := blockingStubGodot(t, true /* dropConn */)
 
 			srv := New()
+			t.Cleanup(srv.clearConn)
 			connResult, err := srv.handleConnect(context.Background(), toolReq(map[string]any{
 				"host":       host,
 				"port":       float64(port),
@@ -1287,6 +1298,8 @@ func TestE2E_WaitGoSideTimeoutOnFrozenGodot(t *testing.T) {
 			host, port, _ := blockingStubGodot(t, false /* keep connection open, never respond */)
 
 			srv := New()
+			t.Cleanup(srv.clearConn)
+			srv.callTimeout = 20 * time.Millisecond
 			connResult, err := srv.handleConnect(context.Background(), toolReq(map[string]any{
 				"host":       host,
 				"port":       float64(port),
@@ -1299,6 +1312,7 @@ func TestE2E_WaitGoSideTimeoutOnFrozenGodot(t *testing.T) {
 			// The Go-side deadline is timeout_ms (50ms) + a fixed buffer.
 			// Total should be well under 3 seconds.
 			resultCh := make(chan *mcp.CallToolResult, 1)
+			started := time.Now()
 			go func() {
 				result, _ := tt.invoke(srv, context.Background())
 				resultCh <- result
@@ -1308,6 +1322,9 @@ func TestE2E_WaitGoSideTimeoutOnFrozenGodot(t *testing.T) {
 			case result := <-resultCh:
 				if !result.IsError {
 					t.Error("expected an error result when Godot is unresponsive")
+				}
+				if elapsed := time.Since(started); elapsed < time.Second {
+					t.Fatalf("ordinary 20ms deadline shortened explicit wait deadline: %s", elapsed)
 				}
 			case <-time.After(3 * time.Second):
 				t.Fatal("wait tool hung instead of returning on frozen Godot (no Go-side timeout)")

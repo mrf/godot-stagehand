@@ -3,7 +3,11 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"strconv"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -17,6 +21,17 @@ var instanceIDOpt = mcp.WithString("instance_id",
 	mcp.Description(`Instance to target (default: "default"). Use distinct IDs to manage multiple simultaneous Godot connections.`),
 	mcp.DefaultString("default"),
 )
+
+// defaultGodotCallTimeout bounds ordinary Godot RPCs so a silent peer cannot
+// occupy an MCP stdio worker forever. Handlers with deliberate longer-running
+// semantics, such as wait tools, override it by supplying a context deadline.
+const defaultGodotCallTimeout = 30 * time.Second
+const maxGodotCallTimeout = 24 * time.Hour
+
+// The stdio transport serves five requests concurrently. Limiting remote Godot
+// work to four requests keeps one worker available for local lifecycle tools
+// such as status and disconnect when Godot stops responding.
+const maxConcurrentGodotCalls = 4
 
 // instanceIDFrom extracts the instance_id from a tool request, defaulting to "default".
 func instanceIDFrom(req mcp.CallToolRequest) string {
@@ -32,6 +47,10 @@ type Server struct {
 	baselineDir string
 	// artifactDir is where failed-diff artifacts are written.
 	artifactDir string
+	// callTimeout is applied only when the caller did not supply a deadline.
+	callTimeout time.Duration
+	// callSlots bounds work that can block on a remote Godot process.
+	callSlots chan struct{}
 }
 
 // New creates a new MCP server with all Godot tools registered.
@@ -40,6 +59,8 @@ func New() *Server {
 		instances:   newInstanceManager(),
 		baselineDir: "stagehand-baselines",
 		artifactDir: "stagehand-diffs",
+		callTimeout: configuredGodotCallTimeout(),
+		callSlots:   make(chan struct{}, maxConcurrentGodotCalls),
 	}
 
 	s.mcp = server.NewMCPServer(
@@ -50,6 +71,18 @@ func New() *Server {
 
 	s.registerTools()
 	return s
+}
+
+func configuredGodotCallTimeout() time.Duration {
+	raw := os.Getenv("STAGEHAND_CALL_TIMEOUT_MS")
+	if raw == "" {
+		return defaultGodotCallTimeout
+	}
+	milliseconds, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || milliseconds <= 0 || milliseconds > int64(maxGodotCallTimeout/time.Millisecond) {
+		return defaultGodotCallTimeout
+	}
+	return time.Duration(milliseconds) * time.Millisecond
 }
 
 // Serve runs the MCP server over stdio with signal-based graceful shutdown.
@@ -159,14 +192,51 @@ func (s *Server) callGodotInstance(ctx context.Context, instanceID, method strin
 	if errResult != nil {
 		return nil, errResult
 	}
-	resp, err := conn.Call(ctx, method, params)
+	release, errResult := s.beginGodotCall()
+	if errResult != nil {
+		return nil, errResult
+	}
+	defer release()
+
+	callCtx, cancel, appliedTimeout := s.withGodotCallDeadline(ctx)
+	defer cancel()
+
+	resp, err := conn.Call(callCtx, method, params)
 	if err != nil {
+		if appliedTimeout > 0 && errors.Is(err, context.DeadlineExceeded) {
+			return nil, mcp.NewToolResultError(
+				fmt.Sprintf("Godot call %q timed out after %s", method, appliedTimeout),
+			)
+		}
 		return nil, mcp.NewToolResultError(fmt.Sprintf("Godot error: %v", err))
 	}
 	if errResult := checkGodotResult(resp.Result); errResult != nil {
 		return nil, errResult
 	}
 	return resp.Result, nil
+}
+
+func (s *Server) beginGodotCall() (func(), *mcp.CallToolResult) {
+	select {
+	case s.callSlots <- struct{}{}:
+		return func() { <-s.callSlots }, nil
+	default:
+		return nil, mcp.NewToolResultError(
+			fmt.Sprintf("in-flight Godot call limit (%d) reached; retry after another Godot operation completes", maxConcurrentGodotCalls),
+		)
+	}
+}
+
+func (s *Server) withGodotCallDeadline(ctx context.Context) (context.Context, context.CancelFunc, time.Duration) {
+	if _, hasDeadline := ctx.Deadline(); hasDeadline {
+		return ctx, func() {}, 0
+	}
+	timeout := s.callTimeout
+	if timeout <= 0 {
+		timeout = defaultGodotCallTimeout
+	}
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	return callCtx, cancel, timeout
 }
 
 // callGodot sends a JSON-RPC method to the default Godot instance.

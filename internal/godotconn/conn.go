@@ -24,6 +24,18 @@ var (
 // queueTimeout is how long Call waits for reconnection before failing.
 const queueTimeout = 3 * time.Second
 
+type livenessConfig struct {
+	pingInterval time.Duration
+	pongWait     time.Duration
+	writeTimeout time.Duration
+}
+
+var defaultLiveness = livenessConfig{
+	pingInterval: 10 * time.Second,
+	pongWait:     30 * time.Second,
+	writeTimeout: 5 * time.Second,
+}
+
 // Connection manages a WebSocket connection to the Godot stagehand addon,
 // multiplexing concurrent JSON-RPC calls over a single connection.
 type Connection struct {
@@ -35,6 +47,7 @@ type Connection struct {
 	pending     map[int64]chan *Response
 	reconnected chan struct{} // closed when reconnect succeeds
 	authToken   string
+	liveness    livenessConfig
 
 	writeMu   sync.Mutex // serializes WebSocket writes
 	nextID    atomic.Int64
@@ -44,33 +57,67 @@ type Connection struct {
 
 // Dial connects to a Godot addon WebSocket server at host:port.
 func Dial(ctx context.Context, host string, port int) (*Connection, error) {
+	return dialWithLiveness(ctx, host, port, defaultLiveness)
+}
+
+func dialWithLiveness(
+	ctx context.Context,
+	host string,
+	port int,
+	liveness livenessConfig,
+) (*Connection, error) {
+	if err := liveness.validate(); err != nil {
+		return nil, err
+	}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	c := &Connection{
-		addr:    addr,
-		state:   Connecting,
-		pending: make(map[int64]chan *Response),
-		done:    make(chan struct{}),
+		addr:     addr,
+		state:    Connecting,
+		pending:  make(map[int64]chan *Response),
+		done:     make(chan struct{}),
+		liveness: liveness,
 	}
-	if err := c.dialWebSocket(ctx, Connected); err != nil {
+	ws, err := c.dialWebSocket(ctx, Connected)
+	if err != nil {
 		return nil, fmt.Errorf("dial %s: %w", addr, err)
 	}
-	go c.readLoop()
+	go c.readLoop(ws)
 	return c, nil
 }
 
 // dialWebSocket dials the WebSocket and stores it with the caller-selected
 // lifecycle state. Reconnects remain Reconnecting until re-authentication.
-func (c *Connection) dialWebSocket(ctx context.Context, nextState State) error {
+func (c *Connection) dialWebSocket(ctx context.Context, nextState State) (*websocket.Conn, error) {
 	u := url.URL{Scheme: "ws", Host: c.addr}
 	ws, _, err := websocket.DefaultDialer.DialContext(ctx, u.String(), nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	if err := ws.SetReadDeadline(time.Now().Add(c.liveness.pongWait)); err != nil {
+		_ = ws.Close()
+		return nil, fmt.Errorf("set initial read deadline: %w", err)
+	}
+	ws.SetPongHandler(func(string) error {
+		return ws.SetReadDeadline(time.Now().Add(c.liveness.pongWait))
+	})
 
 	c.mu.Lock()
 	c.ws = ws
 	c.state = nextState
 	c.mu.Unlock()
+	return ws, nil
+}
+
+func (l livenessConfig) validate() error {
+	if l.pingInterval <= 0 {
+		return fmt.Errorf("ping interval must be positive")
+	}
+	if l.pongWait <= l.pingInterval {
+		return fmt.Errorf("pong wait must be greater than ping interval")
+	}
+	if l.writeTimeout <= 0 {
+		return fmt.Errorf("write timeout must be positive")
+	}
 	return nil
 }
 
@@ -126,7 +173,14 @@ func (c *Connection) callCurrent(
 	req := newRequest(id, method, params)
 
 	c.writeMu.Lock()
-	err := ws.WriteJSON(req)
+	writeDeadline := time.Now().Add(c.liveness.writeTimeout)
+	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(writeDeadline) {
+		writeDeadline = contextDeadline
+	}
+	err := ws.SetWriteDeadline(writeDeadline)
+	if err == nil {
+		err = ws.WriteJSON(req)
+	}
 	c.writeMu.Unlock()
 	if err != nil {
 		c.mu.Lock()
@@ -223,19 +277,23 @@ func (c *Connection) Close() error {
 	return err
 }
 
-func (c *Connection) readLoop() {
+func (c *Connection) readLoop(ws *websocket.Conn) {
+	keepaliveStop := make(chan struct{})
+	keepaliveDone := make(chan struct{})
+	go func() {
+		defer close(keepaliveDone)
+		c.keepaliveLoop(ws, keepaliveStop)
+	}()
+	defer func() {
+		close(keepaliveStop)
+		<-keepaliveDone
+	}()
+
 	for {
 		select {
 		case <-c.done:
 			return
 		default:
-		}
-
-		c.mu.Lock()
-		ws := c.ws
-		c.mu.Unlock()
-		if ws == nil {
-			return
 		}
 
 		var resp Response
@@ -245,7 +303,12 @@ func (c *Connection) readLoop() {
 				return // closed intentionally
 			default:
 			}
-			c.handleDisconnect()
+			c.handleDisconnect(ws)
+			return
+		}
+		if err := ws.SetReadDeadline(time.Now().Add(c.liveness.pongWait)); err != nil {
+			_ = ws.Close()
+			c.handleDisconnect(ws)
 			return
 		}
 
@@ -258,6 +321,25 @@ func (c *Connection) readLoop() {
 
 		if ok {
 			ch <- &resp
+		}
+	}
+}
+
+func (c *Connection) keepaliveLoop(ws *websocket.Conn, stop <-chan struct{}) {
+	ticker := time.NewTicker(c.liveness.pingInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			deadline := time.Now().Add(c.liveness.writeTimeout)
+			if err := ws.WriteControl(websocket.PingMessage, nil, deadline); err != nil {
+				_ = ws.Close()
+				return
+			}
+		case <-stop:
+			return
+		case <-c.done:
+			return
 		}
 	}
 }

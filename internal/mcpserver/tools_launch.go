@@ -69,6 +69,11 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 	if headless && expectScreenshots {
 		return mcp.NewToolResultError("headless=true cannot be used with expect_screenshots=true; relaunch with headless=false and a visible Godot window for godot_screenshot, baselines, and diffs."), nil
 	}
+	release, errResult := s.beginGodotCall()
+	if errResult != nil {
+		return errResult, nil
+	}
+	defer release()
 
 	if port == 0 {
 		p, err := findFreePort()
