@@ -81,6 +81,9 @@ jobs:
             exit 1
           fi
 
+      - name: Fresh addon install and authenticated ping
+        run: go test -tags=integration ./internal/launch -run '^TestAddonInstallation$' -count=1 -timeout=2m
+
       - name: MCP → Godot type round-trip
         run: go test -tags=godot ./internal/mcpserver -run '^TestMCPSetPropertyPreservesJSONTypes$' -count=1 -timeout=2m
 

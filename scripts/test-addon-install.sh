@@ -3,7 +3,9 @@
 #
 # Copies the stagehand addon into a fresh temporary Godot project, launches
 # Godot headless, waits for the WebSocket server to become ready, optionally
-# sends a ping, then reports whether any GDScript parse errors were detected.
+# sends an authenticated ping, then reports whether any GDScript parse errors
+# were detected. Python's websockets package is required unless --no-ping is
+# used; a missing ping dependency is a failure, never a skipped success.
 #
 # Usage:
 #   ./scripts/test-addon-install.sh [--no-ping] [--port PORT] [--timeout SECS]
@@ -102,7 +104,7 @@ if [[ ! -d "$ADDON_SRC" ]]; then
 fi
 
 mkdir -p "$(dirname "$ADDON_DST")"
-cp -r "$ADDON_SRC" "$ADDON_DST"
+cp -rf "$ADDON_SRC" "$ADDON_DST"
 echo "Addon copied to $ADDON_DST"
 
 # ── launch Godot headless ─────────────────────────────────────────────────────
@@ -111,7 +113,14 @@ trap 'rm -f "$LOG_FILE"; rm -rf "$TMPDIR_PROJECT"' EXIT
 
 echo "Launching Godot headless (timeout: ${TIMEOUT_SECS}s)..."
 
-"$GODOT_BIN" --headless --path "$TMPDIR_PROJECT" -- --stagehand \
+AUTH_TOKEN="$(od -An -N32 -tx1 /dev/urandom | tr -d '[:space:]')"
+if [[ ! "$AUTH_TOKEN" =~ ^[0-9a-f]{64}$ ]]; then
+  echo "ERROR: Failed to generate a 256-bit authentication token." >&2
+  exit 1
+fi
+
+STAGEHAND_PORT="$PORT" STAGEHAND_AUTH_TOKEN="$AUTH_TOKEN" \
+  "$GODOT_BIN" --headless --path "$TMPDIR_PROJECT" -- --stagehand \
   > "$LOG_FILE" 2>&1 &
 GODOT_PID=$!
 
@@ -133,7 +142,6 @@ while [[ $(date +%s) -lt $DEADLINE ]]; do
   fi
   # Try a TCP connection to see if the port is open.
   if bash -c "exec 3<>/dev/tcp/127.0.0.1/$PORT" 2>/dev/null; then
-    exec 3>&- 2>/dev/null || true
     CONNECTED=1
     echo "Port $PORT is open."
     break
@@ -142,45 +150,63 @@ while [[ $(date +%s) -lt $DEADLINE ]]; do
 done
 
 # ── optional ping via Python WebSocket client ─────────────────────────────────
+SMOKE_FAILURE=""
+PING_SUCCEEDED=0
+if [[ $CONNECTED -ne 1 ]]; then
+  SMOKE_FAILURE="WebSocket server did not become ready on port $PORT within ${TIMEOUT_SECS}s"
+fi
+
 if [[ $CONNECTED -eq 1 && $SKIP_PING -eq 0 ]]; then
-  echo "Attempting ping..."
-  # Build a minimal JSON-RPC ping over WebSocket using Python's websockets lib.
-  # Fall back gracefully if websockets is not installed.
-  PING_RESULT="$(python3 - <<PYEOF 2>/dev/null || echo "SKIP"
+  echo "Attempting authenticated ping..."
+  if PING_RESULT="$(python3 - <<PYEOF 2>&1
 import asyncio, json, sys
 try:
     import websockets
-except ImportError:
-    print("SKIP")
-    sys.exit(0)
+except ImportError as error:
+    print(f"websocket client unavailable: {error}", file=sys.stderr)
+    sys.exit(2)
 
 async def ping():
     uri = f"ws://127.0.0.1:${PORT}"
-    try:
-        async with websockets.connect(uri, open_timeout=3) as ws:
-            req = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping", "params": {}})
-            await ws.send(req)
-            resp = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
-            result = resp.get("result", {})
-            if result.get("status") == "ok" and result.get("engine") == "godot":
-                ev = result.get("engine_version", "?")
-                sv = result.get("stagehand_version", "?")
-                print(f"PONG engine={ev} stagehand={sv}")
-            else:
-                print(f"UNEXPECTED: {resp}")
-    except Exception as e:
-        print(f"PING_ERROR: {e}")
+    async with websockets.connect(uri, open_timeout=3) as ws:
+        authenticate = json.dumps({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "authenticate",
+            "params": {"token": "${AUTH_TOKEN}"},
+        })
+        await ws.send(authenticate)
+        auth_response = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+        if not auth_response.get("result", {}).get("authenticated"):
+            raise RuntimeError(f"authentication rejected: {auth_response}")
 
-asyncio.run(ping())
+        request = json.dumps({"jsonrpc": "2.0", "id": 2, "method": "ping", "params": {}})
+        await ws.send(request)
+        response = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+        result = response.get("result", {})
+        if result.get("status") != "ok" or result.get("engine") != "godot":
+            raise RuntimeError(f"unexpected ping response: {response}")
+        engine_version = result.get("engine_version", "?")
+        stagehand_version = result.get("stagehand_version", "?")
+        print(f"PONG engine={engine_version} stagehand={stagehand_version}")
+
+try:
+    asyncio.run(ping())
+except Exception as error:
+    print(f"PING_ERROR: {error}", file=sys.stderr)
+    sys.exit(1)
 PYEOF
-)"
-
-  case "$PING_RESULT" in
-    PONG*)   echo "Ping successful: $PING_RESULT" ;;
-    SKIP)    echo "Ping skipped (websockets Python package not available)." ;;
-    PING_ERROR*) echo "WARNING: $PING_RESULT" ;;
-    *)       echo "Ping result: $PING_RESULT" ;;
-  esac
+)"; then
+    case "$PING_RESULT" in
+      PONG*)
+        PING_SUCCEEDED=1
+        echo "Ping successful: $PING_RESULT"
+        ;;
+      *) SMOKE_FAILURE="authenticated ping failed: $PING_RESULT" ;;
+    esac
+  else
+    SMOKE_FAILURE="authenticated ping failed: $PING_RESULT"
+  fi
 fi
 
 # ── kill Godot ────────────────────────────────────────────────────────────────
@@ -207,4 +233,18 @@ if [[ $PARSE_ERRORS -ne 0 ]]; then
   exit 1
 fi
 
-echo "PASS: addon installed and started with no parse errors."
+if [[ -n "$SMOKE_FAILURE" ]]; then
+  echo "FAIL: $SMOKE_FAILURE" >&2
+  exit 1
+fi
+
+if [[ $SKIP_PING -eq 0 && $PING_SUCCEEDED -ne 1 ]]; then
+  echo "FAIL: authenticated ping did not complete." >&2
+  exit 1
+fi
+
+if [[ $SKIP_PING -eq 1 ]]; then
+  echo "PASS: addon installed and started with no parse errors (--no-ping)."
+else
+  echo "PASS: addon installed, started, and answered an authenticated ping with no parse errors."
+fi

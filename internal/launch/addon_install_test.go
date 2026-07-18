@@ -21,20 +21,16 @@ const addonInstallAuthToken = "stagehand-addon-install-auth-token"
 
 // TestAddonInstallation is a smoke test that verifies the stagehand addon can be
 // installed into a fresh (non-test-project) Godot project, starts without parse
-// errors, and optionally accepts a WebSocket ping.
+// errors, and accepts an authenticated WebSocket ping.
 //
 // This simulates a user adding the addon to their own project for the first time.
 func TestAddonInstallation(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping addon installation smoke test in short mode")
-	}
-
 	godotBin, err := FindGodotBinary()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if godotBin == "" {
-		t.Skip("Godot binary not found; set GODOT_BIN, GODOT_PATH, or STAGEHAND_GODOT_BIN, or put godot/godot4 in PATH")
+		t.Fatal("Godot binary not found; set GODOT_BIN, GODOT_PATH, or STAGEHAND_GODOT_BIN, or put godot/godot4 in PATH")
 	}
 
 	// Build a fresh minimal Godot project — not the pre-made test project.
@@ -66,36 +62,36 @@ func TestAddonInstallation(t *testing.T) {
 	}
 
 	wait := make(chan error, 1)
+	waitDone := make(chan struct{})
 	go func() {
 		wait <- cmd.Wait()
 		logFile.Close()
+		close(waitDone)
 	}()
 	t.Cleanup(func() {
+		select {
+		case <-waitDone:
+			return
+		default:
+		}
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
 		}
 		select {
-		case <-wait:
+		case <-waitDone:
 		case <-time.After(5 * time.Second):
 		}
 	})
 
-	// Attempt to connect and ping.  If Godot exits before we can connect
-	// (e.g. headless with no game loop), we fall back to a log-only check.
+	// Connect and ping. A clean process exit without readiness is still a gate
+	// failure because it proves neither startup nor protocol functionality.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	conn := tryDialGodot(t, ctx, port, wait, logPath)
 
-	if conn == nil {
-		// Godot exited before we could connect — verify the exit was clean.
-		log := readGodotLog(logPath)
-		checkAddonParseErrors(t, log)
-		t.Log("Addon installed successfully (Godot started and exited cleanly; no parse errors detected)")
-		return
-	}
 	defer conn.Close()
-	if err := conn.Authenticate(context.Background(), addonInstallAuthToken); err != nil {
+	if err := conn.Authenticate(ctx, addonInstallAuthToken); err != nil {
 		log := readGodotLog(logPath)
 		t.Fatalf("authenticate after addon install: %v\nGodot log:\n%s", err, log)
 	}
@@ -166,9 +162,8 @@ StagehandServer="*res://addons/stagehand/autoload/stagehand_server.gd"
 	return dir
 }
 
-// tryDialGodot attempts to open a WebSocket connection to Godot.  It returns
-// nil (not a test failure) if Godot exits before the connection succeeds — the
-// caller decides whether that is acceptable.
+// tryDialGodot attempts to open a WebSocket connection to Godot. Exiting before
+// readiness is a failure even when the process exit code is zero.
 func tryDialGodot(t *testing.T, ctx context.Context, port int, wait <-chan error, logPath string) *godotconn.Connection {
 	t.Helper()
 
@@ -184,9 +179,10 @@ func tryDialGodot(t *testing.T, ctx context.Context, port int, wait <-chan error
 		}
 
 		select {
-		case <-wait:
-			// Godot exited — not necessarily an error.
-			return nil
+		case waitErr := <-wait:
+			log := readGodotLog(logPath)
+			checkAddonParseErrors(t, log)
+			t.Fatalf("Godot exited before WebSocket became ready: %v\nGodot log:\n%s", waitErr, log)
 		case <-ctx.Done():
 			log := readGodotLog(logPath)
 			t.Fatalf("timed out waiting for Godot WebSocket on port %d\nGodot log:\n%s", port, log)
@@ -201,7 +197,7 @@ func checkAddonParseErrors(t *testing.T, log string) {
 	t.Helper()
 	for i, line := range strings.Split(log, "\n") {
 		if strings.Contains(line, "SCRIPT ERROR") || strings.Contains(line, "Parse Error") {
-			t.Errorf("addon parse error at log line %d: %s", i+1, strings.TrimSpace(line))
+			t.Fatalf("addon parse error at log line %d: %s", i+1, strings.TrimSpace(line))
 		}
 	}
 }
