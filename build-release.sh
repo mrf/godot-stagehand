@@ -7,7 +7,6 @@ set -e  # Exit on any error
 
 VERSION=${1:-"latest"}
 BUILD_DIR="build"
-BINARY_PREFIX="godot-stagehand"
 
 # Create build directory
 mkdir -p "$BUILD_DIR"
@@ -24,33 +23,21 @@ fi
 
 echo "Building Stagehand v$VERSION..."
 
-# Build for different architectures
-echo "Building for Linux amd64..."
-GOOS=linux GOARCH=amd64 go build -o "$BUILD_DIR/$BINARY_PREFIX-linux-amd64" .
+build_target() {
+    local goos="$1"
+    local goarch="$2"
+    local asset_name="$3"
+    echo "Building $asset_name..."
+    CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -o "$BUILD_DIR/$asset_name" .
+}
 
-echo "Building for macOS amd64..."
-GOOS=darwin GOARCH=amd64 go build -o "$BUILD_DIR/$BINARY_PREFIX-darwin-amd64" .
-
-echo "Building for macOS arm64..."
-GOOS=darwin GOARCH=arm64 go build -o "$BUILD_DIR/$BINARY_PREFIX-darwin-arm64" .
-
-echo "Building for Windows amd64..."
-GOOS=windows GOARCH=amd64 go build -o "$BUILD_DIR/$BINARY_PREFIX-windows-amd64.exe" .
-
-# Optional additional platforms
-if [ "$TARGET_ALL_PLATFORMS" = "true" ]; then
-    echo "Building for Linux arm64..."
-    GOOS=linux GOARCH=arm64 go build -o "$BUILD_DIR/$BINARY_PREFIX-linux-arm64" .
-
-    echo "Building for Linux 386..."
-    GOOS=linux GOARCH=386 go build -o "$BUILD_DIR/$BINARY_PREFIX-linux-386" .
-fi
+# Exact published asset matrix. Keep in sync with release.yml,
+# RELEASE_CHECKLIST.md, README.md, and editor/release_assets.gd.
+build_target linux   amd64 godot-stagehand-linux-amd64
+build_target darwin  amd64 godot-stagehand-darwin-amd64
+build_target darwin  arm64 godot-stagehand-darwin-arm64
+build_target windows amd64 godot-stagehand-windows-amd64.exe
 
 echo ""
 echo "Build completed! Binaries are in the $BUILD_DIR directory:"
 ls -la "$BUILD_DIR/"
-
-echo ""
-echo "To create archives for distribution, run:"
-echo "  zip ${BINARY_PREFIX}-darwin-amd64.zip -j $BUILD_DIR/${BINARY_PREFIX}-darwin-amd64"
-echo "  zip ${BINARY_PREFIX}-darwin-arm64.zip  -j $BUILD_DIR/${BINARY_PREFIX}-darwin-arm64"

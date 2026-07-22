@@ -86,11 +86,11 @@ Download the prebuilt binary for your platform from the [latest release](https:/
 | Platform | File |
 |----------|------|
 | Linux x86-64 | `godot-stagehand-linux-amd64` |
-| macOS Apple Silicon | `godot-stagehand-darwin-arm64.zip` |
-| macOS Intel | `godot-stagehand-darwin-amd64.zip` |
+| macOS Apple Silicon | `godot-stagehand-darwin-arm64` |
+| macOS Intel | `godot-stagehand-darwin-amd64` |
 | Windows x86-64 | `godot-stagehand-windows-amd64.exe` |
 
-macOS: unzip the archive, then `chmod +x godot-stagehand-darwin-*`.
+macOS/Linux: mark the downloaded binary executable with `chmod +x godot-stagehand-*`.
 
 **From source** (requires Go 1.25+ and Godot 4.3+):
 

@@ -35,10 +35,10 @@ jobs:
         run: |
           BUILD="build"
 
-          cp  "$BUILD/godot-stagehand-linux-amd64"          godot-stagehand-linux-amd64
-          zip godot-stagehand-darwin-amd64.zip -j "$BUILD/godot-stagehand-darwin-amd64"
-          zip godot-stagehand-darwin-arm64.zip  -j "$BUILD/godot-stagehand-darwin-arm64"
-          cp  "$BUILD/godot-stagehand-windows-amd64.exe"    godot-stagehand-windows-amd64.exe
+          cp "$BUILD/godot-stagehand-linux-amd64"       godot-stagehand-linux-amd64
+          cp "$BUILD/godot-stagehand-darwin-amd64"      godot-stagehand-darwin-amd64
+          cp "$BUILD/godot-stagehand-darwin-arm64"      godot-stagehand-darwin-arm64
+          cp "$BUILD/godot-stagehand-windows-amd64.exe" godot-stagehand-windows-amd64.exe
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
@@ -46,6 +46,40 @@ jobs:
           generate_release_notes: true
           files: |
             godot-stagehand-linux-amd64
-            godot-stagehand-darwin-amd64.zip
-            godot-stagehand-darwin-arm64.zip
+            godot-stagehand-darwin-amd64
+            godot-stagehand-darwin-arm64
             godot-stagehand-windows-amd64.exe
+
+  smoke-release:
+    name: Smoke published ${{ matrix.asset }}
+    needs: release
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            asset: godot-stagehand-linux-amd64
+          - runner: macos-15-intel
+            asset: godot-stagehand-darwin-amd64
+          - runner: macos-14
+            asset: godot-stagehand-darwin-arm64
+          - runner: windows-latest
+            asset: godot-stagehand-windows-amd64.exe
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Download published asset
+        shell: bash
+        env:
+          ASSET: ${{ matrix.asset }}
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern "$ASSET"
+
+      - name: Execute published asset
+        shell: bash
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: |
+          chmod +x "$ASSET"
+          "./$ASSET" </dev/null
