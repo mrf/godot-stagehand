@@ -117,6 +117,9 @@ Stagehand is **off by default** — you turn it on when you want it.
 
 Click the **Stagehand** toggle button in the top toolbar, then press **Play (F5)** as normal.
 
+The toggle is editor-only: it adds `--stagehand` to editor play sessions and is
+not exported with your game.
+
 ![screenshot: Godot editor toolbar with Stagehand toggle button highlighted](../assets/toolbar-toggle.png)
 
 ### Option B: From the command line

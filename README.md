@@ -152,12 +152,18 @@ For Windows Godot controlled from WSL, see the remote-bind opt-in in the
 | CLI flag | `godot --stagehand` |
 | Env var | `STAGEHAND_ENABLED=1 godot ...` |
 | Editor toggle | Stagehand button in toolbar |
+| Release-export opt-in | `STAGEHAND_ENABLED=1 STAGEHAND_ALLOW_RELEASE=1 ./game` |
 | Custom port | `STAGEHAND_PORT=9999` or `--stagehand-port=9999` |
 | Fixed authentication token | `STAGEHAND_AUTH_TOKEN=<secret>` (otherwise a fresh token is generated and printed) |
 | Bind address | `STAGEHAND_BIND_ADDRESS=127.0.0.1` (loopback is the default) |
 | Remote access | `STAGEHAND_BIND_ADDRESS=0.0.0.0 STAGEHAND_ALLOW_REMOTE=1` |
 | Unsafe methods | `STAGEHAND_ALLOW_UNSAFE=1` or `godot_launch(allow_unsafe=true)` |
 | Ordinary RPC timeout | `STAGEHAND_CALL_TIMEOUT_MS=30000` (default; 1–86400000 milliseconds) |
+
+The editor toggle is stored in editor-only project metadata and injects
+`--stagehand` only when the editor launches the game. It is never written as a
+runtime project setting. Release exports ignore the ordinary CLI flag and
+`STAGEHAND_ENABLED` unless `STAGEHAND_ALLOW_RELEASE=1` is also set deliberately.
 
 Ordinary Godot tool calls time out after 30 seconds so a frozen game cannot
 occupy an MCP worker indefinitely. Set `STAGEHAND_CALL_TIMEOUT_MS` on the MCP

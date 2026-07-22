@@ -1,8 +1,8 @@
 extends Node
 ## WebSocket server that accepts JSON-RPC 2.0 commands from external clients.
 ## Registered as an autoload by the Stagehand editor plugin.
-## Only activates when STAGEHAND_ENABLED=1 env var, --stagehand CLI flag,
-## or the editor toolbar toggle is on.
+## Only activates when STAGEHAND_ENABLED=1 or the --stagehand CLI flag is
+## supplied. Release exports additionally require STAGEHAND_ALLOW_RELEASE=1.
 
 const DEFAULT_PORT: int = 26700
 const DEFAULT_BIND_ADDRESS: String = "127.0.0.1"
@@ -76,9 +76,6 @@ func _ready() -> void:
 		# cannot bind the port would otherwise run forever as a headless zombie
 		# with no server (~500MB each), accumulating on every port collision.
 		# Self-quit so the launcher's port is freed and no zombie lingers.
-		# The editor toolbar toggle (ProjectSettings activation) deliberately does
-		# NOT self-quit: an occupied port during interactive editor play must not
-		# tear down the running session.
 		if _enabled_via_game_launch():
 			push_error("Stagehand: Quitting (game launch) — port %d unavailable." % _port)
 			get_tree().quit(BIND_FAILURE_EXIT_CODE)
@@ -605,20 +602,21 @@ func _stop() -> void:
 
 
 static func _is_enabled() -> bool:
-	if _enabled_via_game_launch():
-		return true
-	# Editor toolbar toggle persists activation here. This path enables the
-	# server but is NOT treated as a game launch (see _enabled_via_game_launch).
-	if ProjectSettings.get_setting("stagehand/server/enabled", false):
-		return true
-	return false
+	return _enabled_via_game_launch()
 
 
 ## Whether the server was activated as an explicit game/CLI launch — the
-## STAGEHAND_ENABLED env var or the --stagehand CLI flag. This is the only
-## activation path that self-quits on a WebSocket bind failure; the editor
-## toolbar toggle (ProjectSettings) intentionally does not.
+## STAGEHAND_ENABLED env var or the --stagehand CLI flag. Release exports need
+## the additional STAGEHAND_ALLOW_RELEASE opt-in.
 static func _enabled_via_game_launch() -> bool:
+	return _activation_allowed(
+		_activation_requested(),
+		OS.has_feature("release"),
+		OS.get_environment("STAGEHAND_ALLOW_RELEASE") == "1"
+	)
+
+
+static func _activation_requested() -> bool:
 	if OS.get_environment("STAGEHAND_ENABLED") == "1":
 		return true
 	if "--stagehand" in OS.get_cmdline_args():
@@ -626,6 +624,12 @@ static func _enabled_via_game_launch() -> bool:
 	if "--stagehand" in OS.get_cmdline_user_args():
 		return true
 	return false
+
+
+static func _activation_allowed(
+	explicit_activation: bool, release_build: bool, release_opt_in: bool
+) -> bool:
+	return explicit_activation and (not release_build or release_opt_in)
 
 
 static func _to_float(v: Variant) -> float:

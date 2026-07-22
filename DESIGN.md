@@ -347,7 +347,11 @@ The WebSocket server only starts when explicitly enabled:
 - Environment variable `STAGEHAND_ENABLED=1`, or
 - Command-line flag `--stagehand`
 
-The autoload checks on `_ready()` and disables itself otherwise. This prevents the server from running in production builds.
+The editor toolbar stores its preference in editor-only metadata and injects
+`--stagehand` into editor play sessions; it never persists runtime activation
+in `project.godot`. The autoload checks on `_ready()` and disables itself
+otherwise. Release exports additionally require the deliberate
+`STAGEHAND_ALLOW_RELEASE=1` unsafe opt-in.
 
 ### Screenshot Capture
 
@@ -549,7 +553,7 @@ In-memory MCP transports with a mock Godot WebSocket server to test the full Cla
 | **Go for MCP server** | User's preferred backend language, strong concurrency primitives, single binary distribution |
 | **Port 26700** | Distinct from Godot's debugger (6007). Configurable via flag/env var |
 | **Autoload over editor-plugin-only** | Addon must run inside the *game* process, not just the editor. Autoload is the simplest mechanism |
-| **Env var activation guard** | `STAGEHAND_ENABLED=1` or `--stagehand` flag. WebSocket server must never run in production builds |
+| **Env var activation guard** | `STAGEHAND_ENABLED=1` or `--stagehand` flag; release exports also require `STAGEHAND_ALLOW_RELEASE=1` |
 | **Selector prefix grammar** | Inspired by Playwright's locator strategies but adapted for Godot's node tree (paths, groups, classes instead of CSS/ARIA) |
 
 ## Current Troubleshooting Guide
@@ -581,4 +585,3 @@ In-memory MCP transports with a mock Godot WebSocket server to test the full Cla
    - Ensure scene is loaded before attempting automation
    - Verify target nodes exist before referencing them
    - Check Godot console for errors (the addon prints server status messages)
-
