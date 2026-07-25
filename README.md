@@ -1,7 +1,5 @@
 # Godot Stagehand
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/mrf/godot-stagehand)](https://goreportcard.com/report/github.com/mrf/godot-stagehand)
-
 External automation for running Godot games, exposed as an MCP server for AI agents and as a CLI plus scenario runner for CI and terminal debugging. Think Playwright, but for game engines.
 
 > ### Stagehand drives your *running game*, not the Godot editor.
