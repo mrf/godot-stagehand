@@ -30,6 +30,12 @@ func printGuidance(out io.Writer, opts Options) {
 	fmt.Fprintf(out, "  godot --path %s --stagehand\n", opts.ProjectPath)
 	fmt.Fprintln(out, "  Godot prints a one-session Authentication token at startup.")
 	fmt.Fprintln(out, "  Pass that token to godot_connect as auth_token.")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "  Installing into a project with its own command-line parser (an editor,")
+	fmt.Fprintln(out, "  a tool, anything with its own --help)? It may reject --stagehand with")
+	fmt.Fprintln(out, "  \"Unknown option: --stagehand\" and quit. Use the environment variable")
+	fmt.Fprintln(out, "  instead — it bypasses argument parsing entirely:")
+	fmt.Fprintf(out, "    STAGEHAND_ENABLED=1 godot --path %s\n", opts.ProjectPath)
 
 	if opts.IsWSL {
 		fmt.Fprintln(out)

@@ -220,8 +220,19 @@ also prints WSL-specific connection guidance.
 ### 3. Run your game with Stagehand enabled
 
 ```bash
+# Your own project, or anywhere you control the argv
 godot --path /path/to/your/project --stagehand
+
+# Installing into an existing third-party project instead
+STAGEHAND_ENABLED=1 godot --path /path/to/your/project
 ```
+
+Prefer the environment variable when installing into a project you didn't
+write. Many host projects (editors, tools, anything with its own `--help`)
+parse their own command-line arguments and will reject `--stagehand` with
+`Unknown option: --stagehand` and quit, even though Stagehand itself started
+fine. `STAGEHAND_ENABLED=1` bypasses argument parsing entirely, so it works
+regardless of what the host project's CLI parser recognizes.
 
 You should see a one-session authentication token followed by
 `Stagehand: Server listening on port 26700 (127.0.0.1)` in the output. Keep the
@@ -341,6 +352,12 @@ matrix on every push/PR to `main`.
 ## Troubleshooting
 
 **"Connection refused"**: Game isn't running with `--stagehand`, or wrong host/port.
+
+**"Unknown option: --stagehand"**: The host project parses its own
+command-line arguments and doesn't recognize `--stagehand`, so it aborts
+before Stagehand (which had already started fine) is usable. Use
+`STAGEHAND_ENABLED=1 godot --path /path/to/your/project` instead — it bypasses
+argument parsing entirely. See [step 3](#3-run-your-game-with-stagehand-enabled) above.
 
 **"Authentication required/failed"**: Pass the token printed by this Godot
 session, or its configured `STAGEHAND_AUTH_TOKEN`, as

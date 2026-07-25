@@ -98,6 +98,20 @@ godot --path /path/to/your/project --stagehand
 "C:\path\to\Godot_v4.x-stable_win64.exe" --path "C:\path\to\your\project" --stagehand
 ```
 
+> **Installing into an existing project you didn't write?** Many real projects
+> (editors, tools, anything with its own `--help`) parse their own command-line
+> arguments and will reject an option they don't recognize, printing something
+> like `Unknown option: --stagehand` and quitting. Use the environment variable
+> instead — it's never seen by argument parsing:
+>
+> ```bash
+> STAGEHAND_ENABLED=1 godot --path /path/to/your/project
+> ```
+>
+> Both forms turn Stagehand on identically. Reach for `--stagehand` for your
+> own game (where you control the argv), and `STAGEHAND_ENABLED=1` whenever
+> the host project might parse its own flags.
+
 **You're good if:** the Godot output panel (or terminal) shows:
 ```
 Stagehand: Authentication token: <one-session-token>
@@ -107,7 +121,7 @@ Stagehand: Server listening on port 26700 (127.0.0.1)
 Keep that token private. You will give it to Claude in the next step; a new
 token is generated each time unless you explicitly set `STAGEHAND_AUTH_TOKEN`.
 
-**Try this if not:** confirm the Stagehand plugin is enabled (Step 2) — an unchecked plugin means neither the toggle nor `--stagehand` does anything.
+**Try this if not:** confirm the Stagehand plugin is enabled (Step 2) — an unchecked plugin means neither the toggle, `--stagehand`, nor `STAGEHAND_ENABLED=1` does anything.
 
 You can also click **Test connection** in the Setup wizard (Step 3) once the game is running — it pings the server directly from the editor and reports success or failure without needing Claude at all.
 
@@ -163,6 +177,14 @@ token printed by the currently running Godot session, not one from an earlier ru
 ### Screenshots come back black or empty
 
 Stagehand can only capture what Godot actually renders. This happens if you launched with `--headless` — there's nothing to render. Launch normally, with a visible, non-minimized window.
+
+### "Unknown option: --stagehand"
+
+The host project parses its own command-line arguments and doesn't recognize
+`--stagehand`, so it aborts before Stagehand (which had already started fine)
+gets a chance to do anything useful. Use the environment variable instead,
+which bypasses argument parsing entirely: `STAGEHAND_ENABLED=1 godot --path
+/path/to/your/project`. See the callout in [Step 4](#step-4-run-your-game-with-stagehand-enabled) above.
 
 ---
 
