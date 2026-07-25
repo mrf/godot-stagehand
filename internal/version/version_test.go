@@ -2,6 +2,7 @@ package version_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -95,34 +96,69 @@ func TestAddonCapabilityVocabularyMatchesSource(t *testing.T) {
 	}
 }
 
+// TestFindAddonFilesIgnoresUntrackedScratchDirs guards against the class of
+// bug where integration-test sandboxes (e.g. .pi/sandbox-cache/tmp/...) leave
+// behind stale addons/stagehand copies: those are untracked and must never
+// surface in the version gate, no matter what version string they contain.
+func TestFindAddonFilesIgnoresUntrackedScratchDirs(t *testing.T) {
+	root := repoRoot(t)
+	scratchDir := filepath.Join(root, ".pi", "test-scratch-untracked", "addons", "stagehand")
+	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+		t.Fatalf("mkdir scratch dir: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(filepath.Join(root, ".pi", "test-scratch-untracked")); err != nil {
+			t.Errorf("cleanup scratch dir: %v", err)
+		}
+	})
+	scratchFile := filepath.Join(scratchDir, "plugin.cfg")
+	if err := os.WriteFile(scratchFile, []byte(`version="0.0.1-bogus"`+"\n"), 0o644); err != nil {
+		t.Fatalf("write scratch plugin.cfg: %v", err)
+	}
+
+	for _, path := range findAddonFiles(t, "plugin.cfg") {
+		if path == scratchFile {
+			t.Fatalf("findAddonFiles returned untracked scratch file %s", scratchFile)
+		}
+	}
+}
+
 // findAddonFiles returns every copy of name living under an addons/stagehand
-// directory anywhere in the repo (canonical, testdata, examples).
+// directory anywhere in the repo (canonical, testdata, examples). It is
+// sourced from `git ls-files` rather than a filesystem walk: integration
+// tests can leave untracked scratch copies (e.g. under a sandbox tmp dir)
+// anywhere below the repo root, and those must never be able to fail the
+// version gate.
 func findAddonFiles(t *testing.T, name string) []string {
 	t.Helper()
 	root := repoRoot(t)
 	var found []string
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
+	for _, rel := range trackedFiles(t, root) {
+		if filepath.Base(rel) != name {
+			continue
 		}
-		if entry.IsDir() {
-			if entry.Name() == ".git" || entry.Name() == "build" {
-				return filepath.SkipDir
-			}
-			return nil
+		if strings.Contains(filepath.ToSlash(rel), "addons/stagehand/") {
+			found = append(found, filepath.Join(root, rel))
 		}
-		if entry.Name() != name {
-			return nil
-		}
-		if strings.Contains(filepath.ToSlash(path), "/addons/stagehand/") {
-			found = append(found, path)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walk repo: %v", err)
 	}
 	return found
+}
+
+// trackedFiles returns every path `git ls-files` reports for root, relative
+// to root.
+func trackedFiles(t *testing.T, root string) []string {
+	t.Helper()
+	cmd := exec.Command("git", "ls-files", "-z")
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git ls-files: %v", err)
+	}
+	trimmed := strings.TrimRight(string(out), "\x00")
+	if trimmed == "" {
+		return nil
+	}
+	return strings.Split(trimmed, "\x00")
 }
 
 func repoRoot(t *testing.T) string {
