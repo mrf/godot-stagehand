@@ -14,6 +14,11 @@
 .godot/
 *.import
 export_presets.cfg
+# Godot 4.4+ regenerates .uid sidecars on every headless import. They are
+# derived artifacts, and any that land under testdata/test_project/addons/
+# stagehand would break TestFixtureAddonCopiesMatchCanonical's byte-for-byte
+# fixture check (docs/addon-sync-contract.md). Never track them.
+*.uid
 
 # OS
 .DS_Store
@@ -27,6 +32,8 @@ Thumbs.db
 
 # Test artifacts
 testdata/test_project/.godot/
+# GdUnit4 writes a fresh reports/report_<n>/ tree on every headless run.
+testdata/test_project/reports/
 
 # agents
 .pi

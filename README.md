@@ -257,6 +257,21 @@ session, or its configured `STAGEHAND_AUTH_TOKEN`, as
 
 **Addon not in plugin list** — Run `godot-stagehand setup /path/to/project` again; it idempotently enables the plugin and autoload.
 
+## Development
+
+```bash
+go vet ./...          # lint
+go test ./...         # Go tests (no Godot needed)
+
+# GDScript unit suite (GdUnit4, headless — needs Godot 4.6+)
+GODOT_BIN=/path/to/godot ./scripts/run-gdscript-tests.sh
+```
+
+See the [GDScript testing guide](docs/gdscript-testing.md) for the suite layout
+and the strict-mode rules test files must follow, and the
+[addon sync contract](docs/addon-sync-contract.md) before editing any copy of
+the addon.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

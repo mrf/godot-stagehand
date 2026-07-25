@@ -290,16 +290,18 @@ static func _set_property_deep(node: Node, property: String, value: Variant) -> 
 	if parts.size() == 1:
 		return _do_set(node, property, value)
 
-	# For dot notation, resolve all but the last part to find the target object.
-	var current: Object = node
-	for i: int in range(parts.size() - 1):
-		var part: String = parts[i]
-		if current != null and current.has_method("get"):
-			current = current.get(part)
-		else:
-			return false
-
-	return _do_set(current, parts[parts.size() - 1], value)
+	# Walking Object.get() part-by-part cannot handle a chain that descends
+	# into a built-in struct property ("position.x"): get("position") returns a
+	# Vector2, which is not an Object, so the walk both fails and — because the
+	# cursor was typed as Object — raised "Trying to assign value of type
+	# 'Vector2' to a variable of type 'Object'". set_indexed walks the
+	# ':'-joined path natively, handling struct components and nested Objects
+	# alike, and silently no-ops on an invalid path — so confirm by read-back.
+	var indexed_path: NodePath = NodePath(":".join(parts))
+	if node.get_indexed(indexed_path) == null:
+		return false
+	node.set_indexed(indexed_path, value)
+	return true
 
 
 ## Attempt to set a property on an object.

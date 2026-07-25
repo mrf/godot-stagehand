@@ -1,3 +1,6 @@
+# GdUnit4's fluent assertions return self, so every unchained assert_*() is a
+# discarded return value. Scoped relaxation — see docs/gdscript-testing.md.
+@warning_ignore_start("return_value_discarded")
 extends GdUnitTestSuite
 ## Tests for StagehandExpressionEvaluator — engine-singleton resolution, the
 ## documented ternary (conditional expression) limitation, and context_node

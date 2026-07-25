@@ -112,6 +112,60 @@ jobs:
       - name: Secure launch handshake
         run: go test -tags=godot ./internal/launch -run '^TestLaunch(EstablishesAuthenticatedSafeConnection|CanExplicitlyEnableUnsafeMethods)$' -count=1 -timeout=2m
 
+  # ── GDScript unit tests (GdUnit4, headless) ──────────────────────────────
+  # Runs testdata/test_project/test against that project's checked-in addon
+  # copy, which go-quality's TestFixtureAddonCopiesMatchCanonical keeps
+  # byte-for-byte identical to canonical addons/stagehand. The project elevates
+  # every gdscript/warnings/* to an error, so a strict-mode regression in a
+  # test or in the addon fails here as a parse error.
+  #
+  # Pinned to a single Godot version, deliberately NOT the 4.3/4.4 matrix the
+  # parse job uses: GdUnit4 v6.1.3's CLI runner hangs on 4.4-stable headless
+  # (no output and no report after 120s, versus ~6s to completion on 4.6.2).
+  # The addon itself still supports 4.3+ — that is what gdscript-parse covers;
+  # this job's floor is a constraint of the test tooling, not of the addon.
+  gdscript-tests:
+    name: GDScript unit tests (GdUnit4)
+    runs-on: ubuntu-latest
+    env:
+      GODOT_VERSION: 4.6.2.stable
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Cache Godot binary
+        id: godot-cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.GODOT_CACHE_DIR }}
+          key: godot-4.6.2.stable-linux
+
+      - name: Install Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: bash scripts/ci-install-godot.sh
+
+      - name: Locate Godot binary
+        run: |
+          source scripts/ci-install-godot.sh
+          echo "GODOT_BIN=${GODOT_BIN}" >> "$GITHUB_ENV"
+
+      - name: Run GdUnit4 suite
+        run: go test -tags=gdscript -run '^TestGdUnitSuite$' -count=1 -timeout=15m .
+
+      - name: Upload GdUnit4 report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gdunit4-report
+          path: testdata/test_project/reports/
+          retention-days: 7
+          if-no-files-found: ignore
+
   # ── Cross-platform release builds ────────────────────────────────────────
   build-matrix:
     name: Build (${{ matrix.goos }}-${{ matrix.goarch }})

@@ -174,8 +174,13 @@ static func _resolve_name(tree: SceneTree, pattern: String) -> Array[Node]:
 	if root == null:
 		return [] as Array[Node]
 	# find_children handles both glob patterns (*, ?) and exact names.
+	# owned=false is required: it defaults to true, which restricts the search
+	# to nodes owned by the scene root — i.e. nodes saved in a .tscn. Every
+	# node instantiated at runtime (spawned enemies, bullets, dynamically built
+	# UI) has a null owner and would be silently invisible to `name:`, while
+	# every other selector type walks the tree and does find them.
 	var results: Array[Node] = []
-	results.assign(root.find_children(pattern))
+	results.assign(root.find_children(pattern, "", true, false))
 	return results
 
 
@@ -248,8 +253,10 @@ static func _resolve_path_from_parent(parent: Node, path: String) -> Array[Node]
 
 
 static func _resolve_name_from_parent(parent: Node, pattern: String) -> Array[Node]:
+	# owned=false for the same reason as _resolve_name: runtime-instantiated
+	# descendants have a null owner and are excluded by the default.
 	var results: Array[Node] = []
-	results.assign(parent.find_children(pattern))
+	results.assign(parent.find_children(pattern, "", true, false))
 	return results
 
 
