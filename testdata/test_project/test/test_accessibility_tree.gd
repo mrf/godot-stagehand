@@ -12,6 +12,10 @@ extends GdUnitTestSuite
 ## Role derivation needs the DisplayServer.AccessibilityRole enum, which only
 ## exists on Godot 4.5+, so role assertions are gated on is_supported().
 
+## Preloaded rather than referenced by its `class_name` — see the
+## preload-over-class_name convention in docs/gdscript-testing.md.
+const ACCESSIBILITY_TREE := preload("res://addons/stagehand/core/accessibility_tree.gd")
+
 var _root: Control
 
 
@@ -69,7 +73,7 @@ func _find_by_name(entry: Dictionary, wanted: String) -> Dictionary:
 
 
 func _tree() -> Dictionary:
-	return StagehandAccessibilityTree.build(_root, 10)
+	return ACCESSIBILITY_TREE.build(_root, 10)
 
 
 func _role_of(node_name: String) -> String:
@@ -83,19 +87,19 @@ func test_is_supported_matches_engine_version() -> void:
 	var major: int = version.get("major", 0)
 	var minor: int = version.get("minor", 0)
 	var expected: bool = major > 4 or (major == 4 and minor >= 5)
-	assert_bool(StagehandAccessibilityTree.is_supported()).is_equal(expected)
+	assert_bool(ACCESSIBILITY_TREE.is_supported()).is_equal(expected)
 
 
 func test_build_response_reports_source_as_derived() -> void:
 	# The response must never claim to be the real AccessKit tree.
-	var result: Dictionary = StagehandAccessibilityTree.build_response(_root, 10)
+	var result: Dictionary = ACCESSIBILITY_TREE.build_response(_root, 10)
 	assert_str(_str_field(result, "source")).is_equal("derived")
 
 
 func test_build_response_on_unsupported_version_returns_clear_error() -> void:
-	if StagehandAccessibilityTree.is_supported():
+	if ACCESSIBILITY_TREE.is_supported():
 		return  # Supported engines are covered by the role tests below.
-	var result: Dictionary = StagehandAccessibilityTree.build_response(_root, 10)
+	var result: Dictionary = ACCESSIBILITY_TREE.build_response(_root, 10)
 	assert_bool(result.has("error")).is_true()
 	assert_str(_str_field(result, "error")).contains("4.5")
 
@@ -103,7 +107,7 @@ func test_build_response_on_unsupported_version_returns_clear_error() -> void:
 # ── role derivation ──────────────────────────────────────────────────────
 
 func test_button_derives_button_role() -> void:
-	if not StagehandAccessibilityTree.is_supported():
+	if not ACCESSIBILITY_TREE.is_supported():
 		return
 	var btn: Button = auto_free(Button.new())
 	_attach(btn, "Go")
@@ -111,7 +115,7 @@ func test_button_derives_button_role() -> void:
 
 
 func test_check_box_derives_check_box_role() -> void:
-	if not StagehandAccessibilityTree.is_supported():
+	if not ACCESSIBILITY_TREE.is_supported():
 		return
 	var box: CheckBox = auto_free(CheckBox.new())
 	_attach(box, "Toggle")
@@ -119,7 +123,7 @@ func test_check_box_derives_check_box_role() -> void:
 
 
 func test_label_derives_static_text_role() -> void:
-	if not StagehandAccessibilityTree.is_supported():
+	if not ACCESSIBILITY_TREE.is_supported():
 		return
 	var label: Label = auto_free(Label.new())
 	_attach(label, "Caption")
@@ -127,7 +131,7 @@ func test_label_derives_static_text_role() -> void:
 
 
 func test_line_edit_derives_text_field_role() -> void:
-	if not StagehandAccessibilityTree.is_supported():
+	if not ACCESSIBILITY_TREE.is_supported():
 		return
 	var field: LineEdit = auto_free(LineEdit.new())
 	_attach(field, "NameInput")
@@ -135,7 +139,7 @@ func test_line_edit_derives_text_field_role() -> void:
 
 
 func test_text_edit_derives_multiline_text_field_role() -> void:
-	if not StagehandAccessibilityTree.is_supported():
+	if not ACCESSIBILITY_TREE.is_supported():
 		return
 	var editor: TextEdit = auto_free(TextEdit.new())
 	_attach(editor, "Notes")
@@ -143,7 +147,7 @@ func test_text_edit_derives_multiline_text_field_role() -> void:
 
 
 func test_non_control_node_derives_unknown_role() -> void:
-	if not StagehandAccessibilityTree.is_supported():
+	if not ACCESSIBILITY_TREE.is_supported():
 		return
 	var sprites: Node2D = auto_free(Node2D.new())
 	_attach(sprites, "Sprites")
@@ -153,11 +157,11 @@ func test_non_control_node_derives_unknown_role() -> void:
 func test_every_derivable_role_is_a_real_engine_role() -> void:
 	# Guards against inventing role strings: every value the mapping can emit
 	# must correspond to an actual DisplayServer.ROLE_* constant.
-	if not StagehandAccessibilityTree.is_supported():
+	if not ACCESSIBILITY_TREE.is_supported():
 		return
-	var valid: PackedStringArray = StagehandAccessibilityTree.engine_role_names()
+	var valid: PackedStringArray = ACCESSIBILITY_TREE.engine_role_names()
 	assert_int(valid.size()).is_greater(10)
-	for role: String in StagehandAccessibilityTree.derivable_role_names():
+	for role: String in ACCESSIBILITY_TREE.derivable_role_names():
 		assert_bool(valid.has(role)).override_failure_message(
 			"derived role '%s' is not a real DisplayServer.ROLE_* constant" % role
 		).is_true()
@@ -244,10 +248,10 @@ func test_max_depth_limits_recursion() -> void:
 	leaf.name = "Leaf"
 	mid.add_child(leaf)
 
-	var shallow: Dictionary = StagehandAccessibilityTree.build(_root, 1)
+	var shallow: Dictionary = ACCESSIBILITY_TREE.build(_root, 1)
 	assert_dict(_find_by_name(shallow, "Leaf")).is_empty()
 
-	var deep: Dictionary = StagehandAccessibilityTree.build(_root, 5)
+	var deep: Dictionary = ACCESSIBILITY_TREE.build(_root, 5)
 	assert_dict(_find_by_name(deep, "Leaf")).is_not_empty()
 
 
@@ -262,7 +266,7 @@ func test_value_reflects_editable_text() -> void:
 func test_build_response_counts_nodes() -> void:
 	var btn: Button = auto_free(Button.new())
 	_attach(btn, "Counted")
-	var result: Dictionary = StagehandAccessibilityTree.build_response(_root, 10)
+	var result: Dictionary = ACCESSIBILITY_TREE.build_response(_root, 10)
 	if result.has("error"):
 		return
 	var count: int = result.get("count", 0)
