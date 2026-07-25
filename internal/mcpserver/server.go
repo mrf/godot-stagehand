@@ -286,6 +286,7 @@ func (s *Server) registerTools() {
 	s.mcp.AddTool(setPropertyTool, s.handleSetProperty)
 	s.mcp.AddTool(clickTool, s.handleClick)
 	s.mcp.AddTool(pressKeyTool, s.handlePressKey)
+	s.mcp.AddTool(focusWindowTool, s.handleFocusWindow)
 	s.mcp.AddTool(pressActionTool, s.handlePressAction)
 	s.mcp.AddTool(touchTool, s.handleTouch)
 	s.mcp.AddTool(typeTextTool, s.handleTypeText)

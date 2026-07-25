@@ -249,6 +249,8 @@ func TestOneShotCommandsCoverTheDocumentedSurface(t *testing.T) {
 		{"call", []string{"call", port, "name:Player", "take_damage", "--args=[5]"}, "call_method"},
 		{"input click", []string{"input", "click", port, "--selector=text:Start"}, "input_mouse"},
 		{"input key", []string{"input", "key", port, "Enter"}, "input_key"},
+		{"input focus", []string{"input", "focus", port}, "focus_window"},
+		{"input focus selector", []string{"input", "focus", port, "--selector=class:AcceptDialog"}, "focus_window"},
 		{"input action", []string{"input", "action", port, "ui_accept"}, "input_action"},
 		{"input text", []string{"input", "text", port, "hello"}, "input_text"},
 		{"input move", []string{"input", "move", port, "--selector=name:Btn"}, "input_mouse_move"},

@@ -53,6 +53,7 @@ func TestExecuteMapsActionToProtocolMethod(t *testing.T) {
 		{"find", map[string]any{"selector": "class:Button"}, "query_nodes"},
 		{"click", map[string]any{"selector": "class:Button"}, "input_mouse"},
 		{"press_key", map[string]any{"key": "Enter"}, "input_key"},
+		{"focus_window", nil, "focus_window"},
 		{"press_action", map[string]any{"action": "ui_accept"}, "input_action"},
 		{"type_text", map[string]any{"text": "hi"}, "input_text"},
 		{"wait_for_signal", map[string]any{"selector": "name:X", "signal_name": "done"}, "wait_signal"},
@@ -239,11 +240,44 @@ func TestExecuteAcceptsDurationMsForPerformanceSampling(t *testing.T) {
 	}
 }
 
+// focus_window takes no required parameters — its whole point is that a stuck
+// caller can invoke it with nothing but the connection and have the addon pick
+// the modal that lost focus (godot-stagehand-z6iu). Its one optional parameter
+// is a selector, so it must be validated like every other selector.
+func TestFocusWindowSelectorIsValidated(t *testing.T) {
+	caller := &recordingCaller{}
+	_, err := Execute(context.Background(), caller, Op{
+		Action: "focus_window",
+		Params: map[string]any{"selector": "name:"},
+	})
+	if err == nil {
+		t.Fatal("Execute accepted a malformed selector")
+	}
+	if KindOf(err) != KindUsage {
+		t.Errorf("KindOf = %v, want KindUsage", KindOf(err))
+	}
+	if caller.calls != 0 {
+		t.Error("a malformed selector must not reach the wire")
+	}
+
+	caller = &recordingCaller{}
+	if _, err := Execute(context.Background(), caller, Op{
+		Action: "focus_window",
+		Params: map[string]any{"selector": "class:AcceptDialog"},
+	}); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if got := paramsMap(t, caller.params)["selector"]; got != "class:AcceptDialog" {
+		t.Errorf("selector = %v, want class:AcceptDialog", got)
+	}
+}
+
 func TestActionsAreSortedAndCoverThePublicSurface(t *testing.T) {
 	actions := Actions()
 	for _, want := range []string{
 		"tree", "find", "get_property", "set_property", "call_method",
-		"click", "press_key", "wait_for_node", "screenshot", "get_performance",
+		"click", "press_key", "focus_window", "wait_for_node", "screenshot",
+		"get_performance",
 	} {
 		found := false
 		for _, action := range actions {

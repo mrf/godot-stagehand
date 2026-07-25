@@ -209,11 +209,11 @@ var cmdScene = &command{
 // ── input ─────────────────────────────────────────────────────────────────
 
 var cmdInput = &command{
-	name: "input", usage: "click|key|action|text|move|touch --port N [...]", connects: true,
-	summary: "Simulate input: click, key, action, text, move, touch",
+	name: "input", usage: "click|key|action|text|move|touch|focus --port N [...]", connects: true,
+	summary: "Simulate input: click, key, action, text, move, touch, focus",
 	run: func(ctx context.Context, e *env, cmd *command, args []string) error {
 		if len(args) == 0 {
-			return usagef(fmt.Errorf("input needs a subcommand: click, key, action, text, move or touch"))
+			return usagef(fmt.Errorf("input needs a subcommand: click, key, action, text, move, touch or focus"))
 		}
 		sub, rest := args[0], args[1:]
 
@@ -237,6 +237,8 @@ var cmdInput = &command{
 			case "text":
 				fset.StringVar(&selector, "selector", "", "node to focus first")
 				fset.IntVar(&delayMs, "delay-ms", 0, "delay between characters")
+			case "focus":
+				fset.StringVar(&selector, "selector", "", "Window to focus; omit to target the modal that lost focus")
 			case "move":
 				fset.StringVar(&selector, "selector", "", "node whose centre to move to")
 				fset.StringVar(&coordinates, "coordinates", "", "screen coordinates as JSON")
@@ -294,6 +296,10 @@ var cmdInput = &command{
 				setIf(params, "delay_ms", delayMs, wasSet(fset, "delay-ms"))
 				return execute(ctx, e, s, "type_text", params)
 
+			case "focus":
+				setIf(params, "selector", selector, selector != "")
+				return execute(ctx, e, s, "focus_window", params)
+
 			case "move":
 				setIf(params, "selector", selector, selector != "")
 				if coordinates != "" {
@@ -327,7 +333,7 @@ var cmdInput = &command{
 				return execute(ctx, e, s, "touch", params)
 
 			default:
-				return usagef(fmt.Errorf("unknown input subcommand %q (want click, key, action, text, move or touch)", sub))
+				return usagef(fmt.Errorf("unknown input subcommand %q (want click, key, action, text, move, touch or focus)", sub))
 			}
 		})
 	},

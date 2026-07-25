@@ -101,6 +101,7 @@ JSON-RPC 2.0 over WebSocket. Every message is a standard JSON-RPC request/respon
 | `input_key` | Simulate keyboard key press/release |
 | `input_text` | Type text into the focused control |
 | `input_touch` | Simulate a touch or drag |
+| `focus_window` | Give a `Window` focus so key input reaches it |
 | `wait_for_node` | Poll until a node exists / is visible / is removed |
 | `wait_for_property` | Poll until a property satisfies a condition |
 | `wait_signal` | Wait for a signal to be emitted (one-shot connection + timer, not polled) |
@@ -296,6 +297,19 @@ Returns: `{ success }`
 | `hold_ms` | int | no | `100` | Hold duration |
 
 Returns: `{ success }`
+
+**`godot_focus_window`**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `selector` | string | no | | `Window` to focus; omit to target the modal subwindow that lost focus |
+
+Returns: `{ success, window, auto_selected, already_focused }`
+
+Key events are routed by the engine to whichever window holds focus, so a key
+cannot be addressed at a named window — `godot_press_key` refuses with
+`not_supported` when a visible modal has lost focus. This is the recovery. It is
+a separate tool, not a `godot_press_key` parameter, because focusing mutates
+application state the caller did not otherwise request.
 
 **`godot_press_action`**
 | Parameter | Type | Required | Default | Description |

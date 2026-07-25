@@ -174,7 +174,7 @@ static func input_key(tree: SceneTree, params: Dictionary) -> Dictionary:
 			{
 				"key": key_str,
 				"blocking_window": str(unfocused.get_path()),
-				"next_action": "Click a Control inside the dialog to focus it, then send the key.",
+				"next_action": "Call focus_window (MCP: godot_focus_window) to give the dialog focus, then send the key again.",
 			}
 		)
 
@@ -186,6 +186,97 @@ static func input_key(tree: SceneTree, params: Dictionary) -> Dictionary:
 	_release_key_after(tree, keycode, mod_mask, hold_ms / 1000.0)
 
 	return {"success": true, "key": key_str}
+
+
+## Give window focus to a [Window] so [method input_key]'s events reach it.
+##
+## Key events are synthesized through [method Input.parse_input_event], which
+## the engine routes to whichever window currently holds focus — a key cannot be
+## addressed at a named window. Restoring the target window's focus is the only
+## working recovery. Confirmed against Godot 4.6.2 with an [AcceptDialog] that
+## had lost focus to an outside click (godot-stagehand-z6iu):
+##
+## [codeblock]
+## dialog.push_input(escape)                      -> dialog.visible stayed true
+## dialog.push_input(escape) while focused        -> dialog.visible stayed true
+## root.push_input(escape) while dialog unfocused -> dialog.visible stayed true
+## dialog.grab_focus(); Input.parse_input_event(escape) -> dialog.visible false
+## [/codeblock]
+##
+## So [method Viewport.push_input] is not an alternative: it reaches the
+## GUI-focused [Control] inside a window (a [Button] there did fire on a pushed
+## Space) but never the [Window]'s own key handling, which is where
+## [AcceptDialog] implements Escape. Only focus works.
+##
+## This is deliberately a separate operation rather than a parameter on
+## [method input_key]: focusing mutates application state the caller did not
+## otherwise request, which godot-stagehand-growth-distribution-87s.21 ruled out
+## as an implicit side effect of pressing a key.
+##
+## Without a [code]selector[/code] the target is whichever modal is actually
+## stuck — see [method _unfocused_modal]. That makes the recovery a zero-argument
+## call for the case the refusal above reports.
+static func focus_window(tree: SceneTree, params: Dictionary) -> Dictionary:
+	var window: Window = null
+	var auto_selected: bool = not params.has("selector")
+	if auto_selected:
+		window = _unfocused_modal(tree.root)
+		if window == null:
+			return ERRORS.make(
+				ERRORS.NOT_SUPPORTED,
+				"No visible modal subwindow is waiting for focus",
+				{
+					"next_action": "Nothing needs recovering. Pass a selector to focus a specific Window.",
+				}
+			)
+	else:
+		var selector: String = str(params["selector"])
+		var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, selector)
+		if nodes.is_empty():
+			return ERRORS.node_not_found(selector)
+		var node: Node = nodes[0]
+		if not (node is Window):
+			return _not_supported(
+				selector, node, "window focus",
+				"Target a Window such as an AcceptDialog, ConfirmationDialog or FileDialog."
+			)
+		window = node
+
+	# grab_focus() on a hidden Window is a silent no-op (confirmed against Godot
+	# 4.6.2: has_focus() stays false, no error anywhere), so reporting success
+	# would hand the caller exactly the false positive this issue is about.
+	if not window.visible:
+		return ERRORS.make(
+			ERRORS.NOT_SUPPORTED,
+			"Window %s is not visible: a hidden window cannot take focus" % window.get_path(),
+			{
+				"window": str(window.get_path()),
+				"next_action": "Show the window (popup it) before focusing it.",
+			}
+		)
+
+	var already_focused: bool = window.has_focus()
+	if not already_focused:
+		# grab_focus() takes effect synchronously — has_focus() reports true on
+		# the same frame, with no process_frame in between (confirmed 4.6.2) —
+		# so the result below is a fact, not an optimistic assumption.
+		window.grab_focus()
+		if not window.has_focus():
+			return ERRORS.make(
+				ERRORS.NOT_SUPPORTED,
+				"Window %s did not take focus" % window.get_path(),
+				{
+					"window": str(window.get_path()),
+					"next_action": "Another exclusive window is probably holding focus — dismiss it first.",
+				}
+			)
+
+	return {
+		"success": true,
+		"window": str(window.get_path()),
+		"auto_selected": auto_selected,
+		"already_focused": already_focused,
+	}
 
 
 ## Delivers [param event] directly to [param viewport]'s input/GUI dispatch
@@ -616,11 +707,25 @@ static func _embedder_of(window: Window) -> Viewport:
 ## what let a caller believe it had dismissed a first-run splash dialog when it
 ## had in fact only broken its own keyboard path.
 static func _blocking_modal(viewport: Viewport, point: Vector2) -> Window:
+	var window: Window = _frontmost_modal(viewport)
+	if window == null:
+		return null
+	if Rect2(Vector2(window.position), Vector2(window.size)).has_point(point):
+		return null
+	return window
+
+
+## The frontmost visible exclusive (modal) embedded subwindow of [param viewport],
+## or null when it has none.
+##
+## Every modal question — does it swallow this point, does it hold focus — is
+## answered by this one window: the engine hit-tests subwindows front to back,
+## and anything behind the frontmost modal is blocked by it regardless of its
+## own state.
+static func _frontmost_modal(viewport: Viewport) -> Window:
 	if viewport == null:
 		return null
 	var subwindows: Array[Window] = viewport.get_embedded_subwindows()
-	# Topmost first: the engine hit-tests subwindows front to back, and only the
-	# frontmost modal can block.
 	for i: int in range(subwindows.size() - 1, -1, -1):
 		var window: Window = subwindows[i]
 		if not window.visible:
@@ -629,8 +734,6 @@ static func _blocking_modal(viewport: Viewport, point: Vector2) -> Window:
 			# A non-exclusive popup dismisses itself on an outside click rather
 			# than eating it, which is legitimate behaviour to drive.
 			continue
-		if Rect2(Vector2(window.position), Vector2(window.size)).has_point(point):
-			return null
 		return window
 	return null
 
@@ -646,15 +749,14 @@ static func _blocking_modal(viewport: Viewport, point: Vector2) -> Window:
 ## goes false and the identical Escape leaves the dialog open with no error
 ## anywhere (godot-stagehand-growth-distribution-87s.21). Callers hitting this
 ## used to get `{"success": true}` and an unchanged screen.
+##
+## Doubles as [method focus_window]'s auto-target: the modal that is deaf to key
+## input is exactly the one whose focus needs restoring.
 static func _unfocused_modal(viewport: Viewport) -> Window:
-	if viewport == null:
+	var window: Window = _frontmost_modal(viewport)
+	if window == null or window.has_focus():
 		return null
-	for window: Window in viewport.get_embedded_subwindows():
-		if not window.visible or not window.exclusive:
-			continue
-		if not window.has_focus():
-			return window
-	return null
+	return window
 
 
 ## Canonical refusal for a pointer event a modal subwindow would swallow.
