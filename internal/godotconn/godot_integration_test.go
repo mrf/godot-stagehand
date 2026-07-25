@@ -416,6 +416,15 @@ func TestSmokeFindNodes(t *testing.T) {
 	}{
 		{"buttons", "class:Button", 1},
 		{"line_edits", "class:LineEdit", 1},
+		// Regression for godot-stagehand-name-selector-matches-nothing-v5t:
+		// name: resolved via find_children() with the default owned=true,
+		// which only matches nodes owned by the exact node find_children is
+		// called on. Every node loaded from a .tscn is owned by its own
+		// scene's root, not by tree.root, so this matched nothing — confirmed
+		// via instrumentation (see commit message) by reverting the
+		// owned=false fix and observing these same selectors return 0.
+		{"name_selector_matches_scene_file_node", "name:testCheckBox", 1},
+		{"name_selector_matches_nested_scene_file_node", "name:PropertyTarget", 1},
 	}
 
 	for _, tc := range cases {
@@ -549,10 +558,11 @@ func TestSmokeGetProperty(t *testing.T) {
 func TestSmokeSetPropertyFalsyValues(t *testing.T) {
 	conn, logPath := setupGodotTest(t)
 
-	// Path selector, not "name:PropertyTarget": empirically, "name:" selectors
-	// currently match zero nodes at all in this headless test project (even
-	// for pre-existing nodes like testCheckBox) — a separate, unconfirmed,
-	// pre-existing bug out of scope for godot-stagehand-jzs.
+	// Path selector: kept stable and independent of the selector engine
+	// itself, since this test is about set_property's falsy-value handling,
+	// not selector resolution. (The "name:" selector's zero-match bug noted
+	// here previously — godot-stagehand-name-selector-matches-nothing-v5t —
+	// is now fixed; see TestSmokeFindNodes's name_selector_matches_* cases.)
 	const selector = "/root/TestScene/PropertyTarget"
 
 	cases := []struct {
