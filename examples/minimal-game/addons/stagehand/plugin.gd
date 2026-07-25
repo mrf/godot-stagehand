@@ -45,7 +45,7 @@ func _setup_toolbar() -> void:
 	_setup_button = Button.new()
 	_setup_button.text = "Setup…"
 	_setup_button.tooltip_text = "Open the Stagehand setup wizard (binary download, MCP config, connection test)"
-	_setup_button.pressed.connect(_on_setup_pressed)
+	var _setup_connect_err: int = _setup_button.pressed.connect(_on_setup_pressed)
 	add_control_to_container(CONTAINER_TOOLBAR, _setup_button)
 
 
@@ -109,7 +109,7 @@ static func _run_args_with_activation(run_args: String, enabled: bool) -> String
 	var filtered_args: PackedStringArray = PackedStringArray()
 	for arg: String in args:
 		if arg != ACTIVATION_ARG:
-			filtered_args.append(arg)
+			var _append_ok: bool = filtered_args.append(arg)
 	if enabled:
-		filtered_args.append(ACTIVATION_ARG)
+		var _append_activation_ok: bool = filtered_args.append(ACTIVATION_ARG)
 	return " ".join(filtered_args)
