@@ -93,7 +93,7 @@ duplicated:
    `gwp.FormatError`.
 
 `mcpserver` was deliberately *not* rerouted through `gwpop`. Its tool schemas
-are its contract, mcp-go already validates against them, and rewriting 30
+are its contract, mcp-go already validates against them, and rewriting 31
 handlers to share parameter-name literals would have been risk without benefit.
 The parameter names appear in two places; the behaviour does not.
 
