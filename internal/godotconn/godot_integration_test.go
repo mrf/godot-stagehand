@@ -868,54 +868,13 @@ func TestSmokeClick(t *testing.T) {
 		t.Fatalf("unmarshal click result: %v; raw=%s", err, clickResp.Result)
 	}
 	if !clickResult.Success {
-		t.Fatalf("click operation reported failure: %+v", clickResult)
+		t.Fatalf("click operation reported failure: %+v\nGodot log:\n%s", clickResult, readFileBestEffort(logPath))
 	}
 	if clickResult.Button != "left" {
 		t.Fatalf("click result button = %q, want %q", clickResult.Button, "left")
 	}
 
-	if err := requireClickTargetWithinViewport(conn, logPath, clickResult.Clicked.X, clickResult.Clicked.Y); err != nil {
-		// Confirmed root cause (godot-stagehand-vv2.13, filed as a finding):
-		// under --headless, get_tree().root.size reports a tiny stub size
-		// (observed 64x64) independent of the project's configured
-		// resolution, so a click computed for the project's real UI layout
-		// lands outside the actual viewport and Godot's GUI dispatch drops
-		// it before the Button ever sees it — no click can register here no
-		// matter what the RPC does. This is the same class of documented
-		// headless-environment limitation as TestSmokeScreenshot's
-		// viewport_image_empty case, not a flaky launch or an addon
-		// regression in this addon's click-handling logic itself.
-		t.Skipf("click skipped: %v", err)
-	}
-
 	assertCounterIncremented(t, conn, logPath, controllerSelector, "click_count", before)
-}
-
-// requireClickTargetWithinViewport reports an error describing why a click
-// computed at (x, y) cannot possibly register: Godot's GUI input dispatch
-// silently drops mouse events outside the real root Viewport's bounds, so a
-// target outside those bounds can never produce an observable effect
-// regardless of addon behavior.
-func requireClickTargetWithinViewport(conn *Connection, logPath string, x, y float64) error {
-	ctx, cancel := callCtx()
-	defer cancel()
-	resp, err := conn.Call(ctx, "get_property", map[string]any{"selector": "/root", "property": "size"})
-	if err != nil {
-		return fmt.Errorf("get_property /root.size failed: %w\nGodot log:\n%s", err, readFileBestEffort(logPath))
-	}
-	var result struct {
-		Value struct {
-			X float64 `json:"x"`
-			Y float64 `json:"y"`
-		} `json:"value"`
-	}
-	if err := json.Unmarshal(resp.Result, &result); err != nil {
-		return fmt.Errorf("unmarshal /root.size: %w; raw=%s", err, resp.Result)
-	}
-	if x >= result.Value.X || y >= result.Value.Y {
-		return fmt.Errorf("click target (%.0f, %.0f) is outside the real headless viewport (%.0fx%.0f)", x, y, result.Value.X, result.Value.Y)
-	}
-	return nil
 }
 
 // TestSmokePressKey tests key press functionality across a sequence of keys,
