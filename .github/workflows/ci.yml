@@ -80,19 +80,22 @@ jobs:
           source scripts/ci-install-godot.sh
           echo "GODOT_BIN=${GODOT_BIN}" >> "$GITHUB_ENV"
 
-      - name: GDScript parse check (addon)
-        run: |
-          # Run Godot headless; it parses all GDScript files during project load.
-          # Exit code 0 means no parse errors; any GDScript error is fatal.
-          "$GODOT_BIN" --headless --path testdata/test_project --quit 2>&1 | tee godot-parse.log
-          # Fail if Godot reports a GDScript-specific error.
-          # Bare ERROR is intentionally excluded: headless Godot emits engine-level
-          # ERROR lines (Vulkan, display driver, etc.) that are harmless on runners.
-          if grep -qE "SCRIPT ERROR|Parse Error" godot-parse.log; then
-            echo "GDScript parse errors detected:"
-            grep -E "SCRIPT ERROR|Parse Error" godot-parse.log
-            exit 1
-          fi
+      # Parse errors AND strict-warning violations: testdata/test_project
+      # elevates every gdscript/warnings/* to 2 (error), so a headless project
+      # load reports both as "Parse Error". Same Godot invocation and same
+      # regex as the inline check this replaced, moved into a script so the
+      # self-test below can share the detection logic.
+      - name: GDScript parse + strict-warning check (addon)
+        run: bash scripts/ci-gdscript-warnings.sh check
+
+      # Negative control. The check above is grep-based against a Godot that
+      # exits 0 regardless, and Godot excludes res://addons from warnings by
+      # default via a setting it renamed mid-4.x — so the gate can silently
+      # become a no-op that reports green forever (it was one until
+      # godot-stagehand-wan). This step injects a known violation into the
+      # addon and fails if Godot does NOT catch it.
+      - name: Strict-warning gate self-test (must catch an injected violation)
+        run: bash scripts/ci-gdscript-warnings.sh selftest
 
       - name: Fresh addon install and authenticated ping
         run: go test -tags=integration ./internal/launch -run '^TestAddonInstallation$' -count=1 -timeout=2m

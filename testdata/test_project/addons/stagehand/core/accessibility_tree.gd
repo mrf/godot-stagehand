@@ -88,8 +88,8 @@ const ROLE_BY_CLASS: Array[Array] = [
 ## True when the running engine exposes the AccessibilityRole vocabulary (4.5+).
 static func is_supported() -> bool:
 	var version: Dictionary = Engine.get_version_info()
-	var major: int = int(version.get("major", 0))
-	var minor: int = int(version.get("minor", 0))
+	var major: int = version.get("major", 0)
+	var minor: int = version.get("minor", 0)
 	if major > MIN_MAJOR:
 		return true
 	return major == MIN_MAJOR and minor >= MIN_MINOR
@@ -98,7 +98,7 @@ static func is_supported() -> bool:
 ## Human-readable reason this module cannot report roles on this engine.
 static func unsupported_reason() -> String:
 	var version: Dictionary = Engine.get_version_info()
-	var running: String = String(version.get("string", "unknown"))
+	var running: String = version.get("string", "unknown")
 	return (
 		"accessibility roles require Godot %d.%d or newer (running %s)"
 		% [MIN_MAJOR, MIN_MINOR, running]
@@ -113,6 +113,7 @@ static func engine_role_names() -> PackedStringArray:
 		"DisplayServer", "AccessibilityRole", true
 	)
 	for constant: String in constants:
+		@warning_ignore("return_value_discarded")
 		names.append(_role_constant_to_name(constant))
 	return names
 
@@ -123,6 +124,7 @@ static func derivable_role_names() -> PackedStringArray:
 	for entry: Array in ROLE_BY_CLASS:
 		var role: String = entry[1]
 		if not names.has(role):
+			@warning_ignore("return_value_discarded")
 			names.append(role)
 	return names
 
@@ -152,10 +154,11 @@ static func build_response(root_node: Node, max_depth: int = 10) -> Dictionary:
 		})
 	var tree: Dictionary = build(root_node, max_depth)
 	var version: Dictionary = Engine.get_version_info()
+	var version_string: String = version.get("string", "")
 	return {
 		"source": "derived",
 		"supported": true,
-		"godot_version": String(version.get("string", "")),
+		"godot_version": version_string,
 		"nodes": [tree],
 		"count": _count_nodes(root_node),
 	}
@@ -266,11 +269,7 @@ static func _call_string_method(node: Node, method: String) -> String:
 	if node == null or not node.has_method(method):
 		return ""
 	var value: Variant = node.call(method)
-	if value is String:
-		return value
-	if value is StringName:
-		return String(value)
-	return ""
+	return _variant_to_string(value)
 
 
 ## "ROLE_CHECK_BOX" → "check_box".
@@ -283,10 +282,20 @@ static func _read_string_property(node: Node, property: String) -> String:
 	if not (property in node):
 		return ""
 	var value: Variant = node.get(property)
+	return _variant_to_string(value)
+
+
+## Narrow a [Variant] to [String], accepting [StringName] but nothing else.
+## The typed locals are what keep this strict-warning clean: `is` does not
+## narrow a Variant for the analyzer, so `String(value)` would be an unsafe
+## call argument.
+static func _variant_to_string(value: Variant) -> String:
 	if value is String:
-		return value
+		var text: String = value
+		return text
 	if value is StringName:
-		return String(value)
+		var name_value: StringName = value
+		return String(name_value)
 	return ""
 
 

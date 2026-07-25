@@ -41,8 +41,26 @@ gdscript/warnings/unsafe_cast=2
 gdscript/warnings/unsafe_call_argument=2
 gdscript/warnings/inferred_declaration=2
 gdscript/warnings/untyped_declaration=2
-# The addon under test lives in res://addons, so addon warnings must count.
+; The addon under test lives in res://addons, so addon warnings must count.
+; Godot excludes res://addons from warnings by default and changed the knob
+; mid-4.x, so BOTH must be set for the 4.3-4.7 CI matrix:
+;   4.3-4.5  honour `exclude_addons` (directory_rules does not exist).
+;   4.6+     dropped `exclude_addons` and gate on `directory_rules`, whose
+;            default is {"res://addons": 0} -- level 0 means "ignore".
+; Setting only one of them silently disarms the gate on the other half of the
+; matrix. Also note the `;` above: project.godot is a ConfigFile, where `#`
+; does NOT start a comment -- a `#` line is glued onto the next key, which is
+; exactly how this exclusion went unnoticed (godot-stagehand-wan).
+;
+; gdUnit4 is vendored third-party code that does not meet this bar (30
+; inferred_declaration warnings), and the GdUnit4 job loads it for real, so it
+; keeps level 0. On 4.3-4.5 `exclude_addons=false` has no per-directory
+; equivalent and gates gdUnit4 too -- harmless, because the only jobs on those
+; versions load the autoload and main scene, never gdUnit4's runner.
 gdscript/warnings/exclude_addons=false
+gdscript/warnings/directory_rules={
+"res://addons/gdUnit4": 0
+}
 
 [editor_plugins]
 
