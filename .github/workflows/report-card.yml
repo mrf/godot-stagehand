@@ -80,6 +80,68 @@ jobs:
         with:
           path: _site
 
+  # Publishes the Go coverage badge the README reads from raw.githubusercontent.com.
+  # There is no companion Godot/GDScript badge job: GdUnit4 has no line-coverage
+  # instrumentation to source a number from (see README's "Go coverage" note).
+  # Ported from mrf/newrelic_exporter's .github/workflows/ci-cd.yml badge steps;
+  # gated on this repo's actual default branch (main, not that repo's master).
+  publish-badges:
+    name: Publish coverage badge
+    if: ${{ github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch }}
+    needs: analyze
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Generate Go coverage badge SVG
+        env:
+          COVERAGE: ${{ needs.analyze.outputs.coverage }}
+        run: |
+          if [ -z "$COVERAGE" ]; then
+            echo "No coverage_percent from the report card; skipping badge."
+            exit 0
+          fi
+          COLOR="red"
+          if (( $(echo "$COVERAGE >= 80" | bc -l) )); then
+            COLOR="brightgreen"
+          elif (( $(echo "$COVERAGE >= 60" | bc -l) )); then
+            COLOR="yellow"
+          elif (( $(echo "$COVERAGE >= 40" | bc -l) )); then
+            COLOR="orange"
+          fi
+          curl -sf "https://img.shields.io/badge/coverage-${COVERAGE}%25-${COLOR}" -o coverage-go-badge.svg
+
+      # continue-on-error so a badge-publishing failure never reds out a real
+      # CI run over something cosmetic.
+      - name: Deploy badge to badges branch
+        continue-on-error: true
+        run: |
+          if [ ! -f coverage-go-badge.svg ]; then
+            echo "No badge generated; nothing to publish."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          cp coverage-go-badge.svg /tmp/coverage-go-badge.svg
+          rm -f coverage-go-badge.svg
+
+          if git fetch origin badges 2>/dev/null; then
+            git checkout badges
+          else
+            git checkout --orphan badges
+            git rm -rf . 2>/dev/null || true
+          fi
+
+          cp /tmp/coverage-go-badge.svg coverage-go-badge.svg
+          git add coverage-go-badge.svg
+          git diff --staged --quiet || git commit -m "Update Go coverage badge [skip ci]"
+          git push -f origin badges
+
   deploy:
     name: Publish report
     if: ${{ github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch }}
