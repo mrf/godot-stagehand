@@ -27,6 +27,8 @@
 class_name StagehandAccessibilityTree
 extends RefCounted
 
+const ERRORS := preload("res://addons/stagehand/core/errors.gd")
+
 ## Godot version that introduced the AccessibilityRole enum.
 const MIN_MAJOR: int = 4
 const MIN_MINOR: int = 5
@@ -141,11 +143,13 @@ static func role_for(node: Node) -> String:
 ## [code]source: "derived"[/code] honesty tag.
 static func build_response(root_node: Node, max_depth: int = 10) -> Dictionary:
 	if not is_supported():
-		return {
-			"error": unsupported_reason(),
+		return ERRORS.make(ERRORS.NOT_SUPPORTED, unsupported_reason(), {
 			"source": "derived",
 			"supported": false,
-		}
+			"next_action": "Run the game on Godot %d.%d or newer to read accessibility roles." % [
+				MIN_MAJOR, MIN_MINOR,
+			],
+		})
 	var tree: Dictionary = build(root_node, max_depth)
 	var version: Dictionary = Engine.get_version_info()
 	return {

@@ -460,6 +460,16 @@ func _handle_ping(_unused_params: Variant) -> Dictionary:
 	}
 
 
+## Canonical failure for a subtree root path that resolves to nothing. Shared by
+## every tool that walks a subtree, so the same condition always reports the same
+## kind and the same context.
+static func _root_not_found(root_path: String) -> Dictionary:
+	return ERRORS.make(ERRORS.NODE_NOT_FOUND, "Root node not found: %s" % root_path, {
+		"root_path": root_path,
+		"next_action": "Call get_tree with the default root_path (/root) to see which nodes exist.",
+	})
+
+
 func _handle_get_tree(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
 	var root_path: String = p.get("root_path", "/root")
@@ -471,10 +481,7 @@ func _handle_get_tree(params: Variant) -> Dictionary:
 
 	var root: Node = get_tree().root.get_node_or_null(NodePath(root_path))
 	if root == null:
-		return ERRORS.make(ERRORS.NODE_NOT_FOUND, "Root node not found: %s" % root_path, {
-			"root_path": root_path,
-			"next_action": "Call get_tree with the default root_path (/root) to see which nodes exist.",
-		})
+		return _root_not_found(root_path)
 
 	return TREE_SERIALIZER.serialize_tree(root, max_depth, include_properties)
 
@@ -503,7 +510,7 @@ func _handle_get_accessibility_tree(params: Variant) -> Dictionary:
 
 	var root: Node = get_tree().root.get_node_or_null(NodePath(root_path))
 	if root == null:
-		return {"error": "Root node not found: %s" % root_path}
+		return _root_not_found(root_path)
 
 	return ACCESSIBILITY_TREE.build_response(root, max_depth)
 
