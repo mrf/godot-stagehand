@@ -11,6 +11,8 @@
 class_name SelectorEngine
 extends RefCounted
 
+const ACCESSIBILITY_TREE := preload("res://addons/stagehand/core/accessibility_tree.gd")
+
 enum SelectorType {
 	PATH,
 	NAME,
@@ -265,7 +267,7 @@ static func _resolve_role(tree: SceneTree, role_name: String) -> Array[Node]:
 	var wanted: String = role_name.strip_edges().to_lower()
 	var results: Array[Node] = []
 	_walk(root, func(node: Node) -> void:
-		if StagehandAccessibilityTree.role_for(node) == wanted:
+		if ACCESSIBILITY_TREE.role_for(node) == wanted:
 			results.append(node)
 	)
 	return results
@@ -275,7 +277,7 @@ static func _resolve_role_from_parent(parent: Node, role_name: String) -> Array[
 	var wanted: String = role_name.strip_edges().to_lower()
 	var results: Array[Node] = []
 	_walk(parent, func(node: Node) -> void:
-		if node != parent and StagehandAccessibilityTree.role_for(node) == wanted:
+		if node != parent and ACCESSIBILITY_TREE.role_for(node) == wanted:
 			results.append(node)
 	)
 	return results
