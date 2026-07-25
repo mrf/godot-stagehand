@@ -75,9 +75,12 @@ static func set_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 		return _property_not_found(selector, node, property)
 
 	var applied_value: Variant = _get_property_at_level(node, property)
+	var success: bool = is_same(applied_value, converted_value)
+	if not success and not _has_property(node, property):
+		return _property_not_found(selector, node, property)
 
 	return {
-		"success": is_same(applied_value, converted_value),
+		"success": success,
 		"previous_value": TREE_SERIALIZER._to_json_safe(previous),
 	}
 

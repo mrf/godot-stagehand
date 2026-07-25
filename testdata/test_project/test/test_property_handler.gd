@@ -168,10 +168,12 @@ func test_set_unmatched_selector_returns_node_not_found() -> void:
 
 func test_set_unknown_property_reports_failure() -> void:
 	# set_indexed silently no-ops on an unknown property, so the read-back
-	# check is what catches it: success is false (there is no error string —
-	# the contract is the success flag).
+	# check is what catches it. Unlike a guarded-setter rejection, the
+	# property genuinely doesn't exist, so this must report the same
+	# descriptive "Property not found" error as get_property does.
 	var result: Dictionary = _set_prop("group:%s" % GROUP, "no_such_property_at_all", 1)
 	assert_bool(result.get("success", false)).is_false()
+	assert_str(str(result.get("error", ""))).contains("Property not found")
 
 
 func test_set_vector2_from_uncoercible_value_returns_error() -> void:
