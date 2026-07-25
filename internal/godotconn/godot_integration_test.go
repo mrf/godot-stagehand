@@ -691,29 +691,26 @@ func TestSmokeScreenshot(t *testing.T) {
 	defer cancel()
 	screenshotResp, err := conn.Call(ctx, "screenshot", map[string]any{})
 	if err != nil {
-		t.Fatalf("screenshot call failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
-	}
-
-	// Check for an addon-level error first (e.g. headless/no-GPU = "viewport_image_empty").
-	var errCheck struct {
-		Error     string `json:"error"`
-		ErrorCode string `json:"error_code"`
-	}
-	if err := json.Unmarshal(screenshotResp.Result, &errCheck); err != nil {
-		t.Fatalf("unmarshal screenshot result: %v; raw=%s", err, screenshotResp.Result)
-	}
-	if errCheck.ErrorCode == "viewport_image_empty" {
-		// Godot's --headless flag disables the RenderingServer entirely, so a
-		// GPU-less CI runner deterministically cannot produce viewport pixels
-		// here (see the png_encode_empty/viewport_image_empty diagnostics in
-		// addons/stagehand/core/screenshot_capture.gd). This is a documented
-		// engine limitation confirmed against a real headless Godot 4.6
-		// instance, not a flaky launch or a functional bug in the addon —
-		// skip rather than fail.
-		t.Skipf("screenshot skipped: headless/no-GPU session returned no frame (%s)", errCheck.Error)
-	}
-	if errCheck.Error != "" {
-		t.Fatalf("screenshot returned error %q (code=%q): raw=%s", errCheck.Error, errCheck.ErrorCode, screenshotResp.Result)
+		// A capture failure now arrives as a JSON-RPC error, not as an "error"
+		// key inside a successful result (godot-stagehand-vv2.8), so the
+		// headless/no-GPU skip is decided from the error's structured data.
+		var rpcErr *RPCError
+		if !errors.As(err, &rpcErr) {
+			t.Fatalf("screenshot call failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
+		}
+		data, _ := rpcErr.StructuredData()
+		if data.ErrorCode == "renderer_unavailable" {
+			// Godot's --headless flag disables the RenderingServer entirely, so
+			// a GPU-less CI runner deterministically cannot produce viewport
+			// pixels here (see the renderer_unavailable diagnostic in
+			// addons/stagehand/core/screenshot_capture.gd). This is a documented
+			// engine limitation confirmed against a real headless Godot 4.6
+			// instance, not a flaky launch or a functional bug in the addon —
+			// skip rather than fail.
+			t.Skipf("screenshot skipped: headless/no-GPU session returned no frame (%s)", rpcErr.Message)
+		}
+		t.Fatalf("screenshot returned error %q (code=%q): %v\nGodot log:\n%s",
+			rpcErr.Message, data.ErrorCode, err, readFileBestEffort(logPath))
 	}
 
 	// Decode the success response — addon returns data/mime_type/width/height.

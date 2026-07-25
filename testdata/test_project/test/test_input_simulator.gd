@@ -199,7 +199,7 @@ func test_touch_move_pushes_screen_drag_event() -> void:
 
 func test_touch_missing_position_returns_error() -> void:
 	var result: Dictionary = StagehandInputSimulator.input_touch(get_tree(), {})
-	assert_str(str(result.get("error", ""))).contains("Missing position")
+	assert_str(str(result.get("error", ""))).contains("Missing required parameter: position")
 	assert_int(_recorder.events.size()).is_equal(0)
 
 
@@ -283,7 +283,7 @@ func test_key_press_applies_modifiers() -> void:
 
 func test_key_missing_key_returns_error() -> void:
 	var result: Dictionary = StagehandInputSimulator.input_key(get_tree(), {})
-	assert_str(str(result.get("error", ""))).contains("Missing key")
+	assert_str(str(result.get("error", ""))).contains("Missing required parameter: key")
 
 
 func test_key_unknown_key_name_returns_error() -> void:
@@ -326,7 +326,7 @@ func test_action_reports_the_action_it_sent() -> void:
 
 func test_action_missing_action_returns_error() -> void:
 	var result: Dictionary = StagehandInputSimulator.input_action(get_tree(), {})
-	assert_str(str(result.get("error", ""))).contains("Missing action")
+	assert_str(str(result.get("error", ""))).contains("Missing required parameter: action")
 
 
 # ── input_text ───────────────────────────────────────────────────────────
@@ -362,7 +362,7 @@ func test_text_echoes_what_it_typed() -> void:
 
 func test_text_missing_text_returns_error() -> void:
 	var result: Dictionary = await StagehandInputSimulator.input_text(get_tree(), {})
-	assert_str(str(result.get("error", ""))).contains("Missing text")
+	assert_str(str(result.get("error", ""))).contains("Missing required parameter: text")
 
 
 func test_text_unmatched_selector_returns_error() -> void:

@@ -2,6 +2,11 @@ class_name StagehandJsonRpc
 extends RefCounted
 ## JSON-RPC 2.0 message parsing and construction for the Stagehand wire protocol.
 
+## Preloaded rather than referenced by its `class_name` so it resolves in a
+## headless launch with an empty global class cache — see the rationale block in
+## autoload/stagehand_server.gd.
+const ERRORS := preload("res://addons/stagehand/core/errors.gd")
+
 const PARSE_ERROR: int = -32700
 const INVALID_REQUEST: int = -32600
 const METHOD_NOT_FOUND: int = -32601
@@ -56,6 +61,29 @@ static func make_error_response(
 		"id": _normalize_id(id),
 		"error": error_obj,
 	})
+
+
+## Construct a JSON-RPC 2.0 error response from a canonical handler failure
+## envelope (see core/errors.gd). The numeric code comes from the envelope's
+## stable string kind; the machine-readable kind, the method that failed, the
+## selector it targeted, and any structured context travel in `error.data` so a
+## client never has to parse the human-readable message to react.
+static func make_handler_error_response(
+	id: Variant, method: String, envelope: Dictionary, selector: String = ""
+) -> String:
+	var error_code: String = ERRORS.code_of(envelope)
+	var data: Dictionary = {
+		"error_code": error_code,
+		"method": method,
+	}
+	if not selector.is_empty():
+		data["selector"] = selector
+	var details: Dictionary = ERRORS.details_of(envelope)
+	if not details.is_empty():
+		data["details"] = details
+	return make_error_response(
+		id, ERRORS.json_rpc_code(error_code), ERRORS.message_of(envelope), data
+	)
 
 
 static func _normalize_id(id: Variant) -> Variant:

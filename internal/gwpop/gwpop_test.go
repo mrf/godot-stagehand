@@ -269,3 +269,50 @@ func TestCompareRejectsNonNumericOrdering(t *testing.T) {
 		t.Fatal("Compare accepted an ordering comparison on non-numbers")
 	}
 }
+
+// A JSON-RPC error object is a *reply*, not a broken connection. Classifying it
+// as KindTransport gave the CLI and scenario runner the wrong exit code for
+// every addon-reported failure once the addon began promoting handler failures
+// to JSON-RPC errors (godot-stagehand-vv2.8).
+func TestExecuteClassifiesJSONRPCError(t *testing.T) {
+	tests := []struct {
+		name     string
+		code     int
+		wantKind Kind
+	}{
+		{"target not found is a remote failure", godotconn.CodeTargetNotFound, KindRemote},
+		{"handler error is a remote failure", godotconn.CodeHandlerError, KindRemote},
+		{"internal error is a remote failure", godotconn.CodeInternalError, KindRemote},
+		{"invalid params is a caller mistake", godotconn.CodeInvalidParams, KindUsage},
+		{"unknown method is a caller mistake", godotconn.CodeMethodNotFound, KindUsage},
+		{"addon-side timeout is a timeout", godotconn.CodeTimeout, KindTimeout},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			caller := &recordingCaller{err: &godotconn.RPCError{
+				Code:    tc.code,
+				Message: "Node not found for selector: name:X",
+				Data: json.RawMessage(
+					`{"error_code":"node_not_found","method":"query_nodes","selector":"name:X",` +
+						`"details":{"next_action":"Call get_tree to confirm the node exists."}}`),
+			}}
+			_, err := Execute(context.Background(), caller, Op{
+				Action: "find", Params: map[string]any{"selector": "name:X"},
+			})
+			if err == nil {
+				t.Fatal("Execute ignored a JSON-RPC error response")
+			}
+			if KindOf(err) != tc.wantKind {
+				t.Errorf("KindOf = %v, want %v", KindOf(err), tc.wantKind)
+			}
+			// The rendered message must carry the machine kind and the
+			// remediation hint, not just the bare message.
+			for _, want := range []string{"query_nodes failed", "code=node_not_found", "Call get_tree"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q is missing %q", err, want)
+				}
+			}
+		})
+	}
+}

@@ -162,7 +162,7 @@ func test_missing_method_name_returns_error() -> void:
 	var result: Dictionary = StagehandMethodHandler.call_method(
 		get_tree(), {"selector": "group:doublers_single"}
 	)
-	assert_str(str(result.get("error", ""))).contains("Missing selector or method")
+	assert_str(str(result.get("error", ""))).contains("Missing required parameter: method")
 
 
 func test_unmatched_selector_returns_node_not_found() -> void:

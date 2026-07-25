@@ -826,7 +826,12 @@ func TestScreenshotAddonErrorIncludesCodeAndDetails(t *testing.T) {
 	if !ok {
 		t.Fatal("expected TextContent error")
 	}
-	for _, want := range []string{"PNG encode produced zero bytes", "png_encode_empty", "width", "1280", "next_action"} {
+	// The remediation hint is promoted out of the details blob and rendered as
+	// prose, so assert on the hint itself rather than on the "next_action" key.
+	for _, want := range []string{
+		"PNG encode produced zero bytes", "png_encode_empty",
+		"width", "1280", "Run Godot with a visible window",
+	} {
 		if !strings.Contains(text.Text, want) {
 			t.Fatalf("expected screenshot diagnostic to contain %q, got: %s", want, text.Text)
 		}

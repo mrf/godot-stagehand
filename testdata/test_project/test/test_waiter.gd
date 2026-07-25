@@ -80,8 +80,7 @@ func test_wait_for_absent_node_times_out() -> void:
 	var result: Dictionary = await _waiter.wait_for_node(
 		"group:no_such_group_at_all", "exists", TIMEOUT_MS, POLL_MS
 	)
-	assert_bool(result.get("success", true)).is_false()
-	assert_bool(result.get("found", true)).is_false()
+	assert_str(str(result.get("error_code", ""))).is_equal("timeout")
 	assert_str(str(result.get("error", ""))).contains("did not appear")
 
 
@@ -97,7 +96,7 @@ func test_wait_for_node_removed_times_out_while_present() -> void:
 	var result: Dictionary = await _waiter.wait_for_node(
 		"group:waiter_probe", "removed", TIMEOUT_MS, POLL_MS
 	)
-	assert_bool(result.get("success", true)).is_false()
+	assert_str(str(result.get("error_code", ""))).is_equal("timeout")
 	assert_str(str(result.get("error", ""))).contains("did not disappear")
 
 
@@ -125,7 +124,7 @@ func test_wait_for_visible_times_out_on_hidden_node() -> void:
 	var result: Dictionary = await _waiter.wait_for_node(
 		"group:waiter_hidden_probe", "visible", TIMEOUT_MS, POLL_MS
 	)
-	assert_bool(result.get("success", true)).is_false()
+	assert_str(str(result.get("error_code", ""))).is_equal("timeout")
 	assert_str(str(result.get("error", ""))).contains("did not become visible")
 
 
@@ -222,8 +221,7 @@ func test_wait_for_unsatisfiable_property_times_out() -> void:
 	var result: Dictionary = await _waiter.wait_for_property(
 		"group:waiter_probe", "name", "equals", "NeverThisName", TIMEOUT_MS, POLL_MS
 	)
-	assert_bool(result.get("success", true)).is_false()
-	assert_bool(result.get("met_condition", true)).is_false()
+	assert_str(str(result.get("error_code", ""))).is_equal("timeout")
 	assert_str(str(result.get("error", ""))).contains("not met before timeout")
 
 
@@ -231,7 +229,7 @@ func test_wait_for_property_on_missing_node_times_out() -> void:
 	var result: Dictionary = await _waiter.wait_for_property(
 		"group:no_such_group_at_all", "name", "exists", null, TIMEOUT_MS, POLL_MS
 	)
-	assert_bool(result.get("success", true)).is_false()
+	assert_str(str(result.get("error_code", ""))).is_equal("timeout")
 
 
 # ── wait_for_signal ──────────────────────────────────────────────────────
@@ -255,15 +253,15 @@ func test_wait_for_signal_that_never_fires_times_out() -> void:
 	var result: Dictionary = await _waiter.wait_for_signal(
 		"group:waiter_probe", "renamed", TIMEOUT_MS
 	)
-	assert_bool(result.get("received", true)).is_false()
-	assert_str(str(result.get("reason", ""))).is_equal("timeout")
+	assert_str(str(result.get("error_code", ""))).is_equal("timeout")
+	assert_str(str(result.get("error", ""))).contains("was not emitted before timeout")
 
 
 func test_wait_for_signal_on_missing_node_returns_error() -> void:
 	var result: Dictionary = await _waiter.wait_for_signal(
 		"group:no_such_group_at_all", "renamed", TIMEOUT_MS
 	)
-	assert_bool(result.get("received", true)).is_false()
+	assert_str(str(result.get("error_code", ""))).is_equal("node_not_found")
 	assert_str(str(result.get("error", ""))).contains("Node not found")
 
 
@@ -271,5 +269,5 @@ func test_wait_for_unknown_signal_returns_error() -> void:
 	var result: Dictionary = await _waiter.wait_for_signal(
 		"group:waiter_probe", "no_such_signal", TIMEOUT_MS
 	)
-	assert_bool(result.get("received", true)).is_false()
+	assert_str(str(result.get("error_code", ""))).is_equal("invalid_params")
 	assert_str(str(result.get("error", ""))).contains("not found on node")

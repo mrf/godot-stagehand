@@ -5,6 +5,7 @@
 class_name StagehandMethodHandler
 extends RefCounted
 
+const ERRORS := preload("res://addons/stagehand/core/errors.gd")
 const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
 const TREE_SERIALIZER := preload("res://addons/stagehand/core/tree_serializer.gd")
 
@@ -30,16 +31,21 @@ static func call_method(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var selector: String = params.get("selector", "")
 	var method: String = params.get("method", "")
 
-	if selector.is_empty() or method.is_empty():
-		return {"error": "Missing selector or method"}
+	if selector.is_empty():
+		return ERRORS.missing_param("selector")
+	if method.is_empty():
+		return ERRORS.missing_param("method")
 
 	var err: String = _validate_method(method)
 	if not err.is_empty():
-		return {"error": err}
+		return ERRORS.make(ERRORS.NOT_SUPPORTED, err, {
+			"method": method,
+			"next_action": "Pick a public, non-destructive method; see BLOCKED_METHODS in core/method_handler.gd.",
+		})
 
 	var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, selector)
 	if nodes.is_empty():
-		return {"error": "Node not found for selector: %s" % selector}
+		return ERRORS.node_not_found(selector)
 
 	var args: Array = params.get("args", [])
 	var allow_multiple: bool = params.get("allow_multiple", false)
@@ -47,7 +53,16 @@ static func call_method(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if not allow_multiple:
 		var node: Node = nodes[0]
 		if not node.has_method(method):
-			return {"error": "Method not found: %s" % method}
+			return ERRORS.make(
+				ERRORS.METHOD_NOT_FOUND,
+				"Method not found on node '%s': %s" % [node.get_path(), method],
+				{
+					"selector": selector,
+					"node_path": str(node.get_path()),
+					"method": method,
+					"next_action": "Call get_property on \"script\" or check the node class to confirm the method name.",
+				}
+			)
 		var result: Variant = node.callv(method, args)
 		return {
 			"success": true,
@@ -57,7 +72,16 @@ static func call_method(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var results: Array[Dictionary] = []
 	for node: Node in nodes:
 		if not node.has_method(method):
-			return {"error": "Method not found on node '%s': %s" % [node.get_path(), method]}
+			return ERRORS.make(
+				ERRORS.METHOD_NOT_FOUND,
+				"Method not found on node '%s': %s" % [node.get_path(), method],
+				{
+					"selector": selector,
+					"node_path": str(node.get_path()),
+					"method": method,
+					"next_action": "Every node matched by the selector must expose the method when allow_multiple is set.",
+				}
+			)
 		var result: Variant = node.callv(method, args)
 		results.append({
 			"node_path": str(node.get_path()),

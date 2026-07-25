@@ -2,6 +2,7 @@
 class_name StagehandPropertyHandler
 extends RefCounted
 
+const ERRORS := preload("res://addons/stagehand/core/errors.gd")
 const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
 const TREE_SERIALIZER := preload("res://addons/stagehand/core/tree_serializer.gd")
 
@@ -12,17 +13,19 @@ static func get_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var selector: String = params.get("selector", "")
 	var property: String = params.get("property", "")
 
-	if selector.is_empty() or property.is_empty():
-		return {"error": "Missing selector or property"}
+	if selector.is_empty():
+		return ERRORS.missing_param("selector")
+	if property.is_empty():
+		return ERRORS.missing_param("property")
 
 	var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, selector)
 	if nodes.is_empty():
-		return {"error": "Node not found for selector: %s" % selector}
+		return ERRORS.node_not_found(selector)
 
 	var node: Node = nodes[0]
 	var value: Variant = TREE_SERIALIZER._get_property_deep(node, property)
 	if value == null and not _has_property(node, property):
-		return {"error": "Property not found: %s" % property}
+		return _property_not_found(selector, node, property)
 
 	return {
 		"value": TREE_SERIALIZER._to_json_safe(value),
@@ -39,12 +42,14 @@ static func set_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var selector: String = params.get("selector", "")
 	var property: String = params.get("property", "")
 
-	if selector.is_empty() or property.is_empty():
-		return {"error": "Missing selector or property"}
+	if selector.is_empty():
+		return ERRORS.missing_param("selector")
+	if property.is_empty():
+		return ERRORS.missing_param("property")
 
 	var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, selector)
 	if nodes.is_empty():
-		return {"error": "Node not found for selector: %s" % selector}
+		return ERRORS.node_not_found(selector)
 
 	var node: Node = nodes[0]
 	var previous: Variant = _get_property_at_level(node, property)
@@ -55,12 +60,19 @@ static func set_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 		var conversion_error: String = converted.get(
 			"error", "Invalid value for property: %s" % property
 		)
-		return {"error": conversion_error}
+		return ERRORS.make(ERRORS.INVALID_VALUE, conversion_error, {
+			"selector": selector,
+			"node_path": str(node.get_path()),
+			"property": property,
+			"requested_value": TREE_SERIALIZER._to_json_safe(requested_value),
+			"target_type": type_string(target_type),
+			"next_action": "Send a value the property's declared type accepts; read it back with get_property to see the current type.",
+		})
 
 	var converted_value: Variant = converted.get("value")
 	var found: bool = _set_property_deep(node, property, converted_value)
 	if not found:
-		return {"error": "Failed to set property: %s" % property}
+		return _property_not_found(selector, node, property)
 
 	var applied_value: Variant = _get_property_at_level(node, property)
 
@@ -68,6 +80,19 @@ static func set_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 		"success": is_same(applied_value, converted_value),
 		"previous_value": TREE_SERIALIZER._to_json_safe(previous),
 	}
+
+
+## The canonical failure for a property that the matched node does not expose.
+## Shared by get_property and set_property so both report the same kind and the
+## same context for the same underlying condition.
+static func _property_not_found(selector: String, node: Node, property: String) -> Dictionary:
+	return ERRORS.make(ERRORS.PROPERTY_NOT_FOUND, "Property not found: %s" % property, {
+		"selector": selector,
+		"node_path": str(node.get_path()),
+		"property": property,
+		"node_class": node.get_class(),
+		"next_action": "Call get_tree with the properties argument, or query_nodes, to list the properties this node exposes.",
+	})
 
 
 ## Convert JSON-safe MCP values to the existing property's Godot value type.

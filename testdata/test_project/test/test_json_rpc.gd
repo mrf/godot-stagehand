@@ -173,3 +173,41 @@ func test_error_codes_are_defined() -> void:
 	assert_int(StagehandJsonRpc.METHOD_NOT_FOUND).is_equal(-32601)
 	assert_int(StagehandJsonRpc.INVALID_PARAMS).is_equal(-32602)
 	assert_int(StagehandJsonRpc.INTERNAL_ERROR).is_equal(-32603)
+
+
+# ── make_handler_error_response (godot-stagehand-vv2.8) ──────────────────────
+
+func test_handler_error_response_carries_kind_method_and_details() -> void:
+	var envelope: Dictionary = StagehandErrors.make(
+		StagehandErrors.PROPERTY_NOT_FOUND,
+		"Property not found: hp",
+		{"node_class": "Node2D", "next_action": "List the node's properties."}
+	)
+	var frame: Dictionary = _decode(
+		StagehandJsonRpc.make_handler_error_response(7, "get_property", envelope, "name:Player")
+	)
+
+	assert_bool(frame.has("result")).is_false()
+	var error_obj: Dictionary = frame.get("error", {})
+	var error_code: float = error_obj.get("code", 0)
+	assert_int(int(error_code)).is_equal(StagehandErrors.RPC_TARGET_NOT_FOUND)
+	assert_that(error_obj.get("message")).is_equal("Property not found: hp")
+
+	var data: Dictionary = error_obj.get("data", {})
+	assert_that(data.get("error_code")).is_equal("property_not_found")
+	assert_that(data.get("method")).is_equal("get_property")
+	assert_that(data.get("selector")).is_equal("name:Player")
+	var details: Dictionary = data.get("details", {})
+	assert_that(details.get("node_class")).is_equal("Node2D")
+
+
+func test_handler_error_response_omits_absent_selector_and_details() -> void:
+	var envelope: Dictionary = StagehandErrors.make(StagehandErrors.INTERNAL, "boom")
+	var frame: Dictionary = _decode(
+		StagehandJsonRpc.make_handler_error_response(1, "screenshot", envelope)
+	)
+	var error_obj: Dictionary = frame.get("error", {})
+	var data: Dictionary = error_obj.get("data", {})
+	assert_bool(data.has("selector")).is_false()
+	assert_bool(data.has("details")).is_false()
+	assert_that(data.get("method")).is_equal("screenshot")

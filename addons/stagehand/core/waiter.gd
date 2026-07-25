@@ -1,6 +1,7 @@
 extends Node
 
 
+const ERRORS := preload("res://addons/stagehand/core/errors.gd")
 const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
 
 
@@ -100,13 +101,22 @@ func wait_for_node(selector: String, state: String = "exists", timeout_ms: int =
 			_:
 				return {"success": true, "found": true, "message": "Node found within timeout period"}
 	else:
+		var message: String = "Node did not appear before timeout"
 		match state:
 			"removed":
-				return {"success": false, "removed": false, "error": "Node did not disappear before timeout (selector: %s, timeout: %dms)" % [selector, timeout_ms]}
+				message = "Node did not disappear before timeout"
 			"visible":
-				return {"success": false, "found": false, "error": "Node did not become visible before timeout (selector: %s, timeout: %dms)" % [selector, timeout_ms]}
-			_:
-				return {"success": false, "found": false, "error": "Node did not appear before timeout (selector: %s, timeout: %dms)" % [selector, timeout_ms]}
+				message = "Node did not become visible before timeout"
+		return ERRORS.make(
+			ERRORS.TIMEOUT,
+			"%s (selector: %s, timeout: %dms)" % [message, selector, timeout_ms],
+			{
+				"selector": selector,
+				"state": state,
+				"timeout_ms": timeout_ms,
+				"next_action": "Raise timeout_ms, or call query_nodes to confirm the selector matches the node you expect.",
+			}
+		)
 
 
 ## Wait for a signal to be emitted on a node.
@@ -116,12 +126,21 @@ func wait_for_signal(selector: String, signal_name: String, timeout_ms: int = 50
 
 	var results: Array[Node] = SELECTOR_ENGINE.query(get_tree(), selector)
 	if results.is_empty():
-		return {"received": false, "elapsed_ms": 0, "error": "Node not found: %s" % selector}
+		return ERRORS.node_not_found(selector)
 
 	var node: Node = results[0]
 
 	if not node.has_signal(signal_name):
-		return {"received": false, "elapsed_ms": 0, "error": "Signal '%s' not found on node '%s'" % [signal_name, node.get_path()]}
+		return ERRORS.make(
+			ERRORS.INVALID_PARAMS,
+			"Signal '%s' not found on node '%s'" % [signal_name, node.get_path()],
+			{
+				"selector": selector,
+				"node_path": str(node.get_path()),
+				"signal_name": signal_name,
+				"next_action": "Check the node class documentation, or its script, for the signal's exact name.",
+			}
+		)
 
 	# Use an Array to share state with the lambda (captures are by value for reassignment)
 	var state: Array = [false, []]  # [received, signal_args]
@@ -138,14 +157,14 @@ func wait_for_signal(selector: String, signal_name: String, timeout_ms: int = 50
 		state[1] = args
 
 	if not is_instance_valid(node):
-		return {"received": false, "elapsed_ms": Time.get_ticks_msec() - start_time, "error": "Node freed before signal connection"}
+		return _node_freed(selector, "before signal connection", Time.get_ticks_msec() - start_time)
 
 	var _err: int = node.connect(signal_name, callback, CONNECT_ONE_SHOT)
 
 	var end_time: int = start_time + timeout_ms
 	while not state[0] and Time.get_ticks_msec() < end_time:
 		if not is_instance_valid(node):
-			return {"received": false, "elapsed_ms": Time.get_ticks_msec() - start_time, "error": "Node freed while waiting for signal"}
+			return _node_freed(selector, "while waiting for signal", Time.get_ticks_msec() - start_time)
 		await get_tree().create_timer(0.01).timeout
 
 	var elapsed: int = Time.get_ticks_msec() - start_time
@@ -156,7 +175,21 @@ func wait_for_signal(selector: String, signal_name: String, timeout_ms: int = 50
 	if is_instance_valid(node) and node.is_connected(signal_name, callback):
 		node.disconnect(signal_name, callback)
 
-	return {"received": false, "elapsed_ms": elapsed, "reason": "timeout"}
+	# A signal that never arrived is a failure, not a success carrying
+	# `received: false` — reporting it as a normal result made a timed-out wait
+	# indistinguishable from a satisfied one at the MCP layer (godot-stagehand-vv2.8).
+	return ERRORS.make(
+		ERRORS.TIMEOUT,
+		"Signal '%s' was not emitted before timeout (selector: %s, timeout: %dms)"
+			% [signal_name, selector, timeout_ms],
+		{
+			"selector": selector,
+			"signal_name": signal_name,
+			"timeout_ms": timeout_ms,
+			"elapsed_ms": elapsed,
+			"next_action": "Raise timeout_ms, or drive the game state that emits this signal before waiting on it.",
+		}
+	)
 
 
 ## Wait for a node's property to satisfy a condition.
@@ -172,7 +205,28 @@ func wait_for_property(selector: String, property: String, operator: String, exp
 	if success:
 		return {"success": true, "found": true, "met_condition": true, "message": "Property condition satisfied within timeout period"}
 	else:
-		return {"success": false, "met_condition": false, "error": "Property condition was not met before timeout (selector: %s, property: %s, operator: %s, timeout: %dms)" % [selector, property, operator, timeout_ms]}
+		return ERRORS.make(
+			ERRORS.TIMEOUT,
+			"Property condition was not met before timeout (selector: %s, property: %s, operator: %s, timeout: %dms)"
+				% [selector, property, operator, timeout_ms],
+			{
+				"selector": selector,
+				"property": property,
+				"operator": operator,
+				"timeout_ms": timeout_ms,
+				"next_action": "Raise timeout_ms, or read the property with get_property to see the value it actually holds.",
+			}
+		)
+
+
+## Canonical failure for a target node that was freed mid-wait.
+static func _node_freed(selector: String, phase: String, elapsed_ms: int) -> Dictionary:
+	return ERRORS.make(ERRORS.NODE_NOT_FOUND, "Node freed %s" % phase, {
+		"selector": selector,
+		"phase": phase,
+		"elapsed_ms": elapsed_ms,
+		"next_action": "Wait on a node that outlives the operation, or re-query after the scene settles.",
+	})
 
 
 static func _to_float(v: Variant) -> float:

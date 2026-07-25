@@ -92,7 +92,7 @@ func test_ternary_in_call_argument_is_rejected_with_parse_error() -> void:
 func test_missing_expression_returns_error() -> void:
 	var result: Dictionary = StagehandExpressionEvaluator.evaluate(get_tree(), {})
 	var error_text: String = result.get("error", "")
-	assert_bool(error_text.contains("Missing expression")).is_true()
+	assert_bool(error_text.contains("Missing required parameter: expression")).is_true()
 
 
 func test_basic_expression_evaluates_without_context_node() -> void:

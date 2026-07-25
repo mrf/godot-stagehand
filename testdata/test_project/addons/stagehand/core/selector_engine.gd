@@ -11,6 +11,11 @@
 class_name SelectorEngine
 extends RefCounted
 
+# Preloaded into a SCREAMING_SNAKE_CASE const rather than referenced by its
+# global `class_name`: in a headless game launch the project's global class
+# cache may be empty (it is populated by the editor), so the global identifier
+# is not resolvable and the whole addon fails to compile. See the rationale
+# block in autoload/stagehand_server.gd.
 const ACCESSIBILITY_TREE := preload("res://addons/stagehand/core/accessibility_tree.gd")
 
 enum SelectorType {

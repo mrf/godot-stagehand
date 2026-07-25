@@ -31,13 +31,13 @@ func _change(params: Dictionary) -> Dictionary:
 
 func test_missing_scene_path_returns_error() -> void:
 	var result: Dictionary = _change({})
-	assert_str(str(result.get("error", ""))).contains("Missing scene_path")
+	assert_str(str(result.get("error", ""))).contains("Missing required parameter: scene_path")
 	assert_bool(result.has("success")).is_false()
 
 
 func test_empty_scene_path_returns_error() -> void:
 	var result: Dictionary = _change({"scene_path": ""})
-	assert_str(str(result.get("error", ""))).contains("Missing scene_path")
+	assert_str(str(result.get("error", ""))).contains("Missing required parameter: scene_path")
 
 
 func test_nonexistent_scene_path_returns_not_found() -> void:

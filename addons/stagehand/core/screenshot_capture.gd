@@ -2,6 +2,7 @@
 class_name StagehandScreenshotCapture
 extends RefCounted
 
+const ERRORS := preload("res://addons/stagehand/core/errors.gd")
 const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
 
 const DEFAULT_READY_FRAME_TIMEOUT: int = 8
@@ -13,7 +14,9 @@ const MAX_READY_FRAME_TIMEOUT: int = 60
 static func capture(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var viewport: Viewport = tree.root
 	if viewport == null:
-		return _error("no_viewport", "No viewport available", {})
+		return ERRORS.make(ERRORS.INTERNAL, "No viewport available", {
+			"next_action": "Capture from a running game process; there is no viewport before the scene tree exists.",
+		})
 
 	var full_page: bool = true
 	var full_page_raw: Variant = params.get("full_page", true)
@@ -25,39 +28,39 @@ static func capture(tree: SceneTree, params: Dictionary) -> Dictionary:
 		var selector_str: String = str(params["selector"])
 		var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, selector_str)
 		if nodes.is_empty():
-			return _error("selector_not_found", "Selector not found: %s" % selector_str, {
+			return ERRORS.make(ERRORS.NODE_NOT_FOUND, "Selector not found: %s" % selector_str, {
 				"selector": selector_str,
 				"next_action": "Verify the selector matches a visible node before requesting a cropped screenshot.",
 			})
 		crop_rect = _get_node_rect(nodes[0])
 
 	var image_result: Dictionary = await _capture_ready_image(tree, viewport, _get_ready_frame_timeout(params))
-	if image_result.has("error"):
+	if ERRORS.is_error(image_result):
 		return image_result
 	var img: Image = image_result["image"]
 
 	if crop_rect != Rect2i():
 		var crop_result: Dictionary = _validate_crop_rect(crop_rect, Vector2i(img.get_width(), img.get_height()))
-		if crop_result.has("error"):
+		if ERRORS.is_error(crop_result):
 			return crop_result
 		var clamped: Rect2i = crop_result["rect"]
 		img = img.get_region(clamped)
 		if img == null or img.is_empty():
-			return _error("crop_empty", "Cropped screenshot image is empty", {
+			return ERRORS.make(ERRORS.INVALID_PARAMS, "Cropped screenshot image is empty", {
 				"crop": _rect_details(clamped),
 				"next_action": "Check that the selected node is visible and has a non-zero on-screen rect.",
 			})
 
 	var buffer: PackedByteArray = img.save_png_to_buffer()
 	if buffer.is_empty():
-		return _error("png_encode_empty", "PNG encode produced zero bytes for a %dx%d image" % [img.get_width(), img.get_height()], {
+		return ERRORS.make(ERRORS.INTERNAL, "PNG encode produced zero bytes for a %dx%d image" % [img.get_width(), img.get_height()], {
 			"width": img.get_width(),
 			"height": img.get_height(),
 			"next_action": "Run Godot with a visible rendered window; headless or GPU-less sessions may not provide screenshot pixels.",
 		})
 	var base64: String = Marshalls.raw_to_base64(buffer)
 	if base64.is_empty():
-		return _error("base64_encode_empty", "base64 encode produced an empty string from %d PNG bytes" % buffer.size(), {
+		return ERRORS.make(ERRORS.INTERNAL, "base64 encode produced an empty string from %d PNG bytes" % buffer.size(), {
 			"png_bytes": buffer.size(),
 			"next_action": "Retry the capture and check Godot logs for encoder errors.",
 		})
@@ -84,7 +87,7 @@ static func _capture_ready_image(tree: SceneTree, viewport: Viewport, max_frames
 				"image": img,
 			}
 
-	return _error("viewport_image_empty", "Failed to capture viewport image after %d frame(s): image was null or zero-size" % max_frames, {
+	return ERRORS.make(ERRORS.RENDERER_UNAVAILABLE, "Failed to capture viewport image after %d frame(s): image was null or zero-size" % max_frames, {
 		"frames_waited": max_frames,
 		"next_action": "Use a headed Godot process with a visible window for screenshot workflows; headless/no-GPU sessions may not render pixels.",
 	})
@@ -109,7 +112,7 @@ static func _validate_crop_rect(crop_rect: Rect2i, image_size: Vector2i) -> Dict
 	var bottom: int = clampi(crop_rect.position.y + crop_rect.size.y, 0, image_size.y)
 
 	if right <= left or bottom <= top:
-		return _error("crop_outside_viewport", "Crop rect is outside the captured viewport", {
+		return ERRORS.make(ERRORS.INVALID_PARAMS, "Crop rect is outside the captured viewport", {
 			"crop": _rect_details(crop_rect),
 			"viewport_width": image_size.x,
 			"viewport_height": image_size.y,
@@ -129,15 +132,6 @@ static func _rect_details(rect: Rect2i) -> Dictionary:
 		"height": rect.size.y,
 	}
 
-
-static func _error(code: String, message: String, details: Dictionary) -> Dictionary:
-	var result: Dictionary = {
-		"error": message,
-		"error_code": code,
-	}
-	if not details.is_empty():
-		result["details"] = details
-	return result
 
 
 ## Get the screen-space bounding rect for a node.

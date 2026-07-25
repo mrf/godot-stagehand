@@ -7,6 +7,8 @@ extends Node
 ## written before that format was named used `frames`/`time_ms` instead of
 ## `events`/`t_ms`, and [method parse_recording] still reads them.
 
+const ERRORS := preload("res://addons/stagehand/core/errors.gd")
+
 ## Recording format generation this build writes. Readers accept anything at or
 ## below it; a higher version is refused rather than silently mis-read.
 const FORMAT_VERSION: int = 1
@@ -67,7 +69,10 @@ func pending_event_count() -> int:
 ## recording's size and is rarely what a repro depends on.
 func start_recording(output_path: String, include_mouse_move: bool = false) -> Dictionary:
 	if _recording:
-		return {"error": "Already recording"}
+		return ERRORS.make(ERRORS.RECORDER_STATE, "Already recording", {
+			"session_id": _session_id,
+			"next_action": "Call record_stop before starting another recording.",
+		})
 	_session_id = _next_session_id()
 	_output_path = output_path if not output_path.is_empty() else default_output_path(_session_id)
 	_include_mouse_move = include_mouse_move
@@ -86,7 +91,9 @@ func start_recording(output_path: String, include_mouse_move: bool = false) -> D
 ## Stops capturing and writes the recording to its output path.
 func stop_recording() -> Dictionary:
 	if not _recording:
-		return {"error": "Not recording"}
+		return ERRORS.make(ERRORS.RECORDER_STATE, "Not recording", {
+			"next_action": "Call record_start before record_stop.",
+		})
 	_recording = false
 	var duration_ms: int = Time.get_ticks_msec() - _start_time_ms
 	var events_count: int = _events.size()
@@ -97,11 +104,22 @@ func stop_recording() -> Dictionary:
 
 	var dir_error: String = _ensure_parent_dir(path)
 	if not dir_error.is_empty():
-		return {"error": dir_error}
+		return ERRORS.make(ERRORS.IO_ERROR, dir_error, {
+			"path": path,
+			"next_action": "Choose an output_path under a directory the game process can create and write.",
+		})
 	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
 		var err: Error = FileAccess.get_open_error()
-		return {"error": "Failed to open file for writing: %s (%s)" % [path, error_string(err)]}
+		return ERRORS.make(
+			ERRORS.IO_ERROR,
+			"Failed to open file for writing: %s (%s)" % [path, error_string(err)],
+			{
+				"path": path,
+				"godot_error": error_string(err),
+				"next_action": "Choose an output_path the game process can write, such as one under user://.",
+			}
+		)
 	@warning_ignore("return_value_discarded")
 	file.store_string(JSON.stringify(document, "\t"))
 	file.close()
@@ -121,20 +139,38 @@ func stop_recording() -> Dictionary:
 ## per-event drift.
 func start_replay(input_path: String, speed: float = 1.0, wait_for_ready: bool = true) -> Dictionary:
 	if _recording:
-		return {"error": "Cannot replay while recording"}
+		return ERRORS.make(ERRORS.RECORDER_STATE, "Cannot replay while recording", {
+			"session_id": _session_id,
+			"next_action": "Call record_stop before replaying.",
+		})
 	var file: FileAccess = FileAccess.open(input_path, FileAccess.READ)
 	if file == null:
 		var err: Error = FileAccess.get_open_error()
-		return {"error": "Failed to open file for reading: %s (%s)" % [input_path, error_string(err)]}
+		return ERRORS.make(
+			ERRORS.IO_ERROR,
+			"Failed to open file for reading: %s (%s)" % [input_path, error_string(err)],
+			{
+				"path": input_path,
+				"godot_error": error_string(err),
+				"next_action": "Check the recording_path; record_stop reports the path it wrote.",
+			}
+		)
 	var text: String = file.get_as_text()
 	file.close()
 
 	var json: JSON = JSON.new()
 	var parse_err: Error = json.parse(text)
 	if parse_err != OK:
-		return {"error": "Failed to parse recording: %s" % json.get_error_message()}
+		return ERRORS.make(
+			ERRORS.IO_ERROR,
+			"Failed to parse recording: %s" % json.get_error_message(),
+			{
+				"path": input_path,
+				"next_action": "Replay a file written by record_stop; it must be valid JSON.",
+			}
+		)
 	var parsed: Dictionary = parse_recording(json.data)
-	if parsed.has("error"):
+	if ERRORS.is_error(parsed):
 		return parsed
 	var events: Array = parsed.get("events", [])
 
@@ -197,23 +233,38 @@ static func build_recording(
 
 ## Validates a decoded recording and normalizes its events to the current
 ## spelling. Accepts the legacy `frames`/`time_ms` keys so a recording made by
-## an older build still replays. Returns `{"events": Array}` or `{"error": String}`.
+## an older build still replays. Returns `{"events": Array}` on success, or a
+## canonical failure envelope (see core/errors.gd) on a malformed recording.
 static func parse_recording(data: Variant) -> Dictionary:
 	if data is not Dictionary:
-		return {"error": "Invalid recording format: expected a JSON object"}
+		return ERRORS.make(
+			ERRORS.IO_ERROR, "Invalid recording format: expected a JSON object", {
+				"next_action": "Replay a file written by record_stop.",
+			}
+		)
 	var document: Dictionary = data
 	var version: int = _variant_to_int(document.get("version", FORMAT_VERSION))
 	if version > FORMAT_VERSION:
-		return {
-			"error": "Unsupported recording version %d; this build reads up to version %d"
-			% [version, FORMAT_VERSION]
-		}
+		return ERRORS.make(
+			ERRORS.IO_ERROR,
+			"Unsupported recording version %d; this build reads up to version %d"
+				% [version, FORMAT_VERSION],
+			{
+				"recording_version": version,
+				"supported_version": FORMAT_VERSION,
+				"next_action": "Re-record with this build, or upgrade the addon to one that reads this format.",
+			}
+		)
 
 	var raw: Variant = document.get("events")
 	if raw == null:
 		raw = document.get("frames", [])
 	if raw is not Array:
-		return {"error": "Invalid recording format: \"events\" must be an array"}
+		return ERRORS.make(
+			ERRORS.IO_ERROR, "Invalid recording format: \"events\" must be an array", {
+				"next_action": "Replay a file written by record_stop.",
+			}
+		)
 	var raw_events: Array = raw
 
 	var normalized: Array[Dictionary] = []
