@@ -132,6 +132,7 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		unsafeSetting = "1"
 	}
 	cmd := exec.Command(godotBin, args...)
+	cmd.SysProcAttr = sysProcAttr()
 	cmd.Env = append(os.Environ(),
 		"STAGEHAND_ENABLED=1",
 		fmt.Sprintf("STAGEHAND_PORT=%d", port),

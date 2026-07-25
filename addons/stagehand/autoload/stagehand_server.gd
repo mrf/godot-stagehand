@@ -14,6 +14,13 @@ const UNSAFE_CAPABILITY_REQUIRED: int = -32003
 ## could not be bound. Nonzero so the failure is distinguishable from a clean
 ## shutdown. 70 == EX_SOFTWARE (sysexits.h).
 const BIND_FAILURE_EXIT_CODE: int = 70
+## Grace period after the last client disconnects before a game/CLI launch
+## self-quits. The MCP client reconnects with exponential backoff capped at
+## 5s (see internal/godotconn/reconnect.go maxBackoff), so this must clear
+## that cap with headroom for the TCP+WS handshake and auth round trip —
+## otherwise a transient network flap would be indistinguishable from the
+## client actually going away and would kill the game mid-session.
+const QUIT_ON_DISCONNECT_GRACE_MS: int = 10000
 
 # These scripts are preloaded into SCREAMING_SNAKE_CASE constants rather than
 # referenced by their global `class_name`. Two constraints force this:
@@ -49,6 +56,9 @@ var _auth_token: String = ""
 var _allow_unsafe: bool = false
 var _active: bool = false
 var _recorder: INPUT_RECORDER
+var _quit_on_disconnect: bool = true
+var _had_client: bool = false
+var _pending_quit_at_msec: int = -1
 
 
 func _ready() -> void:
@@ -63,6 +73,7 @@ func _ready() -> void:
 	_bind_address = _get_bind_address()
 	_auth_token = _get_auth_token()
 	_allow_unsafe = OS.get_environment("STAGEHAND_ALLOW_UNSAFE") == "1"
+	_quit_on_disconnect = OS.get_environment("STAGEHAND_QUIT_ON_DISCONNECT") != "0"
 	if OS.get_environment("STAGEHAND_AUTH_TOKEN").is_empty():
 		print("Stagehand: Authentication token: %s" % _auth_token)
 	if _allow_unsafe:
@@ -90,6 +101,7 @@ func _process(_delta: float) -> void:
 		return
 	_accept_new_connections()
 	_poll_clients()
+	_check_pending_quit()
 
 
 func _exit_tree() -> void:
@@ -126,6 +138,8 @@ func _accept_new_connections() -> void:
 			var peer_id: int = _next_peer_id
 			_next_peer_id += 1
 			_clients[peer_id] = ws_peer
+			_had_client = true
+			_pending_quit_at_msec = -1
 		else:
 			push_warning("Stagehand: Failed to accept WebSocket stream: %s" % error_string(err))
 
@@ -146,6 +160,28 @@ func _poll_clients() -> void:
 	for peer_id: int in disconnected:
 		var _erased: bool = _clients.erase(peer_id)
 		var _auth_erased: bool = _authenticated_peers.erase(peer_id)
+	if (
+		_had_client and _clients.is_empty() and _quit_on_disconnect
+		and _pending_quit_at_msec < 0
+	):
+		_pending_quit_at_msec = Time.get_ticks_msec() + QUIT_ON_DISCONNECT_GRACE_MS
+
+
+## Self-quit once the last client has been gone for QUIT_ON_DISCONNECT_GRACE_MS
+## without a reconnect, so an abandoned game/CLI launch (client crashed, or the
+## MCP server exited without cleanly killing this process) doesn't linger as a
+## ~500MB headless zombie. Opt out with STAGEHAND_QUIT_ON_DISCONNECT=0.
+func _check_pending_quit() -> void:
+	if _pending_quit_at_msec < 0:
+		return
+	if Time.get_ticks_msec() < _pending_quit_at_msec:
+		return
+	print(
+		"Stagehand: No client reconnected within %dms of the last disconnect — quitting "
+		% QUIT_ON_DISCONNECT_GRACE_MS
+		+ "(opt out with STAGEHAND_QUIT_ON_DISCONNECT=0)"
+	)
+	get_tree().quit()
 
 
 func _handle_message(peer_id: int, text: String) -> void:
