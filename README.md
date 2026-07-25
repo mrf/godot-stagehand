@@ -58,14 +58,50 @@ MCP-calling script) a real connection to your running game. Click buttons,
 read properties, wait for signals, take screenshots, assert performance, all
 from outside the engine.
 
-## What you can do
+## For AI agents (MCP)
 
-- **AI-assisted playtesting.** Let Claude (or any MCP client) explore your game, find bugs, and verify fixes without manual clicking.
+Point an MCP client — Claude Code, Claude Desktop, Cursor, anything that
+speaks MCP — at the binary and it gets a live connection to your running
+game: click buttons, read node state, wait for signals, take screenshots,
+assert performance, record and replay input.
+
+```json
+{
+  "mcpServers": {
+    "godot-stagehand": {
+      "command": "/absolute/path/to/godot-stagehand"
+    }
+  }
+}
+```
+
+- **AI-assisted playtesting.** Let Claude explore your game, find bugs, and verify fixes without manual clicking.
 - **Visual regression testing.** Save baseline screenshots, diff them later. Catch UI regressions before your players do. See the [visual smoke contract](docs/visual-smoke-contract.md) for how to set up a visual gate in your game repo. **Headless Godot cannot render real screenshots**, so this needs a visible window (a real display or something like Xvfb) even in CI.
-- **Scripted exploration.** Drive menus, trigger gameplay, and assert on real game state, either from any MCP client or from the terminal: `godot-stagehand tree`, `find`, `property get`, `input click`, `wait node` and friends are one-shot commands that print JSON. See the [CLI guide](docs/cli.md).
-- **CI checks.** `godot-stagehand run scenario.json` executes a declarative list of launch, action, wait and assertion steps against a real Godot build and exits nonzero on failure, so a pipeline step needs no MCP client and no wrapper script. It emits a JSON report, JUnit XML, screenshots/diffs, the engine's own log, and an RPC timing trace. Headless Godot covers structural checks (scene tree, properties, performance counters); visual steps need a rendered window. See the [CLI and scenario runner guide](docs/cli.md).
-- **Performance monitoring.** `godot_assert_performance` can sample and assert monitors: an optional warm-up, a fixed sample count or duration, and a statistic (min, max, mean, median, p95) to threshold against, instead of one instantaneous read. The default (one sample, no warm-up) is unchanged from before. This is still not proven statistical regression gating (no baseline tracking, outlier rejection, or variance-aware thresholds), so treat it as a steadier smoke check, not a certified regression gate.
-- **Input recording/replay.** Record a play session's input events with millisecond timestamps, then replay them on the same wall-clock schedule, optionally sped up to shorten a CI run. This reproduces a rough repro case, not a frame-perfect deterministic run: actual game state during replay still depends on frame timing, which can vary between runs. The on-disk format is versioned; see the [recording format](docs/recording-format.md).
+- **Input recording/replay.** Record a play session's input events with millisecond timestamps, then replay them on the same wall-clock schedule, optionally sped up. This reproduces a rough repro case, not a frame-perfect deterministic run: actual game state during replay still depends on frame timing, which can vary between runs. The on-disk format is versioned; see the [recording format](docs/recording-format.md).
+- **Performance monitoring.** `godot_assert_performance` can sample and assert monitors: an optional warm-up, a fixed sample count or duration, and a statistic (min, max, mean, median, p95) to threshold against, instead of one instantaneous read. This is still not proven statistical regression gating (no baseline tracking, outlier rejection, or variance-aware thresholds), so treat it as a steadier smoke check, not a certified regression gate.
+
+Full walkthrough: [Quickstart guide](docs/quickstart.md). Full tool list: [Available tools](#available-tools) below.
+
+## For CI and test automation (CLI)
+
+The same binary is also a standalone CLI and scenario runner — no MCP client
+needed. Use it for terminal debugging or as a CI pipeline step.
+
+```bash
+# One-shot inspection and actions against a running game
+export STAGEHAND_AUTH_TOKEN=<the token this Godot session printed>
+godot-stagehand tree   --port 26788 --max-depth 3
+godot-stagehand find   --port 26788 'class:Button' --properties text
+
+# A whole scenario, no MCP client involved
+godot-stagehand run scenarios/menu-smoke.json --out-dir ci-artifacts
+```
+
+- **CI checks.** `godot-stagehand run scenario.json` executes a declarative list of launch, action, wait and assertion steps against a real Godot build and exits nonzero on failure, so a pipeline step needs no MCP client and no wrapper script. It emits a JSON report, JUnit XML, screenshots/diffs, the engine's own log, and an RPC timing trace. Headless Godot covers structural checks (scene tree, properties, performance counters); visual steps need a rendered window.
+- **Scripted exploration.** `tree`, `find`, `property get`, `input click`, `wait node` and friends are one-shot commands that print JSON — good for terminal debugging without writing a scenario file.
+- **Stable exit codes.** `0` is success, `5` is a real regression (an assertion or visual diff failed), `6` is a timeout — see the [exit codes table](#command-line) for the full contract.
+
+Full reference: [CLI and scenario runner guide](docs/cli.md), or the [Command line](#command-line) section below.
 
 ## How it works
 
