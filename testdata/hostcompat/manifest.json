@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "projects": [
+    {
+      "id": "pixelorama",
+      "name": "Pixelorama",
+      "repo": "https://github.com/Orama-Interactive/Pixelorama",
+      "ref": "main",
+      "godot_version": "4.6.3",
+      "license": "MIT",
+      "axes": ["own-cli-parser", "embedded-subwindows", "content-scale", "large-project"],
+      "enabled": false,
+      "claims": {
+        "language": {
+          "status": "verified",
+          "source": "br godot-stagehand-growth-distribution-87s.18 — Stagehand was installed into and run against a real Pixelorama checkout from this repo"
+        },
+        "godot_version": {
+          "status": "verified",
+          "source": "br godot-stagehand-growth-distribution-87s.18 — 4.6.3, observed first-hand during that session"
+        },
+        "license": {
+          "status": "unverified",
+          "source": "WebSearch snippets say MIT; settle by reading LICENSE at the pinned SHA"
+        },
+        "axes": {
+          "status": "unverified",
+          "source": "own-cli-parser is strongly evidenced (pixelorama.org/user_manual/cli/ documents 'Pixelorama.x86_64 [SYSTEM OPTIONS] -- [USER OPTIONS] [FILES]' and br 87s.20 recorded the host rejecting --stagehand). content-scale is evidenced by 87s.18 observing /root content_scale_factor = 1.5. embedded-subwindows is evidenced by 87s.21 (synthesized input never reached embedded Window subwindows). Settle the remainder by reading project.godot at the pinned SHA"
+        }
+      },
+      "notes": "Candidate #1; already earned its place — 87s.20, 87s.21 and the content_scale_factor finding all came from driving this project. UNVERIFIED: the ref/SHA to pin (search snippets suggested a v1.1.x line but named no confirmed tag), whether project.godot is at the repo root, and a report that the repo uses git submodules (which would need --recurse-submodules in the checkout step)."
+    },
+    {
+      "id": "material-maker",
+      "name": "Material Maker",
+      "repo": "https://github.com/RodZill4/material-maker",
+      "ref": "main",
+      "godot_version": "4.3",
+      "license": "MIT",
+      "axes": ["own-cli-parser", "embedded-subwindows"],
+      "enabled": false,
+      "claims": {
+        "language": {
+          "status": "unverified",
+          "source": "no snippet stated GDScript-vs-C# either way; no C# was mentioned. Settle by checking for a .csproj / [dotnet] section at the pinned SHA"
+        },
+        "godot_version": {
+          "status": "unverified",
+          "source": "an asset-listing snippet said 4.3 and release coverage described 1.4 as the first Godot 4 version; settle by reading config/features in project.godot"
+        },
+        "license": {
+          "status": "unverified",
+          "source": "WebSearch snippets say MIT; settle by reading LICENSE at the pinned SHA"
+        },
+        "axes": {
+          "status": "unverified",
+          "source": "own-cli-parser evidenced by rodzill4.github.io/material-maker/doc/command_line.html documenting --export-material/--target/-o; embedded-subwindows is inferred from it being a dialog-heavy desktop tool and is a guess"
+        }
+      },
+      "notes": "Second independent own-cli-parser data point, on a different Godot minor than Pixelorama. CAVEAT: both it and Pixelorama document a '--' user-args convention, which suggests get_cmdline_user_args() rather than raw argv — so an unknown --stagehand before '--' may be swallowed by the engine rather than rejected by the app. That distinction is unverified and is precisely what this project is here to settle."
+    },
+    {
+      "id": "godsvg",
+      "name": "GodSVG",
+      "repo": "https://github.com/MewPurPur/GodSVG",
+      "ref": "main",
+      "godot_version": "4.5",
+      "license": "MIT",
+      "axes": ["embedded-subwindows", "content-scale"],
+      "enabled": false,
+      "claims": {
+        "language": {
+          "status": "unverified",
+          "source": "no snippet stated GDScript-vs-C#; settle by checking for a .csproj at the pinned SHA"
+        },
+        "godot_version": {
+          "status": "unverified",
+          "source": "a snippet quoted config/features=PackedStringArray(\"4.5\") from project.godot, but the quote is second-hand and development was said to have moved to 4.6; settle by reading the file at the pinned SHA"
+        },
+        "license": {
+          "status": "unverified",
+          "source": "WebSearch snippets say MIT; settle by reading LICENSE at the pinned SHA"
+        },
+        "axes": {
+          "status": "unverified",
+          "source": "both axes are inferred from it being a dialog-heavy editor with a UI-scale setting. No snippet named a content_scale_factor value. Settle by reading project.godot and grepping for Window nodes"
+        }
+      },
+      "notes": "Fills the 4.5 slot. Its UI-scale setting makes it the most likely second content-scale candidate, but that is a guess — see the content-scale gap in the design doc."
+    },
+    {
+      "id": "tanks-of-freedom-ii",
+      "name": "Tanks of Freedom II",
+      "repo": "https://github.com/P1X-in/tanks-of-freedom-ii",
+      "ref": "1.0.7",
+      "godot_version": "4.2",
+      "license": "MIT",
+      "axes": ["heavy-autoloads"],
+      "enabled": false,
+      "claims": {
+        "language": {
+          "status": "unverified",
+          "source": "a directory-listing site said GDScript; settle by checking for a .csproj at the pinned SHA"
+        },
+        "godot_version": {
+          "status": "unverified",
+          "source": "a README-derived snippet said 'Godot 4.2+'; the '+' means the actual target could be later. Settle by reading config/features in project.godot"
+        },
+        "license": {
+          "status": "unverified",
+          "source": "a directory-listing site said MIT, not the repo's LICENSE; settle by reading LICENSE at the pinned SHA"
+        },
+        "axes": {
+          "status": "unverified",
+          "source": "heavy-autoloads is inferred from it being a full 3D strategy game; no evidence. Settle by counting the [autoload] section in project.godot"
+        }
+      },
+      "notes": "Holds the oldest engine slot (4.2) and is the only candidate with a release tag whose existence was independently confirmed. It is also the only game (rather than tool) with a confirmed tag, so it is the natural check that Stagehand works on something that is not a desktop editor."
+    },
+    {
+      "id": "opengamepadui",
+      "name": "OpenGamepadUI",
+      "repo": "https://github.com/ShadowBlip/OpenGamepadUI",
+      "ref": "main",
+      "godot_version": "4.3",
+      "license": "GPL-3.0-or-later",
+      "axes": ["custom-input"],
+      "enabled": false,
+      "claims": {
+        "language": {
+          "status": "unverified",
+          "source": "snippets described it as a GDScript Godot 4 project; settle by checking for a .csproj at the pinned SHA"
+        },
+        "godot_version": {
+          "status": "unverified",
+          "source": "snippets said only 'Godot 4' with no minor. The 4.3 recorded here is a PLACEHOLDER INTENT, deliberately chosen to match a minor already in the manifest so it cannot inflate the claimed version spread. Read config/features in project.godot and correct it before enabling"
+        },
+        "license": {
+          "status": "unverified",
+          "source": "snippets say GPLv3-or-later; settle by reading LICENSE at the pinned SHA. Note this is the only copyleft candidate — cloning it in CI is fine, but confirm before relying on it"
+        },
+        "axes": {
+          "status": "unverified",
+          "source": "custom-input is strongly suggested by its README describing a gamepad input system that remaps gamepad input to mouse and keyboard input, which implies _input/_unhandled_input interception. Settle by grepping for _input/_unhandled_input at the pinned SHA"
+        }
+      },
+      "notes": "The only candidate with real evidence for the custom-input axis, which matters because an app that intercepts input at _input is the one most likely to swallow Stagehand's synthesized events. RISK: it reportedly depends on ShadowBlip GDExtensions and a Linux X11/ALSA build toolchain, making it the heaviest CI cost of the set. If that proves prohibitive, the axis needs a different owner rather than being dropped."
+    },
+    {
+      "id": "source-of-mana",
+      "name": "Source of Mana",
+      "repo": "https://github.com/sourceofmana/sourceofmana",
+      "ref": "main",
+      "godot_version": "4.3",
+      "license": "MIT",
+      "axes": ["heavy-autoloads", "large-project"],
+      "enabled": false,
+      "claims": {
+        "language": {
+          "status": "unverified",
+          "source": "snippets described it as a GDScript Godot 4 project; settle by checking for a .csproj at the pinned SHA"
+        },
+        "godot_version": {
+          "status": "unverified",
+          "source": "snippets said only 'Godot 4' with no minor. The 4.3 recorded here is a PLACEHOLDER INTENT chosen to match an existing minor so it cannot inflate the claimed version spread. Read config/features in project.godot and correct it before enabling"
+        },
+        "license": {
+          "status": "unverified",
+          "source": "snippets say MIT for code and CC-BY-SA-4.0 for assets; settle by reading LICENSE at the pinned SHA"
+        },
+        "axes": {
+          "status": "unverified",
+          "source": "both axes are inferred from it being a networked MMORPG client with substantial art. Settle by counting [autoload] entries and measuring checkout size and first-import time"
+        }
+      },
+      "notes": "Second heavy-autoloads candidate and the clearest large-project candidate: an asset-heavy game is where first-import time — the dominant cost in this suite — is real rather than theoretical. Measuring that cost is itself a useful output."
+    }
+  ]
+}

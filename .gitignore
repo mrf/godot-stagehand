@@ -54,6 +54,11 @@ testdata/test_project/reports/
 /ci-artifacts/
 /stagehand-diffs/
 
+# Host-project compatibility suite checkouts. Third-party projects are cloned
+# at their pinned SHA into here; the manifest in testdata/hostcompat/ is the
+# only checked-in record of them. See docs/design/host-project-compat-suite.md.
+/.hostcompat/
+
 # Go CI Report Card output (reportcard/generate.py --output _site)
 /_site/
 __pycache__/
