@@ -1,8 +1,8 @@
-# Quickstart: Zero to Connected in 5 Minutes
+# Quickstart: Connect Claude to Your Game
 
-This guide gets you from "never heard of Stagehand" to "Claude is talking to my running game" in under 5 minutes.
+This guide gets you from "never heard of Stagehand" to "Claude is talking to my running game."
 
-**What you need:** Godot 4.3+ installed, Claude Desktop (or another Claude client), and your game project open.
+**What you need:** Godot 4.3+ installed, a Claude client (Claude Desktop or Claude Code), and your game project open.
 
 ---
 
@@ -11,75 +11,38 @@ This guide gets you from "never heard of Stagehand" to "Claude is talking to my 
 Stagehand is two pieces that work together:
 
 - **An addon** that goes inside your Godot project. It listens for commands while your game runs.
-- **A small server** that runs on your computer alongside Claude. It passes Claude's requests to the addon.
+- **A small server program** that runs on your computer alongside Claude. It passes Claude's requests to the addon.
 
 Once both are in place, Claude can click buttons in your game, read the scene tree, take screenshots, and more — all without you doing it manually.
 
 ---
 
-## Step 2: Download the server
+## Step 2: Install the addon
 
-Go to the [Releases page](https://github.com/mrf/godot-stagehand/releases) and download the file for your operating system:
+The addon is plain GDScript, so you don't need the server program yet to complete this step.
 
-| Your OS | File to download |
-|---------|-----------------|
-| Windows | `godot-stagehand-<version>-windows-amd64.exe` |
-| macOS (Apple Silicon) | `godot-stagehand-<version>-darwin-arm64` |
-| macOS (Intel) | `godot-stagehand-<version>-darwin-amd64` |
-| Linux | `godot-stagehand-<version>-linux-amd64` |
-
-**Where to put it:**
-
-- **Windows:** Move the `.exe` to a folder you'll remember, like `C:\Tools\stagehand\`. Avoid paths with spaces.
-- **macOS / Linux:** Move it to `/usr/local/bin/godot-stagehand` for convenience, or any folder in your PATH.
-
-**macOS / Linux: make it executable**
-
-Open a terminal and run:
-```bash
-chmod +x /path/to/godot-stagehand
-```
-
-> If macOS blocks the file with "cannot be opened because the developer cannot be verified": open System Settings → Privacy & Security → scroll down to the blocked app → click **Allow Anyway**.
-
----
-
-## Step 3: Install the addon
-
-### Option A: Copy the folder manually
-
-1. Download the source zip from the same [Releases page](https://github.com/mrf/godot-stagehand/releases).
+1. Go to the [repository page](https://github.com/mrf/godot-stagehand) and download the source: **Code → Download ZIP**.
 2. Unzip it. Inside you'll find an `addons/stagehand/` folder.
 3. Copy that entire `addons/stagehand/` folder into **your** project's `addons/` folder.
    - If your project doesn't have an `addons/` folder yet, create one at the top level next to `project.godot`.
 4. Your project should now have: `your-project/addons/stagehand/plugin.cfg`
+5. In Godot: **Project → Project Settings → Plugins**, find **Stagehand** in the list, and check the **Enable** checkbox.
 
-### Option B: Asset Library (when available)
+**You're good if:** a **Stagehand** toggle button and a **Setup…** button appear in the editor's top toolbar.
 
-1. In Godot, open your project and click the **AssetLib** tab at the top.
-2. Search for **Stagehand**.
-3. Click Install, then close the dialog.
-
-![screenshot: Godot editor with AssetLib tab selected, search results showing "Stagehand"](../assets/assetlib-search.png)
-
-### Enable the plugin
-
-After copying the folder, you need to turn the plugin on:
-
-1. In Godot: **Project → Project Settings → Plugins**
-2. Find **Stagehand** in the list and check the **Enable** checkbox.
-
-![screenshot: Project Settings Plugins tab with Stagehand listed and Enable checkbox checked](../assets/plugin-enable.png)
-
-If you did it right: the Godot output panel shows `Stagehand: plugin loaded` and a **Stagehand** button appears in the top toolbar.
+> **Comfortable with a terminal?** You can skip steps 2–3 of this guide entirely. Download the binary for your platform from the [latest release](https://github.com/mrf/godot-stagehand/releases/latest) — `godot-stagehand-linux-amd64`, `godot-stagehand-darwin-amd64`/`-arm64` for macOS, or `godot-stagehand-windows-amd64.exe` (macOS/Linux: `chmod +x` it first) — then run `godot-stagehand setup /path/to/your/project`. That one command copies the addon, enables the plugin, registers the runtime autoload, and prints the exact Claude config and run command for you. Pass `--force` to overwrite an existing install. If no release exists yet for your platform, see [Build from source](#build-from-source-fallback) below.
 
 ---
 
-## Step 4: Tell Claude about the server
+## Step 3: Get the server and configure Claude
 
-Claude needs to know where to find the server you downloaded. This is a one-time config change.
+With the addon enabled, click the **Setup…** button in the toolbar. This opens the Stagehand Setup wizard, which handles the rest without a terminal:
 
-**Find your settings file:**
+1. **Server binary** — the wizard detects your OS and shows a destination path (editable, or use **Browse…**). Click **Download server binary**.
+   - If it reports no published binary is available for your platform, see [Build from source](#build-from-source-fallback) below.
+   - macOS may block the downloaded binary as from an unverified developer — open **System Settings → Privacy & Security**, scroll to the blocked-app notice, and click **Allow Anyway**.
+2. **MCP client config** — the wizard shows a JSON snippet with the binary path already filled in. Click **Copy config to clipboard**.
+3. Paste that snippet into your Claude client's settings file:
 
 | Claude client | Settings file location |
 |--------------|------------------------|
@@ -87,7 +50,7 @@ Claude needs to know where to find the server you downloaded. This is a one-time
 | Claude Desktop (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | Claude Code (Claude CLI) | `.claude/settings.json` inside your project, or `~/.claude/settings.json` globally |
 
-Open that file in any text editor. Add the `mcpServers` section (or add to it if it already exists):
+If the file doesn't already have an `mcpServers` section, the pasted snippet looks like this:
 
 ```json
 {
@@ -99,28 +62,31 @@ Open that file in any text editor. Add the `mcpServers` section (or add to it if
 }
 ```
 
-Replace `/path/to/godot-stagehand` with the actual path to the file you downloaded:
-- **Windows example:** `C:\\Tools\\stagehand\\godot-stagehand-0.2.0-windows-amd64.exe`
-- **macOS/Linux example:** `/usr/local/bin/godot-stagehand`
+If it already has other MCP servers configured, add just the `"godot-stagehand": { ... }` entry inside the existing `mcpServers` object instead of overwriting it.
 
-> **Windows path tip:** Use double backslashes (`\\`) or forward slashes (`/`) in JSON — single backslashes will cause a parse error.
+After saving, **restart Claude Desktop** (or reload your Claude Code window). `godot-stagehand` should appear in Claude's available tools.
 
-After saving, **restart Claude Desktop** (or reload your Claude Code window). You should see `godot-stagehand` listed in Claude's tools — it will appear when you start a new conversation.
+### Build from source fallback
+
+If no prebuilt binary is available for your platform, build one from source (requires [Go 1.25+](https://go.dev/dl/)):
+
+```bash
+git clone https://github.com/mrf/godot-stagehand
+cd godot-stagehand
+go build -o godot-stagehand .
+```
+
+Then point the destination path field in the Setup wizard (or the `command` in your JSON config) at the binary you just built.
 
 ---
 
-## Step 5: Run your game with Stagehand enabled
+## Step 4: Run your game with Stagehand enabled
 
 Stagehand is **off by default** — you turn it on when you want it.
 
 ### Option A: From the Godot editor
 
-Click the **Stagehand** toggle button in the top toolbar, then press **Play (F5)** as normal.
-
-The toggle is editor-only: it adds `--stagehand` to editor play sessions and is
-not exported with your game.
-
-![screenshot: Godot editor toolbar with Stagehand toggle button highlighted](../assets/toolbar-toggle.png)
+Click the **Stagehand** toggle button in the top toolbar, then press **Play (F5)** as normal. The toggle is editor-only: it adds `--stagehand` to editor play sessions and is not exported with your game.
 
 ### Option B: From the command line
 
@@ -132,7 +98,7 @@ godot --path /path/to/your/project --stagehand
 "C:\path\to\Godot_v4.x-stable_win64.exe" --path "C:\path\to\your\project" --stagehand
 ```
 
-**You're good if:** The Godot output panel (or terminal) shows:
+**You're good if:** the Godot output panel (or terminal) shows:
 ```
 Stagehand: Authentication token: <one-session-token>
 Stagehand: Server listening on port 26700 (127.0.0.1)
@@ -141,34 +107,31 @@ Stagehand: Server listening on port 26700 (127.0.0.1)
 Keep that token private. You will give it to Claude in the next step; a new
 token is generated each time unless you explicitly set `STAGEHAND_AUTH_TOKEN`.
 
-**Try this if not:**
-- Make sure the Stagehand plugin is enabled (Step 3).
-- Check that your scene has at least one node that processes frames (`_process` or `_physics_process`). An empty or static scene won't tick.
+**Try this if not:** confirm the Stagehand plugin is enabled (Step 2) — an unchecked plugin means neither the toggle nor `--stagehand` does anything.
+
+You can also click **Test connection** in the Setup wizard (Step 3) once the game is running — it pings the server directly from the editor and reports success or failure without needing Claude at all.
 
 ---
 
-## Step 6: Try it — your first command
+## Step 5: Try it — your first command
 
 With your game running, go to Claude and ask it:
 
 > "Connect to my Godot game using auth token `<one-session-token>` and show me the scene tree."
 
 Claude will pass the token to `godot_connect`, then call `godot_get_tree` to read
-the scene structure. `godot_launch` handles its fresh token automatically.
+the scene structure.
 
 **What you should see:**
 
-Claude's response will include something like:
+Claude's response will describe your actual scene tree — the node names and structure will match your project, something like:
 ```
 Connected to Godot 4.x at 127.0.0.1:26700
 Scene tree:
 └── Node (root)
     └── Main
         ├── Player
-        │   ├── Sprite2D
-        │   └── CollisionShape2D
         └── UI
-            └── HUD
 ```
 
 **If you see "Connection refused":** The game isn't running with Stagehand enabled, or it hasn't finished loading yet. Check the output panel for `Stagehand: Server listening`.
@@ -176,7 +139,7 @@ Scene tree:
 **If you see "Authentication required" or "Authentication failed":** Use the
 token printed by the currently running Godot session, not one from an earlier run.
 
-**If you're on Windows with Claude running in WSL:** See [Windows / WSL Setup](windows-setup.md) for networking instructions — you'll need one extra step to bridge the network stacks.
+**If you're on Windows with Claude running in WSL:** See [Windows / WSL Setup](windows-setup.md) for networking instructions — you'll need one extra step to bridge the network stacks. If both Godot and Claude run natively on Windows (no WSL involved), the default `127.0.0.1` connection works with no extra setup.
 
 ---
 
@@ -188,7 +151,7 @@ token printed by the currently running Godot session, not one from an earlier ru
 2. Is Stagehand enabled? Look for `Server listening on port 26700` in Godot's output.
 3. Are you on Windows with Claude in WSL? See [Windows / WSL Setup](windows-setup.md).
 4. Port conflict? Run another instance on a different port:
-   - Start Godot with `--stagehand-port=26701`
+   - Start Godot with `--stagehand-port=26701` (or set `STAGEHAND_PORT=26701`)
    - In Claude: "Connect to my game on port 26701"
 
 ### "Plugin not found" or Stagehand doesn't appear in Project Settings
@@ -199,10 +162,7 @@ token printed by the currently running Godot session, not one from an earlier ru
 
 ### Screenshots come back black or empty
 
-Stagehand can only capture what Godot actually renders. Two common causes:
-
-- **Headless mode:** If you launched with `--headless`, there's nothing to render. Launch normally (with a visible window).
-- **Window minimized:** Restore the window and try again.
+Stagehand can only capture what Godot actually renders. This happens if you launched with `--headless` — there's nothing to render. Launch normally, with a visible, non-minimized window.
 
 ---
 
