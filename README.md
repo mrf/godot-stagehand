@@ -2,7 +2,7 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/mrf/godot-stagehand)](https://goreportcard.com/report/github.com/mrf/godot-stagehand)
 
-External automation for running Godot games, exposed as an MCP server — like Playwright, but for game engines.
+External automation for running Godot games, exposed as an MCP server for AI agents and as a CLI plus scenario runner for CI and terminal debugging — like Playwright, but for game engines.
 
 **Status: beta (v0.2.0), pre-1.0.** No binary releases are published yet; the
 supported install path today is building from source (see [Setup](#setup)).
@@ -28,24 +28,29 @@ from outside the engine.
 
 - **AI-assisted playtesting** — Let Claude (or any MCP client) explore your game, find bugs, and verify fixes without manual clicking.
 - **Visual regression testing** — Save baseline screenshots, diff them later. Catch UI regressions before your players do. See the [visual smoke contract](docs/visual-smoke-contract.md) for how to set up a visual gate in your game repo. **Headless Godot cannot render real screenshots**, so this needs a visible window (a real display or something like Xvfb) even in CI.
-- **Scripted exploration** — Drive menus, trigger gameplay, and assert on real game state by calling these tools from any MCP client — there is no bundled test-runner or assertion library; you build the harness around the tool calls.
-- **CI checks** — Headless Godot works for structural checks (scene tree, properties, performance counters) in CI. Wire the tool calls into your own script that fails the build on assertion failure; Stagehand does not ship a ready-made CI action.
+- **Scripted exploration** — Drive menus, trigger gameplay, and assert on real game state, either from any MCP client or from the terminal: `godot-stagehand tree`, `find`, `property get`, `input click`, `wait node` and friends are one-shot commands that print JSON. See the [CLI guide](docs/cli.md).
+- **CI checks** — `godot-stagehand run scenario.json` executes a declarative list of launch, action, wait and assertion steps against a real Godot build and exits nonzero on failure, so a pipeline step needs no MCP client and no wrapper script. It emits a JSON report, JUnit XML, screenshots/diffs, the engine's own log, and an RPC timing trace. Headless Godot covers structural checks (scene tree, properties, performance counters); visual steps need a rendered window. See the [CLI and scenario runner guide](docs/cli.md).
 - **Performance monitoring** — `godot_assert_performance` reads one instantaneous sample of a `Performance` monitor per call and compares it to a threshold — there's no built-in averaging, warm-up, or percentile handling, so treat a single assertion as a coarse smoke check, not a statistically robust regression gate.
 - **Input recording/replay** — Record a play session's input events with millisecond timestamps, then replay them on the same wall-clock schedule, optionally sped up to shorten a CI run. This reproduces a rough repro case, not a frame-perfect deterministic run — actual game state during replay still depends on frame timing, which can vary between runs. The on-disk format is versioned; see the [recording format](docs/recording-format.md).
 
 ## How it works
 
 ```
-┌─────────────┐       ┌──────────────────┐       ┌──────────────┐
-│  MCP Client │◄─────►│  Go Server       │◄─────►│  Your Game   │
-│  (Claude,   │ stdio │  (godot-stagehand)│  WS   │  (Godot +    │
-│   CI, etc.) │       │                  │ :26700 │   addon)     │
-└─────────────┘       └──────────────────┘       └──────────────┘
+┌─────────────┐  stdio  ┌───────────────────┐         ┌──────────────┐
+│  MCP Client │◄───────►│                   │         │              │
+│  (Claude,   │         │   godot-stagehand │◄───────►│  Your Game   │
+│   Cursor…)  │         │      (one Go      │   WS    │  (Godot +    │
+├─────────────┤  argv   │      binary)      │ :26700  │   addon)     │
+│  CLI / CI / │◄───────►│                   │         │              │
+│  scenarios  │         └───────────────────┘         └──────────────┘
+└─────────────┘
 ```
 
 **The addon** lives inside your Godot game. It opens a WebSocket port and waits for commands. When it receives one (like "click this button" or "get the scene tree"), it executes it inside the running game and sends back the result.
 
-**The Go server** sits in the middle. It speaks MCP (the protocol AI tools use) on one side and the Godot wire protocol on the other. It handles connection management, selector parsing, screenshot encoding, and error translation so the addon stays simple.
+**The Go binary** sits in the middle and speaks the Godot wire protocol on one side. On the other it offers two frontends over the same core: the MCP stdio protocol for AI agents, and a CLI with a scenario runner for pipelines and humans. Neither is built on the other. It handles connection management, selector parsing, screenshot encoding, and error translation so the addon stays simple.
+
+Running the binary with **no arguments** serves MCP over stdio — that is what MCP client configurations invoke, and it has not changed.
 
 ## Available tools
 
@@ -76,6 +81,43 @@ from outside the engine.
 | `godot_get_game_state` | Runtime info (scene, FPS, window) |
 | `godot_get_performance` / `godot_assert_performance` | Performance monitoring |
 | `godot_record_start` / `godot_record_stop` / `godot_replay` | Input recording/replay |
+
+## Command line
+
+The same binary is an executable test runner. Full reference:
+[docs/cli.md](docs/cli.md).
+
+```bash
+# One-shot inspection and actions against a running game
+export STAGEHAND_AUTH_TOKEN=<the token this Godot session printed>
+godot-stagehand tree         --port 26788 --max-depth 3
+godot-stagehand find         --port 26788 'class:Button' --properties text
+godot-stagehand property get --port 26788 'name:titleLabel' text
+godot-stagehand input click  --port 26788 --selector 'text:Start'
+godot-stagehand wait node    --port 26788 'name:Hud' --state visible
+godot-stagehand performance  --port 26788 --assert TIME_FPS --threshold 55 --op gte
+
+# A whole scenario, no MCP client involved
+godot-stagehand run scenarios/menu-smoke.json --out-dir ci-artifacts
+```
+
+`run` launches (or connects to) Godot, executes ordered actions, waits and
+assertions, and exits nonzero on failure. `--out-dir` collects `report.json`,
+`junit.xml`, `rpc-trace.json`, `godot.log`, screenshots and diff images.
+
+Exit codes are a stable contract:
+
+| Code | Meaning |
+|------|---------|
+| 0 | success |
+| 1 | internal error |
+| 2 | usage — bad flags or an invalid scenario; nothing reached Godot |
+| 3 | connection — could not launch, reach, or authenticate |
+| 4 | Godot rejected a well-formed request |
+| 5 | **an assertion or visual diff failed** — a real regression |
+| 6 | timeout |
+
+`godot-stagehand actions` lists every action a scenario step may use.
 
 ## Selectors
 
@@ -284,6 +326,9 @@ session, or its configured `STAGEHAND_AUTH_TOKEN`, as
 ```bash
 go vet ./...          # lint
 go test ./...         # Go tests (no Godot needed)
+
+# Scenario runner against a real headless Godot
+GODOT_BIN=/path/to/godot go test -tags=godot -run '^TestScenarioRunner' .
 
 # GDScript unit suite (GdUnit4, headless — needs Godot 4.6+)
 GODOT_BIN=/path/to/godot ./scripts/run-gdscript-tests.sh

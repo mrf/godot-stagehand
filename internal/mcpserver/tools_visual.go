@@ -1,18 +1,11 @@
 package mcpserver
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"image"
-	"image/png"
-	"os"
-	"path/filepath"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mrf/godot-stagehand/internal/imgdiff"
+	"github.com/mrf/godot-stagehand/internal/visual"
 )
 
 var screenshotTool = mcp.NewTool("godot_screenshot",
@@ -76,31 +69,23 @@ var screenshotDiffTool = mcp.NewTool("godot_screenshot_diff",
 	instanceIDOpt,
 )
 
-// screenshotResult is the expected shape of the Godot screenshot response.
-// Error carries the addon-side failure reason (e.g. "Failed to capture
-// viewport image"); without it, a capture failure collapses into the generic
-// "empty image data" message and hides the true cause.
-type screenshotResult struct {
-	Data      string         `json:"data"`
-	MimeType  string         `json:"mime_type"`
-	Error     string         `json:"error"`
-	ErrorCode string         `json:"error_code"`
-	Details   map[string]any `json:"details"`
-	Width     int            `json:"width"`
-	Height    int            `json:"height"`
-}
+// The structured outcomes are the shared records from internal/visual, so the
+// MCP surface and the CLI scenario runner cannot report the same comparison
+// with different fields.
+type baselineOutcome = visual.BaselineOutcome
+type diffOutcome = visual.DiffOutcome
 
 func (s *Server) handleScreenshot(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	instanceID := req.GetString("instance_id", "default")
-	params := map[string]any{
-		"full_page": req.GetBool("full_page", true),
-	}
-	if sel := req.GetString("selector", ""); sel != "" {
-		if errResult := validateSelector(sel); errResult != nil {
+	selector := req.GetString("selector", "")
+	if selector != "" {
+		if errResult := validateSelector(selector); errResult != nil {
 			return errResult, nil
 		}
-		params["selector"] = sel
-		params["full_page"] = false
+	}
+	params := visual.Params(selector)
+	if selector == "" {
+		params["full_page"] = req.GetBool("full_page", true)
 	}
 
 	raw, errResult := s.callGodotInstance(ctx, instanceID, "screenshot", params)
@@ -108,106 +93,31 @@ func (s *Server) handleScreenshot(ctx context.Context, req mcp.CallToolRequest) 
 		return errResult, nil
 	}
 
-	var sr screenshotResult
-	if err := json.Unmarshal(raw, &sr); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to parse screenshot response: %v", err)), nil
-	}
-	if _, err := decodeScreenshotPNG(sr); err != nil {
+	shot, err := visual.Decode(raw)
+	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
-	}
-	if sr.MimeType == "" {
-		sr.MimeType = "image/png"
 	}
 
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
-			mcp.NewImageContent(sr.Data, sr.MimeType),
+			mcp.NewImageContent(shot.Base64(), shot.MimeType),
 		},
 	}, nil
 }
 
-func (s *Server) captureScreenshot(ctx context.Context, instanceID string, req mcp.CallToolRequest) ([]byte, error) {
-	params := map[string]any{"full_page": true}
-	if sel := req.GetString("selector", ""); sel != "" {
+func (s *Server) captureScreenshot(ctx context.Context, instanceID string, req mcp.CallToolRequest) (visual.Shot, error) {
+	sel := req.GetString("selector", "")
+	if sel != "" {
 		if errResult := validateSelector(sel); errResult != nil {
-			return nil, toolResultToError(errResult, "invalid selector")
+			return visual.Shot{}, toolResultToError(errResult, "invalid selector")
 		}
-		params["selector"] = sel
-		params["full_page"] = false
 	}
 
-	raw, errResult := s.callGodotInstance(ctx, instanceID, "screenshot", params)
+	raw, errResult := s.callGodotInstance(ctx, instanceID, "screenshot", visual.Params(sel))
 	if errResult != nil {
-		return nil, toolResultToError(errResult, "godot screenshot failed")
+		return visual.Shot{}, toolResultToError(errResult, "godot screenshot failed")
 	}
-
-	var sr screenshotResult
-	if err := json.Unmarshal(raw, &sr); err != nil {
-		return nil, fmt.Errorf("failed to parse screenshot response: %v", err)
-	}
-	return decodeScreenshotPNG(sr)
-}
-
-func decodeScreenshotPNG(sr screenshotResult) ([]byte, error) {
-	if sr.Error != "" {
-		return nil, fmt.Errorf("godot screenshot capture failed: %s", formatGodotError(sr.Error, sr.ErrorCode, sr.Details))
-	}
-	if sr.Data == "" {
-		return nil, fmt.Errorf("screenshot returned empty image data (addon reported no error)")
-	}
-
-	imgBytes, err := base64.StdEncoding.DecodeString(sr.Data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode screenshot data: %v", err)
-	}
-	if len(imgBytes) == 0 {
-		return nil, fmt.Errorf("screenshot decoded to zero bytes")
-	}
-	img, err := png.Decode(bytes.NewReader(imgBytes))
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode screenshot PNG: %v", err)
-	}
-	bounds := img.Bounds()
-	width := bounds.Dx()
-	height := bounds.Dy()
-	if width <= 0 || height <= 0 {
-		return nil, fmt.Errorf("screenshot PNG has invalid dimensions: %dx%d", width, height)
-	}
-	if sr.Width != 0 && sr.Width != width {
-		return nil, fmt.Errorf("screenshot width mismatch: addon reported %d, PNG is %d", sr.Width, width)
-	}
-	if sr.Height != 0 && sr.Height != height {
-		return nil, fmt.Errorf("screenshot height mismatch: addon reported %d, PNG is %d", sr.Height, height)
-	}
-	return imgBytes, nil
-}
-
-// baselineOutcome is the machine-readable result of godot_screenshot_save_baseline.
-type baselineOutcome struct {
-	Name     string `json:"name"`
-	Path     string `json:"path"`
-	Width    int    `json:"width"`
-	Height   int    `json:"height"`
-	Selector string `json:"selector,omitempty"`
-}
-
-// diffOutcome is the machine-readable result of godot_screenshot_diff. Agents
-// should branch on Pass; the *Path fields are populated only when Pass is false.
-type diffOutcome struct {
-	Name             string  `json:"name"`
-	Pass             bool    `json:"pass"`
-	TotalPixels      int     `json:"total_pixels"`
-	DiffPixels       int     `json:"diff_pixels"`
-	DiffRatio        float64 `json:"diff_ratio"`
-	MaxDelta         float64 `json:"max_delta"`
-	Threshold        float64 `json:"threshold"`
-	PixelSensitivity float64 `json:"pixel_sensitivity"`
-	Width            int     `json:"width"`
-	Height           int     `json:"height"`
-	BaselinePath     string  `json:"baseline_path"`
-	ActualImagePath  string  `json:"actual_image_path,omitempty"`
-	DiffImagePath    string  `json:"diff_image_path,omitempty"`
-	Selector         string  `json:"selector,omitempty"`
+	return visual.Decode(raw)
 }
 
 func (s *Server) handleSaveBaseline(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -217,34 +127,17 @@ func (s *Server) handleSaveBaseline(ctx context.Context, req mcp.CallToolRequest
 		return mcp.NewToolResultError("Invalid 'name' parameter: " + err.Error()), nil
 	}
 
-	imgBytes, err := s.captureScreenshot(ctx, instanceID, req)
+	shot, err := s.captureScreenshot(ctx, instanceID, req)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	img, err := png.Decode(bytes.NewReader(imgBytes))
+	outcome, err := visual.SaveBaseline(s.baselineDir, name, req.GetString("selector", ""), shot)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to decode baseline screenshot: %v", err)), nil
-	}
-	bounds := img.Bounds()
-
-	if err := os.MkdirAll(s.baselineDir, 0o755); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to create baseline directory: %v", err)), nil
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	path := filepath.Join(s.baselineDir, name+".png")
-	if err := os.WriteFile(path, imgBytes, 0o644); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to save baseline: %v", err)), nil
-	}
-
-	outcome := baselineOutcome{
-		Name:     name,
-		Path:     path,
-		Width:    bounds.Dx(),
-		Height:   bounds.Dy(),
-		Selector: req.GetString("selector", ""),
-	}
-	text := fmt.Sprintf("Baseline %q (%dx%d) saved to %s", name, outcome.Width, outcome.Height, path)
+	text := fmt.Sprintf("Baseline %q (%dx%d) saved to %s", name, outcome.Width, outcome.Height, outcome.Path)
 	return mcp.NewToolResultStructured(outcome, text), nil
 }
 
@@ -255,115 +148,27 @@ func (s *Server) handleScreenshotDiff(ctx context.Context, req mcp.CallToolReque
 		return mcp.NewToolResultError("Invalid 'name' parameter: " + err.Error()), nil
 	}
 
-	if sel := req.GetString("selector", ""); sel != "" {
-		if errResult := validateSelector(sel); errResult != nil {
-			return errResult, nil
-		}
-	}
-
-	threshold := req.GetFloat("threshold", 0.0)
-	pixelSensitivity := req.GetFloat("pixel_sensitivity", 0.0)
-
-	// Load baseline.
-	baselinePath := filepath.Join(s.baselineDir, name+".png")
-	baselineBytes, err := os.ReadFile(baselinePath)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("baseline %q not found at %s: %v", name, baselinePath, err)), nil
-	}
-
-	baselineImg, err := png.Decode(bytes.NewReader(baselineBytes))
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to decode baseline image: %v", err)), nil
-	}
-
-	// Capture current screenshot.
-	imgBytes, err := s.captureScreenshot(ctx, instanceID, req)
+	shot, err := s.captureScreenshot(ctx, instanceID, req)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	currentImg, err := png.Decode(bytes.NewReader(imgBytes))
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to decode screenshot: %v", err)), nil
-	}
-
-	result, err := imgdiff.Compare(baselineImg, currentImg, pixelSensitivity)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("image comparison failed: %v", err)), nil
-	}
-
-	bounds := currentImg.Bounds()
-	pass := result.DiffRatio <= threshold
-
-	outcome := diffOutcome{
+	outcome, err := visual.CompareBaseline(visual.DiffConfig{
+		BaselineDir:      s.baselineDir,
+		ArtifactDir:      s.artifactDir,
 		Name:             name,
-		Pass:             pass,
-		TotalPixels:      result.TotalPixels,
-		DiffPixels:       result.DiffPixels,
-		DiffRatio:        result.DiffRatio,
-		MaxDelta:         result.MaxDelta,
-		Threshold:        threshold,
-		PixelSensitivity: pixelSensitivity,
-		Width:            bounds.Dx(),
-		Height:           bounds.Dy(),
-		BaselinePath:     baselinePath,
 		Selector:         req.GetString("selector", ""),
+		Threshold:        req.GetFloat("threshold", 0.0),
+		PixelSensitivity: req.GetFloat("pixel_sensitivity", 0.0),
+	}, shot)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	// On failure, persist artifacts so callers can inspect what changed.
-	var artifactErr string
-	if !pass {
-		actualPath, diffPath, werr := s.writeDiffArtifacts(name, imgBytes, result.DiffImage)
-		outcome.ActualImagePath = actualPath
-		outcome.DiffImagePath = diffPath
-		if werr != nil {
-			artifactErr = werr.Error()
-		}
-	}
-
-	report := fmt.Sprintf(
-		"Baseline: %q\nTotal pixels: %d\nDiff pixels:  %d\nDiff ratio:   %.4f (threshold %.4f)\nMax delta:    %.4f\nPixel sensitivity: %.4f",
-		name, result.TotalPixels, result.DiffPixels, result.DiffRatio, threshold, result.MaxDelta, pixelSensitivity,
-	)
-	if outcome.ActualImagePath != "" {
-		report += fmt.Sprintf("\nActual frame: %s\nDiff image:   %s", outcome.ActualImagePath, outcome.DiffImagePath)
-	}
-	if artifactErr != "" {
-		report += fmt.Sprintf("\nWARNING: failed to write diff artifacts: %s", artifactErr)
-	}
-
-	if !pass {
-		res := mcp.NewToolResultStructured(outcome, "Visual regression detected!\n"+report)
+	if !outcome.Pass {
+		res := mcp.NewToolResultStructured(outcome, "Visual regression detected!\n"+outcome.Report())
 		res.IsError = true
 		return res, nil
 	}
-	return mcp.NewToolResultStructured(outcome, "Images match within threshold.\n"+report), nil
-}
-
-// writeDiffArtifacts writes the actual captured frame and the diff
-// visualization to the artifact directory, returning their paths.
-func (s *Server) writeDiffArtifacts(name string, actualPNG []byte, diffImg image.Image) (actualPath, diffPath string, err error) {
-	if mkErr := os.MkdirAll(s.artifactDir, 0o755); mkErr != nil {
-		return "", "", fmt.Errorf("failed to create artifact directory: %w", mkErr)
-	}
-
-	actualPath = filepath.Join(s.artifactDir, name+"-actual.png")
-	if wErr := os.WriteFile(actualPath, actualPNG, 0o644); wErr != nil {
-		return "", "", fmt.Errorf("failed to write actual frame: %w", wErr)
-	}
-
-	if diffImg == nil {
-		return actualPath, "", nil
-	}
-
-	diffPath = filepath.Join(s.artifactDir, name+"-diff.png")
-	f, cErr := os.Create(diffPath)
-	if cErr != nil {
-		return actualPath, "", fmt.Errorf("failed to create diff image: %w", cErr)
-	}
-	defer f.Close()
-	if eErr := png.Encode(f, diffImg); eErr != nil {
-		return actualPath, "", fmt.Errorf("failed to encode diff image: %w", eErr)
-	}
-	return actualPath, diffPath, nil
+	return mcp.NewToolResultStructured(outcome, "Images match within threshold.\n"+outcome.Report()), nil
 }

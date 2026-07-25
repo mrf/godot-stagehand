@@ -63,11 +63,21 @@ type Config struct {
 	// defaultImportTimeout, which is deliberately longer than TimeoutMs because
 	// a cold import of a large project dwarfs the readiness wait.
 	ImportTimeoutMs int
+	// LogWriter receives the launched process's stdout and stderr. Nil
+	// discards them, which is the right default for an interactive MCP
+	// session; a CI scenario run supplies a file so a failure comes with the
+	// engine's own account of what happened.
+	LogWriter io.Writer
 }
 
 const (
 	// DefaultHost is the deterministic local loopback address used when no host is supplied.
 	DefaultHost = "127.0.0.1"
+	// DefaultPort is the port the addon listens on when STAGEHAND_PORT is unset.
+	// The addon accepts many clients into one SceneTree, so every agent that
+	// connects here without an explicit port drives the same game — which is
+	// why both the MCP connect tool and the CLI push callers off it.
+	DefaultPort = 26700
 	// defaultTimeout is used when TimeoutMs is zero.
 	defaultTimeout = 30000 // 30 seconds
 )
@@ -128,7 +138,7 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 	host = normalizeHost(host)
 	port := cfg.Port
 	if port == 0 {
-		port = 26700
+		port = DefaultPort
 	}
 	timeout := time.Duration(cfg.TimeoutMs) * time.Millisecond
 	if timeout == 0 {
@@ -209,10 +219,7 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 	// Appended last so the isolated data paths win over anything inherited:
 	// os/exec keeps the final occurrence of a duplicated variable.
 	cmd.Env = append(cmd.Env, isolation.env...)
-	// Redirect stdout/stderr to a log file (or discard?). For now, discard.
-	// We could optionally capture logs, but we'll discard.
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
+	attachProcessLogs(cmd, cfg.LogWriter)
 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start Godot: %w", err)
@@ -290,6 +297,20 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		ownedUserDataDir: isolation.owned,
 		waitChan:         wait,
 	}, nil
+}
+
+// attachProcessLogs routes the child's stdout and stderr to w, or discards
+// them when w is nil. Both streams get the same writer so the interleaving
+// matches what the engine printed; os/exec guarantees at most one concurrent
+// Write when Stdout and Stderr compare equal.
+func attachProcessLogs(cmd *exec.Cmd, w io.Writer) {
+	if w == nil {
+		cmd.Stdout = io.Discard
+		cmd.Stderr = io.Discard
+		return
+	}
+	cmd.Stdout = w
+	cmd.Stderr = w
 }
 
 func normalizeHost(host string) string {

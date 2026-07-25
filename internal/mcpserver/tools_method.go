@@ -2,34 +2,17 @@ package mcpserver
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mrf/godot-stagehand/internal/gwpop"
 )
 
-// blockedMethods lists Godot methods that must not be called remotely.
-// The GDScript side enforces the same list; this is defense-in-depth.
-var blockedMethods = map[string]bool{
-	"free":                   true,
-	"queue_free":             true,
-	"set_script":             true,
-	"add_child":              true,
-	"remove_child":           true,
-	"queue_redraw":           true,
-	"notification":           true,
-	"propagate_notification": true,
-	"set_process":            true,
-	"set_physics_process":    true,
-}
-
-// validateMethod returns an error message if the method is blocked, or empty string if allowed.
+// validateMethod returns an error message if the method is blocked, or empty
+// string if allowed. The blocklist itself lives in internal/gwpop so the MCP
+// tools, the CLI, and the scenario runner cannot enforce different sets.
 func validateMethod(method string) string {
-	if strings.HasPrefix(method, "_") {
-		return "Blocked: private/lifecycle methods (starting with '_') cannot be called"
-	}
-	if blockedMethods[method] {
-		return fmt.Sprintf("Blocked: '%s' is a destructive method and cannot be called remotely", method)
+	if err := gwpop.ValidateMethodName(method); err != nil {
+		return err.Error()
 	}
 	return ""
 }

@@ -166,6 +166,64 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  # ── Scenario runner smoke gate (real Godot, no MCP client) ───────────────
+  # This is the executable CI workflow the README points users at: the built
+  # binary runs testdata/scenarios/smoke.json against a real headless Godot and
+  # must exit 0, and a deliberately-wrong scenario must exit 5. Both halves
+  # matter — a green-only gate would not catch a runner that swallows failures.
+  #
+  # The scenario is deliberately screenshot-free so it needs no display. Visual
+  # gates are covered by docs/visual-smoke-contract.md and need Xvfb or a real
+  # screen; see the "Headless Godot cannot render" note in the README.
+  scenario-smoke:
+    name: Scenario runner smoke (real Godot)
+    runs-on: ubuntu-latest
+    env:
+      GODOT_VERSION: 4.6.2.stable
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Cache Godot binary
+        id: godot-cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.GODOT_CACHE_DIR }}
+          key: godot-4.6.2.stable-linux
+
+      - name: Install Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: bash scripts/ci-install-godot.sh
+
+      - name: Locate Godot binary
+        run: |
+          source scripts/ci-install-godot.sh
+          echo "GODOT_BIN=${GODOT_BIN}" >> "$GITHUB_ENV"
+
+      - name: Run the scenario runner against real Godot
+        run: go test -tags=godot -run '^TestScenarioRunner' -count=1 -timeout=10m .
+
+      - name: Reproduce the documented CI invocation
+        run: |
+          go build -o godot-stagehand .
+          ./godot-stagehand run testdata/scenarios/smoke.json \
+            --out-dir=scenario-artifacts \
+            --godot-bin="$GODOT_BIN"
+
+      - name: Upload scenario artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: scenario-artifacts
+          path: scenario-artifacts/
+          retention-days: 7
+          if-no-files-found: warn
+
   # ── Cross-platform release builds ────────────────────────────────────────
   build-matrix:
     name: Build (${{ matrix.goos }}-${{ matrix.goarch }})

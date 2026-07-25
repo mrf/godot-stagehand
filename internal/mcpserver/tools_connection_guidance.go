@@ -6,12 +6,11 @@ import (
 	"strconv"
 
 	"github.com/mrf/godot-stagehand/internal/gwp"
+	"github.com/mrf/godot-stagehand/internal/launch"
 )
 
 // defaultSharedPort is the port the addon listens on when STAGEHAND_PORT is unset.
-// The addon accepts many clients into one SceneTree, so every agent that connects
-// here without an explicit port drives the same game.
-const defaultSharedPort = 26700
+const defaultSharedPort = launch.DefaultPort
 
 // multiInstanceEnvVar opts a host into strict multi-instance mode, where
 // godot_connect refuses to fall back to the shared default port. It is off by

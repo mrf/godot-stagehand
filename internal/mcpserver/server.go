@@ -12,6 +12,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/mrf/godot-stagehand/internal/godotconn"
+	"github.com/mrf/godot-stagehand/internal/gwp"
 	"github.com/mrf/godot-stagehand/internal/selector"
 	"github.com/mrf/godot-stagehand/internal/version"
 )
@@ -171,20 +172,7 @@ func checkGodotResult(raw json.RawMessage) *mcp.CallToolResult {
 		}
 		return mcp.NewToolResultError("godot handler error (unparseable)")
 	}
-	return mcp.NewToolResultError(formatGodotError(payload.Error, payload.ErrorCode, payload.Details))
-}
-
-func formatGodotError(message string, code string, detailsMap map[string]any) string {
-	if code != "" {
-		message += fmt.Sprintf(" (code=%s)", code)
-	}
-	if len(detailsMap) > 0 {
-		details, err := json.Marshal(detailsMap)
-		if err == nil {
-			message += fmt.Sprintf(" details=%s", details)
-		}
-	}
-	return message
+	return mcp.NewToolResultError(gwp.FormatError(payload.Error, payload.ErrorCode, payload.Details))
 }
 
 // callGodotInstance sends a JSON-RPC method to the named Godot instance.

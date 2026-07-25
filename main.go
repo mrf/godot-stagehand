@@ -1,32 +1,59 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 
+	"github.com/mrf/godot-stagehand/internal/cli"
 	"github.com/mrf/godot-stagehand/internal/gwp"
 	"github.com/mrf/godot-stagehand/internal/mcpserver"
 	"github.com/mrf/godot-stagehand/internal/version"
 )
 
 func main() {
-	if err := run(); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
+	os.Exit(dispatch(context.Background(), os.Args[1:], os.Stdout, os.Stderr))
 }
 
-func run() error {
-	handled, err := runVersion(os.Args[1:], os.Stdout)
-	if err != nil || handled {
-		return err
+// dispatch routes an invocation to the MCP server, the setup installer, or the
+// CLI frontend.
+//
+// The no-argument case MUST remain the MCP stdio server: every configured MCP
+// client launches this binary with no arguments and speaks JSON-RPC over
+// stdin/stdout immediately. Anything printed there corrupts the transport, so
+// that path never writes to stdout itself.
+func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 || args[0] == "serve" {
+		if len(args) > 1 {
+			fmt.Fprintln(stderr, "error: serve takes no arguments")
+			return cli.ExitUsage
+		}
+		if err := mcpserver.New().Serve(); err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return cli.ExitInternal
+		}
+		return cli.ExitOK
 	}
-	if len(os.Args) > 1 && os.Args[1] == "setup" {
-		return runSetup(os.Args[2:])
+
+	handled, err := runVersion(args, stdout)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return cli.ExitInternal
 	}
-	srv := mcpserver.New()
-	return srv.Serve()
+	if handled {
+		return cli.ExitOK
+	}
+
+	if args[0] == "setup" {
+		if err := runSetup(args[1:]); err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return cli.ExitUsage
+		}
+		return cli.ExitOK
+	}
+
+	return cli.Run(ctx, args, stdout, stderr)
 }
 
 // runVersion prints the build report when args request it, reporting whether it
