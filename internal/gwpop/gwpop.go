@@ -201,7 +201,10 @@ func buildSpecs() map[string]Spec {
 			Optional: []string{"monitors"},
 			Summary:  "Read Performance singleton monitors"},
 		{Action: "assert_performance", Method: "assert_performance", Capability: gwp.CapabilityPerformance,
-			Required: []string{"monitor", "threshold"}, Optional: []string{"op"},
+			Required: []string{"monitor", "threshold"},
+			Optional: []string{
+				"op", "statistic", "warmup_ms", "sample_interval_ms", "sample_count", "duration_ms",
+			},
 			Summary: "Assert a performance monitor against a threshold"},
 
 		{Action: "record_start", Method: "record_start", Capability: gwp.CapabilityRecording,

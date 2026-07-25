@@ -346,6 +346,41 @@ func TestPerformanceAssertionFailureExitsAssertion(t *testing.T) {
 	}
 }
 
+func TestPerformanceSamplingFlagsReachAssertPerformance(t *testing.T) {
+	withToken(t)
+	stub := newStubGodot(t, map[string]any{
+		"assert_performance": map[string]any{
+			"passed": true, "monitor": "TIME_FPS", "value": 60.0, "threshold": 30.0, "op": "gte",
+			"statistic": "p95", "sample_count": 10,
+		},
+	})
+	code, stdout, stderr := invoke(t, "performance", stub.portFlag(t),
+		"--assert=TIME_FPS", "--threshold=30", "--op=gte",
+		"--statistic=p95", "--warmup-ms=50", "--sample-count=10", "--sample-interval-ms=20")
+	if code != ExitOK {
+		t.Fatalf("exit = %d (stderr: %s)", code, stderr)
+	}
+	if !strings.Contains(stdout, `"passed": true`) {
+		t.Errorf("stdout does not carry the result:\n%s", stdout)
+	}
+	if got := stub.called(); len(got) != 1 || got[0] != "assert_performance" {
+		t.Errorf("called = %v, want exactly one assert_performance call", got)
+	}
+}
+
+func TestPerformanceSampleCountAndDurationMsAreMutuallyExclusive(t *testing.T) {
+	withToken(t)
+	stub := newStubGodot(t, nil)
+	code, _, stderr := invoke(t, "performance", stub.portFlag(t),
+		"--assert=TIME_FPS", "--threshold=30", "--sample-count=10", "--duration-ms=500")
+	if code != ExitUsage {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitUsage, stderr)
+	}
+	if len(stub.called()) != 0 {
+		t.Errorf("conflicting flags still reached Godot: %v", stub.called())
+	}
+}
+
 func TestGodotReportedErrorExitsRemote(t *testing.T) {
 	withToken(t)
 	stub := newStubGodot(t, map[string]any{

@@ -483,16 +483,22 @@ var cmdScreenshot = &command{
 // ── performance ───────────────────────────────────────────────────────────
 
 var cmdPerformance = &command{
-	name: "performance", usage: "--port N [--monitors A,B] [--assert MONITOR --threshold N]", connects: true,
-	summary: "Read performance monitors, or assert one against a threshold",
+	name: "performance", usage: "--port N [--monitors A,B] [--assert MONITOR --threshold N ...]", connects: true,
+	summary: "Read performance monitors, or sample one and assert a statistic against a threshold",
 	run: func(ctx context.Context, e *env, cmd *command, args []string) error {
-		var monitors, assertMonitor, op string
+		var monitors, assertMonitor, op, statistic string
 		var threshold float64
+		var warmupMs, sampleCount, sampleIntervalMs, durationMs int
 		bind := func(fset *flag.FlagSet) {
 			fset.StringVar(&monitors, "monitors", "", "comma-separated monitor names, e.g. TIME_FPS,MEMORY_STATIC")
 			fset.StringVar(&assertMonitor, "assert", "", "assert this monitor against --threshold")
 			fset.Float64Var(&threshold, "threshold", 0, "threshold for --assert")
 			fset.StringVar(&op, "op", "", "comparison for --assert: lt, lte, gt, gte, eq (default lte)")
+			fset.StringVar(&statistic, "statistic", "", "statistic to assert: min, max, mean, median, p95 (default mean)")
+			fset.IntVar(&warmupMs, "warmup-ms", 0, "milliseconds to wait before sampling starts")
+			fset.IntVar(&sampleCount, "sample-count", 0, "number of samples to take (default 1); mutually exclusive with --duration-ms")
+			fset.IntVar(&sampleIntervalMs, "sample-interval-ms", 0, "milliseconds between samples (default 16)")
+			fset.IntVar(&durationMs, "duration-ms", 0, "total sampling duration; sample count is derived from duration-ms / sample-interval-ms")
 		}
 		return runWithFlags(ctx, cmd, e, args, bind, func(ctx context.Context, s *session, fset *flag.FlagSet) error {
 			if assertMonitor == "" {
@@ -505,8 +511,16 @@ var cmdPerformance = &command{
 			if !wasSet(fset, "threshold") {
 				return usagef(fmt.Errorf("--assert requires --threshold"))
 			}
+			if wasSet(fset, "sample-count") && wasSet(fset, "duration-ms") {
+				return usagef(fmt.Errorf("--sample-count and --duration-ms are mutually exclusive"))
+			}
 			params := map[string]any{"monitor": assertMonitor, "threshold": threshold}
 			setIf(params, "op", op, op != "")
+			setIf(params, "statistic", statistic, statistic != "")
+			setIf(params, "warmup_ms", warmupMs, wasSet(fset, "warmup-ms"))
+			setIf(params, "sample_interval_ms", sampleIntervalMs, wasSet(fset, "sample-interval-ms"))
+			setIf(params, "sample_count", sampleCount, wasSet(fset, "sample-count"))
+			setIf(params, "duration_ms", durationMs, wasSet(fset, "duration-ms"))
 
 			raw, err := gwpop.Execute(ctx, s.Caller(), gwpop.Op{Action: "assert_performance", Params: params})
 			if err != nil {
