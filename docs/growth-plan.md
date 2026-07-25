@@ -100,6 +100,15 @@ Blog posts / dev logs that rank and get re-shared, in priority order:
 
 ## Positioning notes
 
+- **Lead with runtime-vs-editor, everywhere.** Surveyed the Asset Library's MCP
+  listings 2026-07-25: 12 assets, and by their descriptions all 12 are
+  editor/authoring tools (create scenes, nodes, scripts from inside the editor).
+  Stagehand is the only one aimed at a *running* game. That is the sharpest
+  differentiator available and it has to be in the first sentence of every
+  listing, blurb and post — a reader landing in that list will otherwise
+  pattern-match Stagehand as the thirteenth editor MCP. Corollary: do not rename
+  toward the crowd; "Godot Stagehand" standing apart from five variants of
+  "Godot MCP <adjective>" is an asset. Landed in the README 2026-07-25.
 - **The one-line pitch is already good**: "Playwright, but for game engines."
   It does the entire explanatory job for anyone who has done web testing. Lead
   with it everywhere; don't rewrite it.

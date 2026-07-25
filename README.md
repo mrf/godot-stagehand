@@ -4,6 +4,24 @@
 
 External automation for running Godot games, exposed as an MCP server for AI agents and as a CLI plus scenario runner for CI and terminal debugging — like Playwright, but for game engines.
 
+> ### Stagehand drives your *running game*, not the Godot editor.
+>
+> This is the thing to be clear about before you read any further, because most
+> Godot MCP servers do the opposite job. They are **authoring** tools: they open
+> the editor, create scenes and nodes, write scripts, wire up resources — an
+> agent building your game for you.
+>
+> Stagehand does none of that. It has no editor integration, cannot create a
+> scene, and never touches your project files. It attaches to a game that is
+> **already running and playing** — clicking real buttons, reading real node
+> state at runtime, taking real screenshots of real frames, catching real
+> regressions.
+>
+> **Want an agent to _build_ your game? Use an editor MCP server.
+> Want one to _play and test_ it? That's this.**
+>
+> The two are complements, not competitors — plenty of projects will want both.
+
 **Status: beta (v0.2.0), pre-1.0.** No binary releases are published yet; the
 supported install path today is building from source (see [Setup](#setup)).
 Tool schemas and the wire protocol may still change between minor versions.
@@ -15,9 +33,12 @@ Tool schemas and the wire protocol may still change between minor versions.
 Game testing is manual. You click through menus, eyeball the results, and hope
 you caught the regressions. Godot's own testing tools (GUT, GdUnit4) run
 in-process, inside the editor or a headless engine instance — they don't give
-an *external* process a live connection to a running game. A few projects are
-starting to fill that gap; Stagehand is one of them, focused on an MCP
-interface so AI agents can drive it directly.
+an *external* process a live connection to a running game. The Godot MCP servers
+that exist are aimed at the other half of the problem: helping an agent *author*
+a project from inside the editor, which leaves the running game just as
+unobservable as before.
+
+Stagehand fills the runtime half of that gap.
 
 Stagehand gives an MCP client — Claude, another AI agent, or your own
 MCP-calling script — a real connection to your running game. Click buttons,
