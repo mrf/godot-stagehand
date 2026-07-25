@@ -8,7 +8,10 @@ MCP server (Go) + Godot addon (GDScript) for external game automation and testin
 - `internal/mcpserver/` — MCP server, tool handlers
 - `internal/godotconn/` — WebSocket connection to Godot addon
 - `internal/selector/` — Selector parsing and validation
-- `addons/stagehand/` — GDScript addon (WebSocket server inside the game)
+- `addons/stagehand/` — GDScript addon (WebSocket server inside the game); the
+  **only** authoritative copy — see `docs/addon-sync-contract.md` before
+  editing `testdata/test_project/addons/stagehand` or
+  `examples/minimal-game/addons/stagehand` directly
 - `testdata/test_project/` — Minimal Godot project for integration tests
 
 ## Build & Run

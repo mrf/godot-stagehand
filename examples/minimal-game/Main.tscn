@@ -21,6 +21,9 @@ offset_bottom = 381.0
 [node name="Label" type="Label" parent="CanvasLayer/VBoxContainer"]
 text = "Hello from Stagehand!"
 
+[node name="Description" type="Label" parent="CanvasLayer/VBoxContainer"]
+text = "Test Button toggles the label above"
+
 [node name="Button" type="Button" parent="CanvasLayer/VBoxContainer"]
 text = "Test Button"
 

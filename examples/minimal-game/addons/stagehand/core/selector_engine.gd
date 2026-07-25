@@ -18,6 +18,7 @@ enum SelectorType {
 	TEXT,
 	META,
 	UNIQUE,
+	TEXT_EXACT,
 }
 
 
@@ -80,6 +81,12 @@ static func parse(selector: String) -> Dictionary:
 			return {}
 		return {type = SelectorType.GROUP, value = group_name}
 
+	if trimmed.begins_with("text="):
+		var exact_text: String = trimmed.substr(5)
+		if exact_text.is_empty():
+			return {}
+		return {type = SelectorType.TEXT_EXACT, value = exact_text}
+
 	if trimmed.begins_with("text:"):
 		var text_content: String = trimmed.substr(5)
 		if text_content.is_empty():
@@ -117,6 +124,8 @@ static func _resolve(tree: SceneTree, parsed: Dictionary) -> Array[Node]:
 			return _resolve_group(tree, value)
 		SelectorType.TEXT:
 			return _resolve_text(tree, value)
+		SelectorType.TEXT_EXACT:
+			return _resolve_text(tree, value, true)
 		SelectorType.META:
 			return _resolve_meta(tree, value)
 		SelectorType.UNIQUE:
@@ -140,6 +149,8 @@ static func _resolve_scoped(parent_node: Node, parsed: Dictionary) -> Array[Node
 			return _resolve_group_from_parent(parent_node, value)
 		SelectorType.TEXT:
 			return _resolve_text_from_parent(parent_node, value)
+		SelectorType.TEXT_EXACT:
+			return _resolve_text_from_parent(parent_node, value, true)
 		SelectorType.META:
 			return _resolve_meta_from_parent(parent_node, value)
 		SelectorType.UNIQUE:
@@ -186,14 +197,14 @@ static func _resolve_group(tree: SceneTree, group_name: String) -> Array[Node]:
 	return results
 
 
-static func _resolve_text(tree: SceneTree, text_pattern: String) -> Array[Node]:
+static func _resolve_text(tree: SceneTree, text_pattern: String, exact: bool = false) -> Array[Node]:
 	var root: Window = tree.root
 	if root == null:
 		return [] as Array[Node]
 	var results: Array[Node] = []
 	_walk(root, func(node: Node) -> void:
 		var node_text: String = _get_node_text(node)
-		if node_text != "" and _matches_pattern(node_text, text_pattern):
+		if node_text != "" and _matches_text(node_text, text_pattern, exact):
 			results.append(node)
 	)
 	return results
@@ -260,12 +271,12 @@ static func _resolve_group_from_parent(parent: Node, group_name: String) -> Arra
 	return results
 
 
-static func _resolve_text_from_parent(parent: Node, text_pattern: String) -> Array[Node]:
+static func _resolve_text_from_parent(parent: Node, text_pattern: String, exact: bool = false) -> Array[Node]:
 	var results: Array[Node] = []
 	_walk(parent, func(node: Node) -> void:
 		if node != parent:
 			var node_text: String = _get_node_text(node)
-			if node_text != "" and _matches_pattern(node_text, text_pattern):
+			if node_text != "" and _matches_text(node_text, text_pattern, exact):
 				results.append(node)
 	)
 	return results
@@ -357,6 +368,44 @@ static func _matches_pattern(text: String, pattern: String) -> bool:
 	if pattern.contains("*") or pattern.contains("?") or pattern.contains("["):
 		return text.match(pattern)
 	return text.to_lower().contains(pattern.to_lower())
+
+
+## Match node text against a text selector value.
+## When [param exact] is true, the node text (whitespace-trimmed) must equal the
+## pattern exactly, case-sensitively (the `text=` form). Otherwise the loose
+## `text:` semantics apply: glob match when the pattern contains *, ?, or [,
+## else a case-insensitive substring match.
+static func _matches_text(text: String, pattern: String, exact: bool) -> bool:
+	if exact:
+		return text.strip_edges() == pattern
+	return _matches_pattern(text, pattern)
+
+
+## Rank nodes so the most plausible interaction target comes first, for
+## disambiguating selectors that resolve to more than one node (e.g. a
+## descriptive Label and an actual Button both containing the same word).
+##
+## Tiers, highest priority first; order within a tier is preserved (stable):
+##   1. BaseButton and its subclasses (Button, CheckBox, OptionButton, ...).
+##   2. Other Controls that receive mouse input (mouse_filter != IGNORE).
+##      Labels default to MOUSE_FILTER_IGNORE and therefore sort below buttons.
+##   3. Everything else (ignore-filter Controls, Node2D, plain Nodes).
+static func rank_for_interaction(nodes: Array[Node]) -> Array[Node]:
+	var buttons: Array[Node] = []
+	var interactive: Array[Node] = []
+	var rest: Array[Node] = []
+	for node: Node in nodes:
+		if node is BaseButton:
+			buttons.append(node)
+		elif node is Control and (node as Control).mouse_filter != Control.MOUSE_FILTER_IGNORE:
+			interactive.append(node)
+		else:
+			rest.append(node)
+	var ranked: Array[Node] = []
+	ranked.append_array(buttons)
+	ranked.append_array(interactive)
+	ranked.append_array(rest)
+	return ranked
 
 
 ## Parse a meta expression "key=value" or "key" into [key, expected_value].

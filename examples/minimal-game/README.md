@@ -27,6 +27,12 @@ Godot prints a fresh authentication token at startup. Pass it as `auth_token`
 when calling `godot_connect`. The listener is loopback-only unless remote access
 is explicitly enabled.
 
+If instead the MCP server starts this project for you via `godot_launch`, it
+generates a per-launch `STAGEHAND_INSTANCE_TOKEN` and verifies it in the
+`ping` response's `instance_token` field — proof that the connection landed
+on the process it spawned, not some other Godot instance sharing the port.
+There's nothing to configure for this; it's automatic with `godot_launch`.
+
 ### Step 2: Start the Stagehand MCP server
 From the main godot-stagehand directory:
 ```bash
@@ -47,6 +53,12 @@ This example contains:
 
 Try using these Stagehand tools once connected:
 - `godot_get_tree` - Get the scene structure
-- `godot_find_nodes` - Find the "Test Button" 
-- `godot_click` - Click on the button by selector
+- `godot_find_nodes` with selector `text=Test Button` - exact-text match;
+  returns only the Button (the sibling "Test Button toggles the label above"
+  Description label does *not* match, since `text=` requires an exact string)
+- `godot_find_nodes` with selector `text:Test Button` - substring match;
+  returns both the Description label and the Button
+- `godot_click` with selector `text:Test Button` - resolves the same
+  ambiguous substring match, but ranks the interactive Button above the
+  plain Label and clicks it
 - `godot_get_property` - Read properties of the label

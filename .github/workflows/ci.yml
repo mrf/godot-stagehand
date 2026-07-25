@@ -33,6 +33,11 @@ jobs:
         run: GOOS=linux GOARCH=amd64 go build -o godot-stagehand-linux-amd64 .
 
   # ── GDScript parse check (headless Godot, version matrix) ─────────────────
+  # Parses testdata/test_project/addons/stagehand, a checked-in copy of the
+  # canonical addons/stagehand. go-quality's TestFixtureAddonCopiesMatchCanonical
+  # (addon_copy_drift_test.go) enforces byte-for-byte identity between them, so
+  # this job validates the exact addon code assets.go embeds into release
+  # binaries. See docs/addon-sync-contract.md.
   gdscript-parse:
     name: GDScript parse (Godot ${{ matrix.godot-version }})
     runs-on: ubuntu-latest
