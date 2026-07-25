@@ -69,15 +69,12 @@ func test_mouse_click_pushes_mouse_button_event() -> void:
 	assert_vector(event.position).is_equal(Vector2(120.0, 140.0))
 
 
-## A position-only click pushes the button event alone. The leading motion
-## event described in input_mouse's comment is emitted from
-## _gui_delivery_confirmed, which only runs for selector-driven clicks — so a
-## raw coordinate click never gets one, and hover-dependent Controls will not
-## see the pointer arrive. Documented here as current behavior.
-func test_position_click_pushes_no_leading_motion_event() -> void:
+## A real pointer always moves before it clicks, so a position-only click must
+## push a leading motion event too, not just for selector-driven clicks.
+func test_position_click_is_preceded_by_a_motion_event() -> void:
 	StagehandInputSimulator.input_mouse(get_tree(), {"position": _at(50.0, 60.0)})
 	assert_int(_recorder.of_type("InputEventMouseButton").size()).is_greater_equal(1)
-	assert_int(_recorder.of_type("InputEventMouseMotion").size()).is_equal(0)
+	assert_int(_recorder.of_type("InputEventMouseMotion").size()).is_greater_equal(1)
 
 
 func test_selector_click_is_preceded_by_a_motion_event() -> void:
