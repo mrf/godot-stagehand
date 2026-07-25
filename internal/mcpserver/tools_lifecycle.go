@@ -11,7 +11,9 @@ import (
 )
 
 var connectTool = mcp.NewTool("godot_connect",
-	mcp.WithDescription("Connect to a running Godot game with the stagehand addon enabled"),
+	mcp.WithDescription("Connect to a Godot game that is ALREADY running with the stagehand addon enabled. "+
+		"The default port 26700 is shared: the addon accepts many clients into one SceneTree, so connecting with defaults may attach you to a game another agent started, and both of you then mutate the same tree (cross-talk, nondeterministic tests). "+
+		"Prefer godot_launch, which starts your own private instance on an auto-assigned port; use godot_connect only for a game you know is yours, and pass its explicit port when one is running per agent."),
 	mcp.WithString("auth_token",
 		mcp.Required(),
 		mcp.Description("Authentication token for the current Godot session: the token printed at startup when generated, or the configured STAGEHAND_AUTH_TOKEN"),
@@ -21,8 +23,8 @@ var connectTool = mcp.NewTool("godot_connect",
 		mcp.DefaultString(launch.DefaultHost),
 	),
 	mcp.WithNumber("port",
-		mcp.Description("WebSocket port"),
-		mcp.DefaultNumber(26700),
+		mcp.Description("WebSocket port. The default 26700 is the addon's shared default and may belong to another agent's game; pass the port your own instance printed at startup. Required when STAGEHAND_MULTI is set."),
+		mcp.DefaultNumber(defaultSharedPort),
 	),
 	instanceIDOpt,
 )
@@ -33,7 +35,11 @@ func (s *Server) handleConnect(ctx context.Context, req mcp.CallToolRequest) (*m
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	host := req.GetString("host", launch.DefaultHost)
-	port := req.GetInt("port", 26700)
+	_, portSupplied := req.GetArguments()["port"]
+	if !portSupplied && multiInstanceModeEnabled() {
+		return mcp.NewToolResultError(explicitPortGuidance()), nil
+	}
+	port := req.GetInt("port", defaultSharedPort)
 	instanceID := req.GetString("instance_id", "default")
 	release, errResult := s.beginGodotCall()
 	if errResult != nil {
@@ -79,7 +85,7 @@ func (s *Server) handleConnect(ctx context.Context, req mcp.CallToolRequest) (*m
 	// Replace any existing entry for this instanceID (closes old conn/process).
 	s.instances.add(instanceID, host, port, conn, nil)
 
-	return mcp.NewToolResultText(fmt.Sprintf("Connected to Godot at %s:%d (instance_id=%q)\n%s", host, port, instanceID, string(resp.Result))), nil
+	return mcp.NewToolResultText(formatConnectSuccess(host, port, instanceID, string(resp.Result))), nil
 }
 
 var getGameStateTool = mcp.NewTool("godot_get_game_state",
