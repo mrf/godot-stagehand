@@ -41,13 +41,17 @@ var defaultLiveness = livenessConfig{
 type Connection struct {
 	addr string
 
-	mu          sync.Mutex
-	ws          *websocket.Conn
-	state       State
-	pending     map[int64]chan *Response
-	reconnected chan struct{} // closed when reconnect succeeds
-	authToken   string
-	liveness    livenessConfig
+	mu              sync.Mutex
+	ws              *websocket.Conn
+	state           State
+	pending         map[int64]chan *Response
+	reconnected     chan struct{} // closed when reconnect succeeds
+	reconnectDone   chan struct{} // closed when reconnectLoop returns, success or not
+	reconnectGaveUp bool          // true once the retry budget is exhausted or re-auth is rejected
+	authToken       string
+	liveness        livenessConfig
+
+	maxReconnectAttempts int // 0 = unlimited
 
 	writeMu   sync.Mutex // serializes WebSocket writes
 	nextID    atomic.Int64
@@ -66,16 +70,31 @@ func dialWithLiveness(
 	port int,
 	liveness livenessConfig,
 ) (*Connection, error) {
+	return dialWithLimits(ctx, host, port, liveness, configuredMaxReconnectAttempts())
+}
+
+// dialWithLimits is the common entry point behind Dial/dialWithLiveness; it
+// additionally takes the reconnect retry budget so tests can exercise
+// give-up behavior without depending on the environment or the (multi-minute)
+// production default.
+func dialWithLimits(
+	ctx context.Context,
+	host string,
+	port int,
+	liveness livenessConfig,
+	maxReconnectAttempts int,
+) (*Connection, error) {
 	if err := liveness.validate(); err != nil {
 		return nil, err
 	}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	c := &Connection{
-		addr:     addr,
-		state:    Connecting,
-		pending:  make(map[int64]chan *Response),
-		done:     make(chan struct{}),
-		liveness: liveness,
+		addr:                 addr,
+		state:                Connecting,
+		pending:              make(map[int64]chan *Response),
+		done:                 make(chan struct{}),
+		liveness:             liveness,
+		maxReconnectAttempts: maxReconnectAttempts,
 	}
 	ws, err := c.dialWebSocket(ctx, Connected)
 	if err != nil {

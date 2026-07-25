@@ -47,3 +47,29 @@ func TestStateString(t *testing.T) {
 		}
 	}
 }
+
+func TestConfiguredMaxReconnectAttempts(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		set  bool
+		want int
+	}{
+		{"unset uses bounded default", "", false, defaultMaxReconnectAttempts},
+		{"explicit zero means unlimited", "0", true, 0},
+		{"positive override", "5", true, 5},
+		{"negative falls back to default", "-1", true, defaultMaxReconnectAttempts},
+		{"garbage falls back to default", "banana", true, defaultMaxReconnectAttempts},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.set {
+				t.Setenv(maxReconnectAttemptsEnv, tt.env)
+			}
+			if got := configuredMaxReconnectAttempts(); got != tt.want {
+				t.Errorf("configuredMaxReconnectAttempts() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}

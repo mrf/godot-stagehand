@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mrf/godot-stagehand/internal/godotconn"
 )
 
 var statusTool = mcp.NewTool("godot_status",
@@ -27,6 +28,9 @@ func (s *Server) handleStatus(_ context.Context, _ mcp.CallToolRequest) (*mcp.Ca
 			fmt.Fprintf(&sb, "\n  [%s]\n", e.id)
 			if e.conn != nil {
 				fmt.Fprintf(&sb, "    Connection: %s\n", e.conn.State())
+				if e.conn.State() == godotconn.Disconnected && e.conn.ReconnectExhausted() {
+					sb.WriteString("    Note:       gave up reconnecting; instance appears permanently unreachable. Use godot_connect or godot_launch to retry.\n")
+				}
 				fmt.Fprintf(&sb, "    Address:    %s:%d\n", e.host, e.port)
 			} else {
 				sb.WriteString("    Connection: disconnected\n")
