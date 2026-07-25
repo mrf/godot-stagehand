@@ -1,6 +1,19 @@
 # Godot Stagehand
 
-[Go code quality report](https://mrf.github.io/godot-stagehand/) (gofmt, vet, build, tests, coverage; the Go module only — not the GDScript addon)
+[![GitHub issues](https://img.shields.io/github/issues/mrf/godot-stagehand)](https://github.com/mrf/godot-stagehand/issues)
+[![GitHub pull requests](https://img.shields.io/github/issues-pr/mrf/godot-stagehand)](https://github.com/mrf/godot-stagehand/pulls)
+[![License](https://img.shields.io/github/license/mrf/godot-stagehand)](LICENSE)
+[![Go coverage](https://raw.githubusercontent.com/mrf/godot-stagehand/badges/coverage-go-badge.svg)](https://mrf.github.io/godot-stagehand/)
+
+The Go coverage badge is the same number the [Go code quality
+report](https://mrf.github.io/godot-stagehand/) shows (gofmt, vet, build,
+tests, coverage; the Go module only). There is no GDScript addon coverage
+badge: GdUnit4 (the addon's test framework, v6.1.3) has no built-in line
+coverage instrumentation, and a naming-based "files under test" proxy was
+rejected as unreliable — some addon files are only exercised indirectly by a
+differently-named test (`plugin.gd` via `test_stagehand_editor_activation.gd`,
+not a `test_plugin.gd`), so filename matching alone misclassifies which files
+are actually tested.
 
 External automation for running Godot games, exposed as an MCP server for AI agents and as a CLI plus scenario runner for CI and terminal debugging. Think Playwright, but for game engines.
 
