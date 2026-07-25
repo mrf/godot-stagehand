@@ -2,10 +2,12 @@ package launch
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestConfigDefaults(t *testing.T) {
@@ -234,4 +236,36 @@ sleep 2
 
 func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
+}
+
+// TestWaitForProcessExitReturnsOnSend verifies that waitForProcessExit
+// unblocks as soon as the wait channel receives, well before the timeout.
+func TestWaitForProcessExitReturnsOnSend(t *testing.T) {
+	wait := make(chan error, 1)
+	wait <- errors.New("exit status 1")
+
+	start := time.Now()
+	exited := waitForProcessExit(wait, 5*time.Second)
+	elapsed := time.Since(start)
+
+	if !exited {
+		t.Fatal("expected waitForProcessExit to report exit")
+	}
+	if elapsed > time.Second {
+		t.Fatalf("waitForProcessExit took %v, expected near-instant return", elapsed)
+	}
+}
+
+// TestWaitForProcessExitTimesOut verifies that waitForProcessExit gives up
+// after timeout instead of blocking forever on a process that never sends,
+// which is the LOW finding this bounds (a killed process that ignores
+// SIGKILL, e.g. stuck in uninterruptible I/O, must not hang launch cleanup).
+func TestWaitForProcessExitTimesOut(t *testing.T) {
+	wait := make(chan error) // never sent to
+
+	exited := waitForProcessExit(wait, 20*time.Millisecond)
+
+	if exited {
+		t.Fatal("expected waitForProcessExit to report timeout, not exit")
+	}
 }

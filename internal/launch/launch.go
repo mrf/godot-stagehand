@@ -80,6 +80,11 @@ const (
 	DefaultPort = 26700
 	// defaultTimeout is used when TimeoutMs is zero.
 	defaultTimeout = 30000 // 30 seconds
+	// processExitWaitTimeout bounds how long launch cleanup waits for a killed
+	// Godot process to actually exit, matching the timeout Kill applies to the
+	// same wait. Without it, a process that ignores SIGKILL (e.g. stuck in
+	// uninterruptible I/O) would hang launch's failure paths forever.
+	processExitWaitTimeout = 5 * time.Second
 )
 
 // LaunchResult holds information about a successfully launched Godot process.
@@ -238,7 +243,7 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 	if err != nil {
 		// Clean up process on failure.
 		_ = cmd.Process.Kill()
-		<-wait // ensure goroutine completes
+		waitForProcessExit(wait, processExitWaitTimeout)
 		return nil, fmt.Errorf("Godot failed to become ready: %w", err)
 	}
 	// We will keep the connection open on success; caller is responsible for
@@ -246,7 +251,7 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 	cleanup := func() {
 		conn.Close()
 		_ = cmd.Process.Kill()
-		<-wait
+		waitForProcessExit(wait, processExitWaitTimeout)
 	}
 	if err := conn.Authenticate(launchCtx, authToken); err != nil {
 		cleanup()
@@ -366,13 +371,24 @@ func (r *LaunchResult) Kill() error {
 	if err := r.Process.Process.Kill(); err != nil {
 		return err
 	}
-	select {
-	case <-r.waitChan:
-	case <-time.After(5 * time.Second):
+	if !waitForProcessExit(r.waitChan, processExitWaitTimeout) {
 		return fmt.Errorf("timed out waiting for Godot process to exit")
 	}
 	r.removeOwnedUserDataDir()
 	return nil
+}
+
+// waitForProcessExit blocks until wait receives the process's exit error or
+// timeout elapses, whichever comes first. It reports whether the process
+// exited within the timeout; a killed process that fails to exit in time
+// leaks its goroutine rather than hanging the caller forever.
+func waitForProcessExit(wait <-chan error, timeout time.Duration) bool {
+	select {
+	case <-wait:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
 }
 
 // removeOwnedUserDataDir deletes the temporary user:// root allocated for this

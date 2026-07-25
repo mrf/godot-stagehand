@@ -785,6 +785,32 @@ addressed.
 | **`godot_launch` as the paved road, `godot_connect` as the escape hatch** | Auto-assigned ports make accidental cross-agent SceneTree sharing structurally unlikely for the common case; `godot_connect`'s shared default port is kept for attaching to a game a human already started |
 | **Auth token over unauthenticated localhost** | Any localhost peer can otherwise execute arbitrary GDScript; a per-session token (printed at startup or `STAGEHAND_AUTH_TOKEN`) is a low-cost gate, not a real security boundary |
 
+## Security Model / Threat Model
+
+Stagehand's WebSocket server is designed for local development and test
+automation, not for exposure to untrusted networks or processes:
+
+- **Any peer that reaches the port can execute arbitrary GDScript** with the
+  full privileges of the running game process (`godot_evaluate`,
+  `godot_call_method`, and friends are unrestricted code execution by design,
+  not a bug). The `auth_token` gate (see above) stops a *casual* second
+  connection, such as another agent guessing the shared default port — it
+  does not stop a co-resident process that can read the token from the
+  addon's stdout, the environment, or process memory. Treat it as a
+  collision-avoidance mechanism, not an authentication boundary.
+- **The server binds to `127.0.0.1` by default and is meant to stay there.**
+  Anything that makes the port reachable from outside localhost (port
+  forwarding, binding `0.0.0.0`, exposing it through a container/VM without a
+  firewall) turns "any local peer" into "any network peer" for the same
+  arbitrary-code-execution surface.
+- **Release exports require an explicit opt-in** (`STAGEHAND_ALLOW_RELEASE=1`)
+  precisely because shipping this listener in a distributed build would hand
+  arbitrary code execution to anyone who can reach the running game.
+- **Scope:** this is an accepted risk for the tool's intended use (a
+  developer or CI job automating their own local/headless Godot instance),
+  not a gap to "fix" with stronger auth — if the trust model changes (e.g.
+  remote automation across a network), revisit this section first.
+
 ## Current Troubleshooting Guide
 
 ### Common Issues and Solutions:
