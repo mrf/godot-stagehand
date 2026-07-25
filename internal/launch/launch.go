@@ -35,6 +35,24 @@ type Config struct {
 	ExtraArgs []string
 	// TimeoutMs is the maximum time to wait for Godot to start and become ready, in milliseconds.
 	TimeoutMs int
+	// ShareUserData opts out of per-instance user:// isolation, letting this
+	// launch read and write the project's real user data directory. The zero
+	// value isolates, so concurrent launches of one project cannot corrupt each
+	// other's saves and settings. Opt out only when persistence across launches
+	// matters more than isolation. See userdata.go for the mechanism.
+	ShareUserData bool
+	// UserDataDir pins the per-instance user data root instead of allocating a
+	// fresh temporary directory. Ignored when ShareUserData is true. A caller
+	// supplied directory is never deleted by Kill.
+	UserDataDir string
+	// SkipImport opts out of the import-once contract (see importonce.go).
+	// The zero value performs a serialized headless import before spawning the
+	// game, so a fan-out of concurrent launches never cold-imports in parallel.
+	SkipImport bool
+	// ImportTimeoutMs bounds the headless import, in milliseconds. Defaults to
+	// defaultImportTimeout, which is deliberately longer than TimeoutMs because
+	// a cold import of a large project dwarfs the readiness wait.
+	ImportTimeoutMs int
 }
 
 const (
@@ -61,6 +79,17 @@ type LaunchResult struct {
 	Conn *godotconn.Connection
 	// Process is the underlying os/exec.Cmd. Callers can use it to wait for termination.
 	Process *exec.Cmd
+	// UserDataDir is the isolated user:// root this instance was given, or ""
+	// when the launch shares the project's real user data directory.
+	UserDataDir string
+	// UserDataWarning explains why per-instance user:// isolation could not be
+	// applied, or "" when the instance is isolated. Callers should surface it:
+	// without isolation, concurrent launches of one project share user://.
+	UserDataWarning string
+	// ownedUserDataDir is the temporary user data root this launch allocated
+	// and is therefore responsible for removing in Kill. Empty when the caller
+	// supplied UserDataDir or opted out of isolation.
+	ownedUserDataDir string
 	// waitChan is a channel that will receive the process exit error.
 	waitChan <-chan error
 }
@@ -101,6 +130,31 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		return nil, err
 	}
 
+	// Populate the shared res://.godot import cache exactly once, to completion,
+	// before spawning anything. Godot cannot relocate that cache, so this is
+	// what makes a fan-out of concurrent same-project launches safe.
+	if !cfg.SkipImport {
+		importTimeout := time.Duration(cfg.ImportTimeoutMs) * time.Millisecond
+		if importTimeout == 0 {
+			importTimeout = defaultImportTimeout
+		}
+		if err := ensureProjectImported(ctx, godotBin, cfg.ProjectPath, importTimeout); err != nil {
+			return nil, err
+		}
+	}
+
+	// Give this instance its own user:// so two games running the same project
+	// do not overwrite each other's saves, settings and logs.
+	isolation, err := resolveUserDataIsolation(cfg, godotBin)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if !isolation.handedOff {
+			isolation.discard()
+		}
+	}()
+
 	// Generate a per-launch nonce so we can prove the process we connect to is
 	// the one we spawned: we pass it via env and the addon echoes it back in the
 	// ping response. A different instance holding the port would echo a
@@ -140,6 +194,9 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		fmt.Sprintf("STAGEHAND_AUTH_TOKEN=%s", authToken),
 		fmt.Sprintf("STAGEHAND_ALLOW_UNSAFE=%s", unsafeSetting),
 	)
+	// Appended last so the isolated data paths win over anything inherited:
+	// os/exec keeps the final occurrence of a duplicated variable.
+	cmd.Env = append(cmd.Env, isolation.env...)
 	// Redirect stdout/stderr to a log file (or discard?). For now, discard.
 	// We could optionally capture logs, but we'll discard.
 	cmd.Stdout = io.Discard
@@ -213,6 +270,7 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		return nil, err
 	}
 
+	isolation.handedOff = true
 	return &LaunchResult{
 		PID:              cmd.Process.Pid,
 		Host:             host,
@@ -221,6 +279,9 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		StagehandVersion: ping.StagehandVersion,
 		Conn:             conn,
 		Process:          cmd,
+		UserDataDir:      isolation.dir,
+		UserDataWarning:  isolation.warning,
+		ownedUserDataDir: isolation.owned,
 		waitChan:         wait,
 	}, nil
 }
@@ -268,9 +329,11 @@ func verifyInstanceToken(got, want, host string, port int) error {
 	return fmt.Errorf("connected to a different Stagehand instance on %s:%d (instance token mismatch): the process we launched failed to bind the port — free the port (kill the stale instance) or choose another port", host, port)
 }
 
-// Kill terminates the Godot process and waits for it to exit.
+// Kill terminates the Godot process and waits for it to exit, then removes the
+// isolated user data directory this launch allocated (if any).
 func (r *LaunchResult) Kill() error {
 	if r.Process == nil || r.Process.Process == nil {
+		r.removeOwnedUserDataDir()
 		return nil
 	}
 	if err := r.Process.Process.Kill(); err != nil {
@@ -281,7 +344,20 @@ func (r *LaunchResult) Kill() error {
 	case <-time.After(5 * time.Second):
 		return fmt.Errorf("timed out waiting for Godot process to exit")
 	}
+	r.removeOwnedUserDataDir()
 	return nil
+}
+
+// removeOwnedUserDataDir deletes the temporary user:// root allocated for this
+// launch. A caller-supplied Config.UserDataDir is never removed. A hard-killed
+// MCP process cannot run this, so temporary roots can survive a crash; they
+// live under the OS temp directory and are named godot-stagehand-userdata-*.
+func (r *LaunchResult) removeOwnedUserDataDir() {
+	if r.ownedUserDataDir == "" {
+		return
+	}
+	_ = os.RemoveAll(r.ownedUserDataDir)
+	r.ownedUserDataDir = ""
 }
 
 // Wait waits for the Godot process to exit and returns the exit error.
