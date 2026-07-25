@@ -205,11 +205,11 @@ func (s *stubGodot) handleReq(req godotconn.Request) godotconn.Response {
 		b, _ := json.Marshal(assertResult)
 		resp.Result = b
 	case "record_start":
-		resp.Result = rawJSON(`{"success":true,"output_path":"res://recordings/run1.json"}`)
+		resp.Result = rawJSON(`{"success":true,"recording":true,"session_id":"sess-1","output_path":"res://recordings/run1.json"}`)
 	case "record_stop":
-		resp.Result = rawJSON(`{"success":true,"frames":42}`)
+		resp.Result = rawJSON(`{"success":true,"session_id":"sess-1","events_count":42,"duration_ms":1500,"path":"res://recordings/run1.json"}`)
 	case "replay":
-		resp.Result = rawJSON(`{"success":true,"input_path":"res://recordings/run1.json"}`)
+		resp.Result = rawJSON(`{"success":true,"replayed":true,"events_count":42,"duration_ms":750}`)
 	default:
 		resp.Error = &godotconn.RPCError{Code: godotconn.CodeMethodNotFound, Message: "unknown method: " + req.Method}
 	}
@@ -1560,6 +1560,20 @@ func TestE2E_AssertPerformance(t *testing.T) {
 	})
 }
 
+// stubParams unmarshals the params of the last stub call to method.
+func stubParams(t *testing.T, stub *stubGodot, method string) map[string]any {
+	t.Helper()
+	raw := stub.lastCallParams(method)
+	if raw == nil {
+		t.Fatalf("no %s params recorded", method)
+	}
+	var p map[string]any
+	if err := json.Unmarshal(raw, &p); err != nil {
+		t.Fatalf("unmarshal %s params: %v", method, err)
+	}
+	return p
+}
+
 func TestE2E_RecordStart(t *testing.T) {
 	srv, stub := setupE2ETest(t)
 	ctx := context.Background()
@@ -1574,20 +1588,60 @@ func TestE2E_RecordStart(t *testing.T) {
 		t.Fatalf("record_start error: %+v", result)
 	}
 	text := mustText(t, result)
-	if !strings.Contains(text, "success") {
-		t.Errorf("record_start result missing %q: %s", "success", text)
+	for _, want := range []string{"recording", "session_id"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("record_start result missing %q: %s", want, text)
+		}
 	}
 
 	if n := stub.callCount("record_start"); n != 1 {
 		t.Errorf("expected 1 record_start call, got %d", n)
 	}
-	params := stub.lastCallParams("record_start")
-	var p map[string]any
-	if err := json.Unmarshal(params, &p); err != nil {
-		t.Fatalf("unmarshal record_start params: %v", err)
-	}
+	p := stubParams(t, stub, "record_start")
 	if p["output_path"] != "res://recordings/run1.json" {
 		t.Errorf("record_start output_path = %v, want res://recordings/run1.json", p["output_path"])
+	}
+	if p["include_mouse_move"] != false {
+		t.Errorf("record_start include_mouse_move = %v, want false (default)", p["include_mouse_move"])
+	}
+}
+
+// TestE2E_RecordStartOutputPathOptional pins that output_path is optional: the
+// addon picks a default path when the caller does not supply one.
+func TestE2E_RecordStartOutputPathOptional(t *testing.T) {
+	srv, stub := setupE2ETest(t)
+	ctx := context.Background()
+
+	result, err := srv.handleRecordStart(ctx, toolReq(map[string]any{}))
+	if err != nil {
+		t.Fatalf("handleRecordStart: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("record_start without output_path errored: %+v", result)
+	}
+	p := stubParams(t, stub, "record_start")
+	if got, ok := p["output_path"]; ok && got != "" {
+		t.Errorf("record_start forwarded output_path = %v, want omitted or empty", got)
+	}
+}
+
+func TestE2E_RecordStartIncludeMouseMove(t *testing.T) {
+	srv, stub := setupE2ETest(t)
+	ctx := context.Background()
+
+	result, err := srv.handleRecordStart(ctx, toolReq(map[string]any{
+		"output_path":        "res://recordings/run1.json",
+		"include_mouse_move": true,
+	}))
+	if err != nil {
+		t.Fatalf("handleRecordStart: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("record_start error: %+v", result)
+	}
+	p := stubParams(t, stub, "record_start")
+	if p["include_mouse_move"] != true {
+		t.Errorf("record_start include_mouse_move = %v, want true", p["include_mouse_move"])
 	}
 }
 
@@ -1603,8 +1657,10 @@ func TestE2E_RecordStop(t *testing.T) {
 		t.Fatalf("record_stop error: %+v", result)
 	}
 	text := mustText(t, result)
-	if !strings.Contains(text, "success") {
-		t.Errorf("record_stop result missing %q: %s", "success", text)
+	for _, want := range []string{"session_id", "events_count", "duration_ms", "path"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("record_stop result missing %q: %s", want, text)
+		}
 	}
 
 	if n := stub.callCount("record_stop"); n != 1 {
@@ -1617,7 +1673,7 @@ func TestE2E_Replay(t *testing.T) {
 	ctx := context.Background()
 
 	result, err := srv.handleReplay(ctx, toolReq(map[string]any{
-		"input_path": "res://recordings/run1.json",
+		"recording_path": "res://recordings/run1.json",
 	}))
 	if err != nil {
 		t.Fatalf("handleReplay: %v", err)
@@ -1626,20 +1682,98 @@ func TestE2E_Replay(t *testing.T) {
 		t.Fatalf("replay error: %+v", result)
 	}
 	text := mustText(t, result)
-	if !strings.Contains(text, "success") {
-		t.Errorf("replay result missing %q: %s", "success", text)
+	for _, want := range []string{"replayed", "events_count", "duration_ms"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("replay result missing %q: %s", want, text)
+		}
 	}
 
 	if n := stub.callCount("replay"); n != 1 {
 		t.Errorf("expected 1 replay call, got %d", n)
 	}
-	params := stub.lastCallParams("replay")
-	var p map[string]any
-	if err := json.Unmarshal(params, &p); err != nil {
-		t.Fatalf("unmarshal replay params: %v", err)
-	}
+	p := stubParams(t, stub, "replay")
 	if p["input_path"] != "res://recordings/run1.json" {
 		t.Errorf("replay input_path = %v, want res://recordings/run1.json", p["input_path"])
+	}
+	if p["speed"] != 1.0 {
+		t.Errorf("replay speed = %v, want 1.0 (default)", p["speed"])
+	}
+	if p["wait_for_ready"] != true {
+		t.Errorf("replay wait_for_ready = %v, want true (default)", p["wait_for_ready"])
+	}
+}
+
+// TestE2E_ReplayInputPathAlias keeps the pre-vrj.6 parameter name working: the
+// tool was shipped with `input_path`, which is now a deprecated alias for
+// `recording_path`.
+func TestE2E_ReplayInputPathAlias(t *testing.T) {
+	srv, stub := setupE2ETest(t)
+	ctx := context.Background()
+
+	result, err := srv.handleReplay(ctx, toolReq(map[string]any{
+		"input_path": "res://recordings/legacy.json",
+	}))
+	if err != nil {
+		t.Fatalf("handleReplay: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("replay via input_path alias errored: %+v", result)
+	}
+	p := stubParams(t, stub, "replay")
+	if p["input_path"] != "res://recordings/legacy.json" {
+		t.Errorf("replay input_path = %v, want res://recordings/legacy.json", p["input_path"])
+	}
+}
+
+func TestE2E_ReplaySpeed(t *testing.T) {
+	srv, stub := setupE2ETest(t)
+	ctx := context.Background()
+
+	result, err := srv.handleReplay(ctx, toolReq(map[string]any{
+		"recording_path": "res://recordings/run1.json",
+		"speed":          4.0,
+		"wait_for_ready": false,
+	}))
+	if err != nil {
+		t.Fatalf("handleReplay: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("replay error: %+v", result)
+	}
+	p := stubParams(t, stub, "replay")
+	if p["speed"] != 4.0 {
+		t.Errorf("replay speed = %v, want 4.0", p["speed"])
+	}
+	if p["wait_for_ready"] != false {
+		t.Errorf("replay wait_for_ready = %v, want false", p["wait_for_ready"])
+	}
+}
+
+// TestE2E_ReplayRejectsBadInput pins client-side validation: a missing path or a
+// non-positive speed is rejected in Go, before any RPC reaches the game.
+func TestE2E_ReplayRejectsBadInput(t *testing.T) {
+	tests := []struct {
+		name string
+		args map[string]any
+	}{
+		{"missing_path", map[string]any{}},
+		{"zero_speed", map[string]any{"recording_path": "res://r.json", "speed": 0.0}},
+		{"negative_speed", map[string]any{"recording_path": "res://r.json", "speed": -1.0}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv, stub := setupE2ETest(t)
+			result, err := srv.handleReplay(context.Background(), toolReq(tt.args))
+			if err != nil {
+				t.Fatalf("handleReplay: %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("expected error result for %s, got %+v", tt.name, result)
+			}
+			if n := stub.callCount("replay"); n != 0 {
+				t.Errorf("expected no replay RPC for %s, got %d", tt.name, n)
+			}
+		})
 	}
 }
 

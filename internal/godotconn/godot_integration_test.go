@@ -815,34 +815,7 @@ func TestSmokeClick(t *testing.T) {
 	conn, logPath := setupGodotTest(t)
 	const controllerSelector = "/root/TestScene"
 
-	queryCtx, queryCancel := callCtx()
-	defer queryCancel()
-	btnQueryResp, err := conn.Call(queryCtx, "query_nodes", map[string]any{
-		"selector": "class:Button",
-	})
-	if err != nil {
-		t.Fatalf("query_nodes for button failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
-	}
-
-	var btnQueryResult map[string]any
-	if err := json.Unmarshal(btnQueryResp.Result, &btnQueryResult); err != nil {
-		t.Fatalf("unmarshal button query result: %v; raw=%s", err, btnQueryResp.Result)
-	}
-
-	buttons, ok := btnQueryResult["nodes"].([]any)
-	if !ok || len(buttons) == 0 {
-		t.Fatalf("no buttons found in scene for click test; raw=%s", btnQueryResp.Result)
-	}
-
-	buttonData, ok := buttons[0].(map[string]any)
-	if !ok {
-		t.Fatalf("first button has wrong type: %T", buttons[0])
-	}
-
-	buttonPath, exists := buttonData["path"].(string)
-	if !exists {
-		t.Fatalf("button doesn't have path: %v", buttonData)
-	}
+	buttonPath := firstButtonPath(t, conn, logPath)
 
 	before := getIntProperty(t, conn, logPath, controllerSelector, "click_count")
 
@@ -1022,4 +995,170 @@ func TestSmokeAllMvpTools(t *testing.T) {
 	t.Run("click", TestSmokeClick)
 	t.Run("press_key", TestSmokePressKey)
 	t.Run("press_action", TestSmokePressAction)
+}
+
+// TestSmokeRecordReplay is the end-to-end proof for
+// godot-stagehand-phase3-vrj.6: it records a real click, writes the recording
+// to disk, resets the observable counter, and replays the file — asserting the
+// replayed input produces the same state change the live click did. A replay
+// that reports success without the counter advancing fails here.
+func TestSmokeRecordReplay(t *testing.T) {
+	conn, logPath := setupGodotTest(t)
+	const controllerSelector = "/root/TestScene"
+	const recordingPath = "user://stagehand_test_recordings/click_seq.json"
+
+	buttonPath := firstButtonPath(t, conn, logPath)
+
+	// --- record -------------------------------------------------------------
+	startCtx, startCancel := callCtx()
+	defer startCancel()
+	startResp, err := conn.Call(startCtx, "record_start", map[string]any{
+		"output_path":        recordingPath,
+		"include_mouse_move": false,
+	})
+	if err != nil {
+		t.Fatalf("record_start failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
+	}
+	var startResult struct {
+		Recording bool   `json:"recording"`
+		SessionID string `json:"session_id"`
+	}
+	if err := json.Unmarshal(startResp.Result, &startResult); err != nil {
+		t.Fatalf("unmarshal record_start result: %v; raw=%s", err, startResp.Result)
+	}
+	if !startResult.Recording {
+		t.Fatalf("record_start did not report recording: %s", startResp.Result)
+	}
+	if startResult.SessionID == "" {
+		t.Fatalf("record_start returned no session_id: %s", startResp.Result)
+	}
+
+	liveBefore := getIntProperty(t, conn, logPath, controllerSelector, "click_count")
+	clickButton(t, conn, logPath, buttonPath)
+	assertCounterIncremented(t, conn, logPath, controllerSelector, "click_count", liveBefore)
+
+	stopCtx, stopCancel := callCtx()
+	defer stopCancel()
+	stopResp, err := conn.Call(stopCtx, "record_stop", nil)
+	if err != nil {
+		t.Fatalf("record_stop failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
+	}
+	var stopResult struct {
+		SessionID   string `json:"session_id"`
+		EventsCount int    `json:"events_count"`
+		DurationMS  int    `json:"duration_ms"`
+		Path        string `json:"path"`
+	}
+	if err := json.Unmarshal(stopResp.Result, &stopResult); err != nil {
+		t.Fatalf("unmarshal record_stop result: %v; raw=%s", err, stopResp.Result)
+	}
+	if stopResult.SessionID != startResult.SessionID {
+		t.Errorf("record_stop session_id = %q, want %q", stopResult.SessionID, startResult.SessionID)
+	}
+	if stopResult.Path != recordingPath {
+		t.Errorf("record_stop path = %q, want %q", stopResult.Path, recordingPath)
+	}
+	if stopResult.EventsCount == 0 {
+		t.Fatalf("record captured no events; the click never reached the recorder's _input()\nGodot log:\n%s",
+			readFileBestEffort(logPath))
+	}
+	t.Logf("recorded: session=%s events=%d duration_ms=%d path=%s",
+		stopResult.SessionID, stopResult.EventsCount, stopResult.DurationMS, stopResult.Path)
+	if stopResult.DurationMS < 0 {
+		t.Errorf("record_stop duration_ms = %d, want >= 0", stopResult.DurationMS)
+	}
+
+	// --- replay -------------------------------------------------------------
+	// Reset the counter so the replay's effect cannot be confused with the
+	// live click that produced the recording.
+	resetCtx, resetCancel := callCtx()
+	defer resetCancel()
+	if _, err := conn.Call(resetCtx, "set_property", map[string]any{
+		"selector": controllerSelector,
+		"property": "click_count",
+		"value":    0,
+	}); err != nil {
+		t.Fatalf("reset click_count failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
+	}
+	if got := getIntProperty(t, conn, logPath, controllerSelector, "click_count"); got != 0 {
+		t.Fatalf("click_count = %d after reset, want 0", got)
+	}
+
+	replayCtx, replayCancel := callCtx()
+	defer replayCancel()
+	replayResp, err := conn.Call(replayCtx, "replay", map[string]any{
+		"recording_path": recordingPath,
+		"speed":          4.0,
+		"wait_for_ready": true,
+	})
+	if err != nil {
+		t.Fatalf("replay failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
+	}
+	var replayResult struct {
+		Replayed    bool `json:"replayed"`
+		EventsCount int  `json:"events_count"`
+		DurationMS  int  `json:"duration_ms"`
+	}
+	if err := json.Unmarshal(replayResp.Result, &replayResult); err != nil {
+		t.Fatalf("unmarshal replay result: %v; raw=%s", err, replayResp.Result)
+	}
+	if !replayResult.Replayed {
+		t.Fatalf("replay did not report replayed: %s", replayResp.Result)
+	}
+	if replayResult.EventsCount != stopResult.EventsCount {
+		t.Errorf("replay events_count = %d, want %d (everything recorded should replay)",
+			replayResult.EventsCount, stopResult.EventsCount)
+	}
+
+	t.Logf("replayed: events=%d duration_ms=%d", replayResult.EventsCount, replayResult.DurationMS)
+
+	assertCounterIncremented(t, conn, logPath, controllerSelector, "click_count", 0)
+}
+
+// firstButtonPath resolves the node path of the first Button in the running
+// scene, which the click-driven smoke tests act on.
+func firstButtonPath(t *testing.T, conn *Connection, logPath string) string {
+	t.Helper()
+	ctx, cancel := callCtx()
+	defer cancel()
+	resp, err := conn.Call(ctx, "query_nodes", map[string]any{"selector": "class:Button"})
+	if err != nil {
+		t.Fatalf("query_nodes for button failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
+	}
+	var result struct {
+		Nodes []struct {
+			Path string `json:"path"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		t.Fatalf("unmarshal button query result: %v; raw=%s", err, resp.Result)
+	}
+	if len(result.Nodes) == 0 || result.Nodes[0].Path == "" {
+		t.Fatalf("no buttons found in scene; raw=%s", resp.Result)
+	}
+	return result.Nodes[0].Path
+}
+
+// clickButton issues a left click at the named node and fails if the RPC
+// reports anything but success.
+func clickButton(t *testing.T, conn *Connection, logPath, selector string) {
+	t.Helper()
+	ctx, cancel := callCtx()
+	defer cancel()
+	resp, err := conn.Call(ctx, "input_mouse", map[string]any{
+		"selector": selector,
+		"button":   "left",
+	})
+	if err != nil {
+		t.Fatalf("input_mouse click failed: %v\nGodot log:\n%s", err, readFileBestEffort(logPath))
+	}
+	var result struct {
+		Success bool `json:"success"`
+	}
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		t.Fatalf("unmarshal click result: %v; raw=%s", err, resp.Result)
+	}
+	if !result.Success {
+		t.Fatalf("click reported failure: %s\nGodot log:\n%s", resp.Result, readFileBestEffort(logPath))
+	}
 }

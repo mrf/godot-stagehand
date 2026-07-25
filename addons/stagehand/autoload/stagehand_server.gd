@@ -20,6 +20,8 @@ const BIND_FAILURE_EXIT_CODE: int = 70
 ## otherwise a transient network flap would be indistinguishable from the
 ## client actually going away and would kill the game mid-session.
 const QUIT_ON_DISCONNECT_GRACE_MS: int = 10000
+## Replay speed used when the client does not ask for one: realtime.
+const RECORDER_SPEED_DEFAULT: float = 1.0
 
 # These scripts are preloaded into SCREAMING_SNAKE_CASE constants rather than
 # referenced by their global `class_name`. Two constraints force this:
@@ -601,11 +603,12 @@ func _handle_wait_for_property(params: Variant) -> Dictionary:
 
 func _handle_record_start(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
+	# An absent or empty output_path means "pick one" — the recorder writes to a
+	# session-named file under user:// so a caller need not invent a path.
 	var output_path: String = p.get("output_path", "")
-	if output_path.is_empty():
-		return {"error": "Missing output_path"}
+	var include_mouse_move: bool = p.get("include_mouse_move", false)
 	_ensure_recorder()
-	return _recorder.start_recording(output_path)
+	return _recorder.start_recording(output_path, include_mouse_move)
 
 
 func _handle_record_stop(_unused_params: Variant) -> Dictionary:
@@ -615,11 +618,21 @@ func _handle_record_stop(_unused_params: Variant) -> Dictionary:
 
 func _handle_replay(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	var input_path: String = p.get("input_path", "")
-	if input_path.is_empty():
-		return {"error": "Missing input_path"}
+	# `input_path` is the pre-vrj.6 spelling, still accepted so an older client
+	# can drive this addon.
+	var recording_path: String = p.get("recording_path", "")
+	if recording_path.is_empty():
+		recording_path = p.get("input_path", "")
+	if recording_path.is_empty():
+		return {"error": "Missing recording_path"}
+	# JSON has a single number type, so a speed of 1.0 arrives as an int;
+	# _to_float widens it rather than letting the typed assignment drop it.
+	var speed: float = RECORDER_SPEED_DEFAULT
+	if p.has("speed"):
+		speed = _to_float(p.get("speed"))
+	var wait_for_ready: bool = p.get("wait_for_ready", true)
 	_ensure_recorder()
-	return await _recorder.start_replay(input_path)
+	return await _recorder.start_replay(recording_path, speed, wait_for_ready)
 
 
 func _ensure_recorder() -> void:
@@ -631,7 +644,7 @@ func _ensure_recorder() -> void:
 func _stop() -> void:
 	if not _active:
 		return
-	if _recorder != null and _recorder._recording:
+	if _recorder != null and _recorder.is_recording():
 		var _result: Dictionary = _recorder.stop_recording()
 	for peer_id: int in _clients:
 		var ws: WebSocketPeer = _clients[peer_id]

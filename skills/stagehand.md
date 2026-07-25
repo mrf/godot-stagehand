@@ -409,19 +409,25 @@ godot_assert_performance(monitor="MEMORY_STATIC", threshold=536870912, op="lte")
 
 ### Input Recording & Replay
 
+Recordings are versioned JSON — see [recording-format.md](../docs/recording-format.md).
+
 #### `godot_record_start`
-Start recording player input.
+Start recording player input. Returns `{recording, session_id, output_path}`.
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `output_path` | yes | — | File path for the recording (e.g. `res://recordings/run1.json`) |
+| `output_path` | no | `user://stagehand_recordings/<session_id>.json` | File path for the recording (e.g. `res://recordings/run1.json`). Missing directories are created. |
+| `include_mouse_move` | no | `false` | Capture mouse-motion events too. Off by default — motion dominates a recording's size and is rarely what a repro depends on. |
 
 ```
 godot_record_start(output_path="res://recordings/test_run.json")
+godot_record_start()                          # addon picks the path
+godot_record_start(include_mouse_move=true)   # keep drag paths
 ```
 
 #### `godot_record_stop`
-Stop an active recording. No parameters.
+Stop an active recording and write it to disk. No parameters.
+Returns `{session_id, events_count, duration_ms, path}`.
 
 ```
 godot_record_stop()
@@ -429,14 +435,23 @@ godot_record_stop()
 
 #### `godot_replay`
 Replay a previously recorded input session.
+Returns `{replayed, events_count, duration_ms}`.
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `input_path` | yes | — | File path of the recording to replay |
+| `recording_path` | yes | — | File path of the recording to replay |
+| `speed` | no | `1.0` | Playback speed multiplier; must be > 0. `4.0` replays four times as fast — use it to shorten CI runs. |
+| `wait_for_ready` | no | `true` | Wait for the current scene to exist before injecting the first event |
+| `input_path` | no | — | Deprecated alias for `recording_path` |
 
 ```
-godot_replay(input_path="res://recordings/test_run.json")
+godot_replay(recording_path="res://recordings/test_run.json")
+godot_replay(recording_path="res://recordings/test_run.json", speed=4.0)
 ```
+
+Replay honors each event's recorded offset, so the sequence keeps its relative
+timing. It reproduces a rough repro case, not a frame-perfect deterministic
+run — game state during replay still depends on frame timing.
 
 ## Selector Syntax
 
@@ -536,9 +551,9 @@ name:*_Label      # Nodes ending with "_Label"
 ```
 1. godot_record_start(output_path="res://recordings/menu_flow.json")
 2. # ... interact with the game manually or via other tools ...
-3. godot_record_stop()
-4. # Later, replay:
-5. godot_replay(input_path="res://recordings/menu_flow.json")
+3. godot_record_stop()   # -> {session_id, events_count, duration_ms, path}
+4. # Later, replay it — at 4x to keep a CI run short:
+5. godot_replay(recording_path="res://recordings/menu_flow.json", speed=4.0)
 ```
 
 ### Wait for Game State Transition

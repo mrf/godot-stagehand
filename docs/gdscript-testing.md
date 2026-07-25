@@ -41,6 +41,7 @@ One suite per module under `addons/stagehand/core` plus the protocol layer:
 | --- | --- |
 | `test_selector_engine.gd` | `core/selector_engine.gd` |
 | `test_tree_serializer.gd` | `core/tree_serializer.gd` |
+| `test_input_recorder.gd` | `core/input_recorder.gd` |
 | `test_input_simulator.gd` | `core/input_simulator.gd` |
 | `test_property_handler.gd` | `core/property_handler.gd` |
 | `test_method_handler.gd` | `core/method_handler.gd` |

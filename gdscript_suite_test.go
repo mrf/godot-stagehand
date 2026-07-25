@@ -21,6 +21,7 @@ import (
 var requiredSuites = []string{
 	"test_command_router",
 	"test_expression_evaluator",
+	"test_input_recorder",
 	"test_input_simulator",
 	"test_json_rpc",
 	"test_method_handler",

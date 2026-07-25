@@ -31,7 +31,7 @@ from outside the engine.
 - **Scripted exploration** — Drive menus, trigger gameplay, and assert on real game state by calling these tools from any MCP client — there is no bundled test-runner or assertion library; you build the harness around the tool calls.
 - **CI checks** — Headless Godot works for structural checks (scene tree, properties, performance counters) in CI. Wire the tool calls into your own script that fails the build on assertion failure; Stagehand does not ship a ready-made CI action.
 - **Performance monitoring** — `godot_assert_performance` reads one instantaneous sample of a `Performance` monitor per call and compares it to a threshold — there's no built-in averaging, warm-up, or percentile handling, so treat a single assertion as a coarse smoke check, not a statistically robust regression gate.
-- **Input recording/replay** — Record a play session's input events with millisecond timestamps, then replay them on the same wall-clock schedule. This reproduces a rough repro case, not a frame-perfect deterministic run — actual game state during replay still depends on frame timing, which can vary between runs.
+- **Input recording/replay** — Record a play session's input events with millisecond timestamps, then replay them on the same wall-clock schedule, optionally sped up to shorten a CI run. This reproduces a rough repro case, not a frame-perfect deterministic run — actual game state during replay still depends on frame timing, which can vary between runs. The on-disk format is versioned; see the [recording format](docs/recording-format.md).
 
 ## How it works
 
