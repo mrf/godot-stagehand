@@ -211,6 +211,36 @@ Expression evaluation and arbitrary method calls are disabled unless the
 session separately opts into unsafe capabilities. Authentication limits who can
 reach automation; unsafe opt-in controls what an authenticated peer may execute.
 
+## Godot version compatibility
+
+**Minimum supported version: Godot 4.3.** Development happens against 4.6.x
+locally; 4.3-4.6 are all tested and supported.
+
+| Godot version | Status | Notes |
+|----------------|--------|-------|
+| 4.2 | **Not supported** | Addon fails to parse — see below |
+| 4.3 | Supported (minimum) | |
+| 4.4 | Supported | |
+| 4.5 | Supported | |
+| 4.6 | Supported (local dev baseline) | |
+
+Verified by running the full connect-and-drive protocol (parse → activate →
+authenticated ping → `get_tree`/`find_nodes`/`click`/`screenshot`) against a
+real headless Godot binary of each version — see `scripts/test-godot-compat.sh`
+and the `gdscript-parse` job in `.github/workflows/ci.yml`, which runs this
+matrix on every push/PR to `main`.
+
+### Known incompatibilities
+
+- **Godot 4.2 — GDScript `is not` operator not available.** The addon uses
+  `is not` (e.g. `internal/godotconn`'s JSON-RPC decoding, `stagehand_server.gd`,
+  `input_recorder.gd`) for readability. That operator was added in
+  [godotengine/godot#87939](https://github.com/godotengine/godot/pull/87939),
+  first released in Godot 4.3, so it fails to parse on 4.2 with
+  `Parse Error: Expected type specifier after "is"`. There is no workaround
+  short of rewriting those checks as `not (x is T)`; 4.2 is treated as
+  unsupported rather than carrying that rewrite for one older release.
+
 ## Troubleshooting
 
 **"Connection refused"** — Game isn't running with `--stagehand`, or wrong host/port.

@@ -32,19 +32,30 @@ jobs:
       - name: go build (linux/amd64)
         run: GOOS=linux GOARCH=amd64 go build -o godot-stagehand-linux-amd64 .
 
-  # ── GDScript parse check (headless Godot, version matrix) ─────────────────
-  # Parses testdata/test_project/addons/stagehand, a checked-in copy of the
-  # canonical addons/stagehand. go-quality's TestFixtureAddonCopiesMatchCanonical
-  # (addon_copy_drift_test.go) enforces byte-for-byte identity between them, so
-  # this job validates the exact addon code assets.go embeds into release
-  # binaries. See docs/addon-sync-contract.md.
+  # ── Godot version compatibility matrix (headless Godot) ────────────────────
+  # Runs the full compat protocol against testdata/test_project/addons/stagehand,
+  # a checked-in copy of the canonical addons/stagehand. go-quality's
+  # TestFixtureAddonCopiesMatchCanonical (addon_copy_drift_test.go) enforces
+  # byte-for-byte identity between them, so this job validates the exact addon
+  # code assets.go embeds into release binaries. See docs/addon-sync-contract.md.
+  #
+  # 4.3-4.6.2 are the supported range (4.3 is the documented minimum — see
+  # README.md's Godot version compatibility section) and block the pipeline.
+  # 4.2 is known-incompatible (GDScript `is not`, added in Godot 4.3) and runs
+  # non-blocking via continue-on-error so a regression *or* an unexpected fix
+  # shows up without failing CI on a version we don't claim to support.
   gdscript-parse:
-    name: GDScript parse (Godot ${{ matrix.godot-version }})
+    name: Godot compat (${{ matrix.godot-version }})
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
-        godot-version: ["4.3.stable", "4.4.stable"]
+        godot-version: ["4.3.stable", "4.4.stable", "4.5.stable", "4.6.2.stable"]
+        experimental: [false]
+        include:
+          - godot-version: "4.2.stable"
+            experimental: true
     env:
       GODOT_VERSION: ${{ matrix.godot-version }}
     steps:
