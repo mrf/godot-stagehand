@@ -9,7 +9,7 @@
 # so a tag that disagrees with the tree is a mistake, not something to paper
 # over at build time. See docs/versioning.md.
 
-set -e  # Exit on any error
+set -euo pipefail
 
 VERSION=${1:-"latest"}
 VERIFY_ONLY=""
@@ -39,7 +39,7 @@ verify_versions() {
             echo "Error: $file reports '$reported' but the release version is '$expected'." >&2
             failed=1
         fi
-    done < <(find . -path ./build -prune -o -path '*/addons/stagehand/plugin.cfg' -print)
+    done < <(git ls-files | grep -E '(^|/)addons/stagehand/plugin\.cfg$')
 
     while IFS= read -r file; do
         reported=$(sed -nE 's/^const VERSION: String = "([^"]*)"$/\1/p' "$file")
@@ -47,7 +47,7 @@ verify_versions() {
             echo "Error: $file reports '$reported' but the release version is '$expected'." >&2
             failed=1
         fi
-    done < <(find . -path ./build -prune -o -path '*/addons/stagehand/stagehand_version.gd' -print)
+    done < <(git ls-files | grep -E '(^|/)addons/stagehand/stagehand_version\.gd$')
 
     if [ "$failed" -ne 0 ]; then
         echo "" >&2
