@@ -47,7 +47,7 @@ Stagehand provides **no** game-specific visual expectations. Your repo owns:
 
 **Do not encode game-specific visual expectations in Stagehand.** Upstream
 changes to Stagehand are about the capture/compare primitive, not about what
-any particular game's UI looks like. A PR that embeds `water_wars_main_menu.png`
+any particular game's UI looks like. A PR that embeds `my_game_main_menu.png`
 or hardcodes color expectations for a specific game scene would be rejected.
 
 ## Headless support

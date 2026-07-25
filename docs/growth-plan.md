@@ -92,7 +92,7 @@ Blog posts / dev logs that rank and get re-shared, in priority order:
 
 - **"I let Claude playtest my game for a week — here's what it found."** Real
   bugs, real screenshots. This is the post that gets shared, because it's a
-  story with results, not a feature list. Water-wars is the obvious source.
+  story with results, not a feature list. Your own game is the obvious source.
 - **"Visual regression testing for Godot"** — a genuinely underserved search
   term; `docs/visual-smoke-contract.md` is 80% of the post already.
 - **"Adding a game-testing gate to your Godot CI"** — targets teams, who are the
