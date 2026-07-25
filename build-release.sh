@@ -79,6 +79,13 @@ build_target() {
 
 # Exact published asset matrix. Keep in sync with release.yml,
 # docs/release-checklist.md, README.md, and editor/release_assets.gd.
+#
+# Deliberately NOT bundled: skills/stagehand.md and docs/. These are prompt
+# and documentation files a user reads from the source tree, not runtime
+# assets the binary needs (unlike addons/stagehand, which is go:embed'ed into
+# the binary so `setup` can install it standalone). Bundling them here would
+# mean maintaining a second, binary-release copy of files that already ship
+# for free with the repo. See release_assets_contract_test.go.
 build_target linux   amd64 godot-stagehand-linux-amd64
 build_target darwin  amd64 godot-stagehand-darwin-amd64
 build_target darwin  arm64 godot-stagehand-darwin-arm64
