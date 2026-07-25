@@ -55,7 +55,7 @@ func TestReleaseAssetSurfacesMatchFixture(t *testing.T) {
 		"build-release.sh",
 		filepath.Join(".github", "workflows", "release.yml"),
 		"README.md",
-		"RELEASE_CHECKLIST.md",
+		filepath.Join("docs", "release-checklist.md"),
 	}
 	for _, relativePath := range surfaces {
 		content := releaseContractReadFile(t, filepath.Join(repoRoot, relativePath))

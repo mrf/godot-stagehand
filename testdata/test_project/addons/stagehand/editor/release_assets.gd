@@ -5,7 +5,7 @@ extends RefCounted
 ## godot-stagehand server release asset name and GitHub download URL.
 ##
 ## The exact supported matrix is four versionless bare binaries. Keep these
-## names in sync with build-release.sh, release.yml, RELEASE_CHECKLIST.md, and
+## names in sync with build-release.sh, release.yml, docs/release-checklist.md, and
 ## README.md.
 
 const RELEASE_BASE: String = "https://github.com/mrf/godot-stagehand/releases"

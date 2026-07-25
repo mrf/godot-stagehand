@@ -78,7 +78,7 @@ build_target() {
 }
 
 # Exact published asset matrix. Keep in sync with release.yml,
-# RELEASE_CHECKLIST.md, README.md, and editor/release_assets.gd.
+# docs/release-checklist.md, README.md, and editor/release_assets.gd.
 build_target linux   amd64 godot-stagehand-linux-amd64
 build_target darwin  amd64 godot-stagehand-darwin-amd64
 build_target darwin  arm64 godot-stagehand-darwin-arm64

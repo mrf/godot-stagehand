@@ -1,6 +1,6 @@
 # Implementation Audit — 2026-07-08
 
-Audit of the build against `DESIGN.md`, with focus on stability and multi-instance
+Audit of the build against `docs/design.md`, with focus on stability and multi-instance
 support for multiple subagents. Three parallel audit passes (design conformance,
 stability, multi-instance), key claims independently re-verified by grep/read in the
 main session. Baseline: `go build`, `go vet`, full `go test ./...` all green.
@@ -11,7 +11,7 @@ main session. Baseline: `go build`, `go vet`, full `go test ./...` all green.
   feature except AccessKit integration and CI/CD is built. But the implementation has
   outgrown the doc: 30 registered MCP tools vs 19 designed, and the multi-instance
   architecture (named instances in one server) contradicts the doc's
-  one-process-one-instance model (`DESIGN.md:470-474`).
+  one-process-one-instance model (`docs/design.md:470-474`).
 - **Stability: one causal chain dominates.** No connection liveness detection + no
   per-call deadlines on most tools + a small stdio worker pool = a frozen Godot can
   wedge the whole MCP server.
@@ -31,15 +31,15 @@ main session. Baseline: `go build`, `go vet`, full `go test ./...` all green.
 ### Deviations (design says X, code does Y)
 | # | Design | Actual | Evidence |
 |---|--------|--------|----------|
-| D1 | `godot_launch` "Phase 2 PENDING" | Implemented & registered | `DESIGN.md:312` vs `internal/mcpserver/tools_launch.go:13`, `server.go:181` |
-| D2 | `godot_wait_for_signal` "Phase 3 PENDING" | Implemented | `DESIGN.md:282` vs `tools_wait.go:73`, `stagehand_server.gd:333` |
-| D3 | wait_for_property `comparator` optional, eq/neq/gt/lt/contains | `operator` **required**, different value set (equals/not_equals/exists/contains/greater_than/less_than) | `DESIGN.md:297` vs `tools_wait.go:136-140` |
-| D4 | wait_for_node timeout 5000ms | 10000ms + undesigned `poll_interval_ms` | `DESIGN.md:278` vs `tools_wait.go:30,54` |
-| D5 | One Go process ↔ one Godot instance | Single server manages many named instances via `instance_id` on every tool | `DESIGN.md:470-474` vs `server.go:16-29`, `instance_manager.go` |
-| D6 | GWP `wait_condition` method | Split into `wait_for_node`/`wait_for_property` | `DESIGN.md:95` vs `stagehand_server.gd:220-221` |
-| D7 | `unique:` uses `get_node("%"+name)` | Tree-walk name/tooltip/placeholder matching, not %-lookup | `DESIGN.md:134` vs `selector_engine.gd:229-238,335-352` |
-| D8 | Editor plugin: start/stop toolbar button | Persistent ProjectSettings toggle (`stagehand/server/enabled`) + setup wizard | `DESIGN.md:328` vs `addons/stagehand/plugin.gd:26-40` |
-| D9 | File map (`tools_navigation.go`, `godotconn/launcher.go`) | `tools_method.go`, separate `internal/launch/` package, addon split into handler files | `DESIGN.md:387-420` vs tree |
+| D1 | `godot_launch` "Phase 2 PENDING" | Implemented & registered | `docs/design.md:312` vs `internal/mcpserver/tools_launch.go:13`, `server.go:181` |
+| D2 | `godot_wait_for_signal` "Phase 3 PENDING" | Implemented | `docs/design.md:282` vs `tools_wait.go:73`, `stagehand_server.gd:333` |
+| D3 | wait_for_property `comparator` optional, eq/neq/gt/lt/contains | `operator` **required**, different value set (equals/not_equals/exists/contains/greater_than/less_than) | `docs/design.md:297` vs `tools_wait.go:136-140` |
+| D4 | wait_for_node timeout 5000ms | 10000ms + undesigned `poll_interval_ms` | `docs/design.md:278` vs `tools_wait.go:30,54` |
+| D5 | One Go process ↔ one Godot instance | Single server manages many named instances via `instance_id` on every tool | `docs/design.md:470-474` vs `server.go:16-29`, `instance_manager.go` |
+| D6 | GWP `wait_condition` method | Split into `wait_for_node`/`wait_for_property` | `docs/design.md:95` vs `stagehand_server.gd:220-221` |
+| D7 | `unique:` uses `get_node("%"+name)` | Tree-walk name/tooltip/placeholder matching, not %-lookup | `docs/design.md:134` vs `selector_engine.gd:229-238,335-352` |
+| D8 | Editor plugin: start/stop toolbar button | Persistent ProjectSettings toggle (`stagehand/server/enabled`) + setup wizard | `docs/design.md:328` vs `addons/stagehand/plugin.gd:26-40` |
+| D9 | File map (`tools_navigation.go`, `godotconn/launcher.go`) | `tools_method.go`, separate `internal/launch/` package, addon split into handler files | `docs/design.md:387-420` vs tree |
 
 ### Undocumented (built, not in design)
 - 11 MCP tools: `godot_status`, `godot_list_instances`, `godot_disconnect`,
@@ -55,8 +55,8 @@ main session. Baseline: `go build`, `go vet`, full `go test ./...` all green.
   still calls the CLI future work and says "23 handlers" (actual: 30 tools / 24 GWP handlers).
 
 ### Missing (designed, never built)
-- AccessKit accessibility-tree integration (`DESIGN.md:535`).
-- GitHub Actions CI/CD integration (`DESIGN.md:539`).
+- AccessKit accessibility-tree integration (`docs/design.md:535`).
+- GitHub Actions CI/CD integration (`docs/design.md:539`).
 
 ## 2. Stability
 
@@ -163,7 +163,7 @@ no lock across blocking Kill/Close.
 6. **Addon hardening**: respond with JSON-RPC error on handler abort (S8), cap peers +
    reap half-open connections (S6), close old socket on reconnect (S5), surface
    "gave up reconnecting" in `godot_status` (S7).
-7. **Refresh the docs**: DESIGN.md status markers, tool table (30 tools), the
+7. **Refresh the docs**: docs/design.md status markers, tool table (30 tools), the
    multi-instance section, and `docs/architecture/mcp-vs-cli.md` handler count.
 8. **New tests**: concurrent-launch race, token-mismatch e2e, two real instances on
    two ports, same-project contention, leak-on-crash.

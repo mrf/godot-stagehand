@@ -169,5 +169,5 @@ Stagehand can only capture what Godot actually renders. This happens if you laun
 ## What's next
 
 - **More tools:** See the [full tool reference](../README.md#available-tools) — you can click buttons, set properties, wait for signals, record input, and more.
-- **Selectors:** Learn how to target specific nodes by name, class, group, or text — see [Selectors Guide](../SELECTORS_GUIDE.md).
+- **Selectors:** Learn how to target specific nodes by name, class, group, or text — see [Selectors guide](selectors.md).
 - **Windows / WSL details:** [Windows / WSL Setup](windows-setup.md).

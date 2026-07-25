@@ -143,7 +143,8 @@ Exit codes are a stable contract:
 
 ## Selectors
 
-Target nodes using familiar patterns:
+Target nodes using familiar patterns. Full syntax, matching rules and chaining
+semantics: [docs/selectors.md](docs/selectors.md).
 
 | Syntax | Example | Finds |
 |--------|---------|-------|

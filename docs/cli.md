@@ -278,4 +278,4 @@ godot-stagehand tree --port <printed port> --max-depth 3
 godot-stagehand find --port <printed port> 'class:Button' --properties text,visible
 ```
 
-Selector syntax is identical everywhere — see [SELECTORS_GUIDE.md](../SELECTORS_GUIDE.md).
+Selector syntax is identical everywhere — see [selectors guide](selectors.md).
