@@ -232,6 +232,15 @@ in. Treat it like any other local dev/debug port.
 
 ## Setup
 
+The steps below use a terminal. Prefer not to? Copy the `addons/stagehand/`
+folder into your project and enable it in **Project → Project Settings →
+Plugins** (see [Quickstart, Step 2](docs/quickstart.md#step-2-install-the-addon)),
+then use the **Setup…** button that appears in the editor toolbar. Its wizard
+downloads the server binary, generates the MCP client config snippet, and
+tests the connection to a running game — covering steps 1, 4, and part of 3
+below without touching a terminal. Full walkthrough:
+[Quickstart guide](docs/quickstart.md).
+
 ### 1. Get the server binary
 
 **Build from source** (works today; requires Go 1.25+ and Godot 4.3+):
