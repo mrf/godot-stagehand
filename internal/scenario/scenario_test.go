@@ -125,6 +125,32 @@ func TestParseRejectsEscapingArtifactPath(t *testing.T) {
 	}
 }
 
+// TestParseRejectsUnsafeBaselineName pins scenario validation to the same
+// allowlist internal/visual enforces, so a bad name fails at parse time rather
+// than mid-run.
+func TestParseRejectsUnsafeBaselineName(t *testing.T) {
+	for _, action := range []string{"save_baseline", "screenshot_diff"} {
+		for _, name := range []string{"../escape", `..\\escape`, "sub/menu", ".hidden", "main menu", ""} {
+			_, err := Parse([]byte(`{
+				"target": {"mode": "launch", "project_path": "p", "headless": false},
+				"steps": [{"action": "` + action + `", "with": {"name": "` + name + `"}}]
+			}`))
+			if err == nil {
+				t.Errorf("%s accepted unsafe baseline name %q", action, name)
+			}
+		}
+	}
+}
+
+func TestParseAcceptsSafeBaselineName(t *testing.T) {
+	if _, err := Parse([]byte(`{
+		"target": {"mode": "launch", "project_path": "p", "headless": false},
+		"steps": [{"action": "screenshot_diff", "with": {"name": "menu.1080p"}}]
+	}`)); err != nil {
+		t.Errorf("Parse rejected a safe baseline name: %v", err)
+	}
+}
+
 func TestParseRejectsBlockedMethodCall(t *testing.T) {
 	_, err := Parse([]byte(`{
 		"target": {"mode": "launch", "project_path": "p"},

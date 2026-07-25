@@ -195,6 +195,11 @@ Actions fall into three groups:
   when the addon's verdict is false.
 - **Local** — `sleep`, `screenshot`, `save_baseline`, `screenshot_diff`.
 
+The `name` of a `save_baseline` / `screenshot_diff` step is a filename stem,
+not a path, and is checked at validation time against the allowlist in
+[visual-regression.md](visual-regression.md#name-allowlist) — separators,
+absolute paths, dot segments and control characters are rejected.
+
 Comparison operators: `equals`, `not_equals`, `contains`, `exists`,
 `greater_than`, `less_than`. Ordering comparisons on non-numbers are an
 authoring error, not a silent false — a silently-false assertion reads as a

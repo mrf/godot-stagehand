@@ -26,8 +26,31 @@ failing diff returns an MCP error result *and* writes artifacts you can inspect.
 - Baselines are PNGs written to the server's **baseline directory**, default
   `stagehand-baselines/` (relative to the server's working directory).
 - The file is named **`<name>.png`** — the `name` argument is used verbatim as
-  the filename stem. Keep names filesystem-safe (`main_menu`, `hud_full`,
-  `inventory_open`). No path separators.
+  the filename stem, so it is validated against an allowlist before anything is
+  written.
+
+### Name allowlist
+
+A baseline name must be:
+
+- **ASCII letters, digits, `_`, `-` and `.`** — nothing else;
+- **starting and ending with a letter or digit**;
+- **free of any `..` sequence**;
+- **at most 128 characters**;
+- not a Windows reserved device name (`CON`, `NUL`, `COM1`, …).
+
+Valid: `main_menu`, `hud_full`, `inventory_open`, `main-menu`, `menu.1080p`.
+
+Rejected: `../escape`, `sub/menu`, `sub\menu`, `/tmp/x`, `C:\x`, `.hidden`,
+`menu.`, `main menu`, `menü`, anything containing a control character. Path
+separators (both platforms'), absolute and drive-relative paths, and dot
+segments all fall outside the allowlist, so a name can never name a file
+outside the baseline or artifact directory — the resolved path is additionally
+proven to be a direct child of that directory before any write. This matters
+because scenario files are data and may arrive from a pull request.
+
+The same allowlist applies to the CLI/scenario `save_baseline` and
+`screenshot_diff` steps, where it is enforced at scenario-parse time.
 - One name = one baseline. There is no implicit per-resolution or per-platform
   namespacing — if you need those axes, encode them in the name
   (`main_menu_1080p`, `main_menu_linux`).

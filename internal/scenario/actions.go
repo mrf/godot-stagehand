@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/mrf/godot-stagehand/internal/gwpop"
+	"github.com/mrf/godot-stagehand/internal/visual"
 )
 
 // Runner-local actions: everything that needs work on the Go side (a file
@@ -97,7 +98,10 @@ func validateStepSemantics(step Step) error {
 		if !ok {
 			return fmt.Errorf("name must be a string")
 		}
-		if err := validateArtifactPath(name); err != nil {
+		// Baseline names are filename stems, not paths: validate them against
+		// the stricter allowlist internal/visual enforces at write time so the
+		// scenario fails at parse time rather than mid-run.
+		if err := visual.ValidateName(name); err != nil {
 			return err
 		}
 	case ActionAssertProperty, ActionAssertNodes:

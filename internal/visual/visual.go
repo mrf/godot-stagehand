@@ -13,8 +13,6 @@ import (
 	"image"
 	"image/png"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/mrf/godot-stagehand/internal/gwp"
 	"github.com/mrf/godot-stagehand/internal/imgdiff"
@@ -157,7 +155,9 @@ type DiffConfig struct {
 	PixelSensitivity float64
 }
 
-// SaveBaseline writes shot to dir as <name>.png, creating dir if needed.
+// SaveBaseline writes shot to dir as <name>.png, creating dir if needed. The
+// name must satisfy ValidateName; an invalid one is rejected before anything
+// is created on disk.
 func SaveBaseline(dir, name, selector string, shot Shot) (BaselineOutcome, error) {
 	path, err := baselinePath(dir, name)
 	if err != nil {
@@ -251,11 +251,18 @@ func (d DiffOutcome) Report() string {
 // writeDiffArtifacts persists the actual captured frame and the diff
 // visualisation so callers can inspect what changed.
 func writeDiffArtifacts(dir, name string, actualPNG []byte, diffImg image.Image) (actualPath, diffPath string, err error) {
+	actualPath, pErr := containedPath(dir, name+"-actual.png")
+	if pErr != nil {
+		return "", "", pErr
+	}
+	diffPath, pErr = containedPath(dir, name+"-diff.png")
+	if pErr != nil {
+		return "", "", pErr
+	}
 	if mkErr := os.MkdirAll(dir, 0o755); mkErr != nil {
 		return "", "", fmt.Errorf("failed to create artifact directory: %w", mkErr)
 	}
 
-	actualPath = filepath.Join(dir, name+"-actual.png")
 	if wErr := os.WriteFile(actualPath, actualPNG, 0o644); wErr != nil {
 		return "", "", fmt.Errorf("failed to write actual frame: %w", wErr)
 	}
@@ -264,7 +271,6 @@ func writeDiffArtifacts(dir, name string, actualPNG []byte, diffImg image.Image)
 		return actualPath, "", nil
 	}
 
-	diffPath = filepath.Join(dir, name+"-diff.png")
 	f, cErr := os.Create(diffPath)
 	if cErr != nil {
 		return actualPath, "", fmt.Errorf("failed to create diff image: %w", cErr)
@@ -274,17 +280,4 @@ func writeDiffArtifacts(dir, name string, actualPNG []byte, diffImg image.Image)
 		return actualPath, "", fmt.Errorf("failed to encode diff image: %w", eErr)
 	}
 	return actualPath, diffPath, nil
-}
-
-// baselinePath resolves <dir>/<name>.png, rejecting names that would escape
-// the baseline directory. Scenario files are data, and a scenario from an
-// untrusted source must not be able to write outside the run's directories.
-func baselinePath(dir, name string) (string, error) {
-	if name == "" {
-		return "", fmt.Errorf("baseline name is required")
-	}
-	if strings.ContainsAny(name, `/\`) || name == "." || name == ".." || strings.Contains(name, "..") {
-		return "", fmt.Errorf("invalid baseline name %q: must be a single path-safe filename stem", name)
-	}
-	return filepath.Join(dir, name+".png"), nil
 }

@@ -25,9 +25,15 @@ var saveBaselineTool = mcp.NewTool("godot_screenshot_save_baseline",
 	mcp.WithDescription("Capture a screenshot and save it as a named baseline for future comparison. "+
 		"Baselines are stored as <name>.png in the server's baseline directory (default \"stagehand-baselines\"). "+
 		"Re-running with the same name overwrites (refreshes) the baseline. Returns structured fields: name, path, width, height."),
+	// Not read-only: this writes <name>.png, and overwrites it when the name
+	// already exists. Not idempotent either — the bytes written depend on what
+	// the game is rendering at call time.
+	mcp.WithReadOnlyHintAnnotation(false),
+	mcp.WithIdempotentHintAnnotation(false),
 	mcp.WithString("name",
 		mcp.Required(),
-		mcp.Description("Baseline name, used verbatim as the filename stem (e.g. \"main_menu\" -> main_menu.png). Keep it filesystem-safe."),
+		mcp.Description("Baseline name, used verbatim as the filename stem (e.g. \"main_menu\" -> main_menu.png). "+
+			"Allowed: "+visual.NameSyntax+". Path separators, absolute paths and dot segments are rejected."),
 	),
 	mcp.WithString("selector",
 		mcp.Description("Crop the baseline to this node's bounding rect. Use the SAME selector when diffing so the bounds match."),
@@ -41,10 +47,16 @@ var screenshotDiffTool = mcp.NewTool("godot_screenshot_diff",
 		"width, height, baseline_path, and on failure actual_image_path + diff_image_path). "+
 		"On a regression (diff_ratio > threshold) the result is an error and the actual frame plus a red-on-dim "+
 		"diff visualization are written to the artifact directory (default \"stagehand-diffs\")."),
-	mcp.WithReadOnlyHintAnnotation(true),
+	// Not read-only: a failing diff writes <name>-actual.png and
+	// <name>-diff.png into the artifact directory, overwriting the prior run's
+	// artifacts for that name. The baseline itself is never modified, so this
+	// is non-destructive.
+	mcp.WithReadOnlyHintAnnotation(false),
+	mcp.WithDestructiveHintAnnotation(false),
 	mcp.WithString("name",
 		mcp.Required(),
-		mcp.Description("Baseline name to compare against (the <name> passed to godot_screenshot_save_baseline)."),
+		mcp.Description("Baseline name to compare against (the <name> passed to godot_screenshot_save_baseline). "+
+			"Allowed: "+visual.NameSyntax+"."),
 	),
 	mcp.WithString("selector",
 		mcp.Description("Crop to this node's bounding rect. Must match the selector used for the baseline, or bounds will differ and the diff errors."),
@@ -126,6 +138,11 @@ func (s *Server) handleSaveBaseline(ctx context.Context, req mcp.CallToolRequest
 	if err != nil {
 		return mcp.NewToolResultError("Invalid 'name' parameter: " + err.Error()), nil
 	}
+	// Validate before capturing: a rejected name should not cost a round-trip
+	// to the game, and the error should name the parameter at fault.
+	if err := visual.ValidateName(name); err != nil {
+		return mcp.NewToolResultError("Invalid 'name' parameter: " + err.Error()), nil
+	}
 
 	shot, err := s.captureScreenshot(ctx, instanceID, req)
 	if err != nil {
@@ -145,6 +162,9 @@ func (s *Server) handleScreenshotDiff(ctx context.Context, req mcp.CallToolReque
 	instanceID := req.GetString("instance_id", "default")
 	name, err := req.RequireString("name")
 	if err != nil {
+		return mcp.NewToolResultError("Invalid 'name' parameter: " + err.Error()), nil
+	}
+	if err := visual.ValidateName(name); err != nil {
 		return mcp.NewToolResultError("Invalid 'name' parameter: " + err.Error()), nil
 	}
 

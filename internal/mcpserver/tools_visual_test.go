@@ -256,3 +256,62 @@ func TestVisualBaselineDiffFixturePass(t *testing.T) {
 		t.Errorf("expected no artifacts on pass, found %d entries", len(entries))
 	}
 }
+
+// TestVisualToolAnnotationsDeclareFilesystemWrites pins the side-effect hints:
+// both baseline tools write PNGs to disk, so neither may claim read-only.
+// godot_screenshot itself only returns bytes inline and stays read-only.
+func TestVisualToolAnnotationsDeclareFilesystemWrites(t *testing.T) {
+	deref := func(t *testing.T, hint *bool, what string) bool {
+		t.Helper()
+		if hint == nil {
+			t.Fatalf("%s is unset; the side effect must be declared explicitly", what)
+		}
+		return *hint
+	}
+
+	if !deref(t, screenshotTool.Annotations.ReadOnlyHint, "godot_screenshot readOnlyHint") {
+		t.Error("godot_screenshot should be read-only: it writes nothing")
+	}
+	if deref(t, saveBaselineTool.Annotations.ReadOnlyHint, "godot_screenshot_save_baseline readOnlyHint") {
+		t.Error("godot_screenshot_save_baseline writes <name>.png; it is not read-only")
+	}
+	if deref(t, screenshotDiffTool.Annotations.ReadOnlyHint, "godot_screenshot_diff readOnlyHint") {
+		t.Error("godot_screenshot_diff writes actual/diff artifacts on failure; it is not read-only")
+	}
+	if deref(t, screenshotDiffTool.Annotations.DestructiveHint, "godot_screenshot_diff destructiveHint") {
+		t.Error("godot_screenshot_diff only writes artifacts; it must not claim to be destructive")
+	}
+}
+
+// TestSaveBaselineRejectsUnsafeName is the MCP-surface half of the baseline
+// name allowlist: an escaping name must fail before any Godot round-trip.
+func TestSaveBaselineRejectsUnsafeName(t *testing.T) {
+	s := New()
+	s.baselineDir = t.TempDir()
+	s.artifactDir = t.TempDir()
+	handlers := map[string]func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error){
+		"godot_screenshot_save_baseline": s.handleSaveBaseline,
+		"godot_screenshot_diff":          s.handleScreenshotDiff,
+	}
+	for tool, handle := range handlers {
+		for _, name := range []string{"../escape", "sub/menu", `..\escape`, ".hidden", ""} {
+			req := mcp.CallToolRequest{}
+			req.Params.Name = tool
+			req.Params.Arguments = map[string]any{"name": name}
+			res, err := handle(context.Background(), req)
+			if err != nil {
+				t.Fatalf("%s(%q) returned a transport error: %v", tool, name, err)
+			}
+			if !res.IsError {
+				t.Errorf("%s accepted unsafe name %q", tool, name)
+				continue
+			}
+			// The failure must come from name validation, not from the absent
+			// Godot connection — the name is checked before any round-trip.
+			text, _ := mcp.AsTextContent(res.Content[0])
+			if !strings.Contains(text.Text, "'name' parameter") {
+				t.Errorf("%s(%q) failed with %q, want a name-validation error", tool, name, text.Text)
+			}
+		}
+	}
+}
