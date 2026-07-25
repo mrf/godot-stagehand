@@ -71,9 +71,22 @@ static func _get_property_deep(node: Node, property: String) -> Variant:
 		return null
 	var parts: PackedStringArray = property.split(".")
 	var current: Variant = node
-	for part: String in parts:
+	for i: int in range(parts.size()):
+		var part: String = parts[i]
 		if current is Object:
 			var obj: Object = current
+			# A chain that descends into a built-in struct property
+			# ("position.x", "modulate.a") cannot be walked with Object.get():
+			# get() yields the Vector2/Color itself, which is not an Object,
+			# Dictionary, or Array, so the walk below would bail out with null.
+			# get_indexed resolves the whole ':'-joined path natively and
+			# returns null for an invalid sub-path, so fall back to the walk
+			# when it does not resolve (e.g. Dictionary/Array traversal).
+			var remaining: PackedStringArray = parts.slice(i)
+			if remaining.size() > 1:
+				var indexed: Variant = obj.get_indexed(NodePath(":".join(remaining)))
+				if indexed != null:
+					return indexed
 			current = obj.get(part)
 		elif current is Dictionary:
 			var dict: Dictionary = current
