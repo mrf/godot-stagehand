@@ -159,6 +159,7 @@ For Windows Godot controlled from WSL, see the remote-bind opt-in in the
 | Remote access | `STAGEHAND_BIND_ADDRESS=0.0.0.0 STAGEHAND_ALLOW_REMOTE=1` |
 | Unsafe methods | `STAGEHAND_ALLOW_UNSAFE=1` or `godot_launch(allow_unsafe=true)` |
 | Ordinary RPC timeout | `STAGEHAND_CALL_TIMEOUT_MS=30000` (default; 1–86400000 milliseconds) |
+| Strict multi-instance mode | `STAGEHAND_MULTI=1` on the MCP server process (makes `godot_connect`'s `port` mandatory) |
 
 The editor toggle is stored in editor-only project metadata and injects
 `--stagehand` only when the editor launches the game. It is never written as a
@@ -173,6 +174,25 @@ At most four remote Godot operations run concurrently, preserving one MCP
 worker for local status and disconnect requests if the game freezes.
 The WebSocket transport sends a ping every 10 seconds and requires a pong or
 other inbound message within 30 seconds; a silent peer triggers reconnection.
+
+## Running several agents at once
+
+The addon accepts many WebSocket clients into **one** SceneTree, and port 26700 is
+its default. Two agents that both call `godot_connect` with defaults therefore
+drive the same game: their input, property writes, and scene changes interleave,
+and tests stop being reproducible. `instance_id` isolates connections only within
+a single MCP server process, not across processes.
+
+**Launch your own instance — that is the paved road.** `godot_launch(project_path=...)`
+defaults to `port=0`, which auto-assigns a free port, so the game it starts is
+private to the agent that started it. Reserve `godot_connect` for a game you
+know is yours, and pass its explicit `port`.
+
+Hosts that fan work out across agents can set `STAGEHAND_MULTI=1` on the MCP
+server process. In that mode `godot_connect` refuses to fall back to the shared
+default and requires an explicit `port`, so an accidental default connection
+fails loudly instead of silently joining someone else's game. Single-instance
+setups need no new arguments — leave `STAGEHAND_MULTI` unset.
 
 ## Security boundary
 

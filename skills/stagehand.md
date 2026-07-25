@@ -42,7 +42,7 @@ Launch a Godot game with stagehand enabled and connect to it.
 | `project_path` | yes | — | Path to the Godot project directory (contains project.godot) |
 | `godot_bin` | no | auto-detect | Path to the Godot binary |
 | `host` | no | `127.0.0.1` | WebSocket host |
-| `port` | no | `26700` | TCP port for the WebSocket server |
+| `port` | no | `0` | TCP port for the WebSocket server (`0` auto-assigns a free port, keeping the instance private to you) |
 | `headless` | no | `true` | Launch Godot in headless mode |
 | `expect_screenshots` | no | `false` | Reject `headless=true` for screenshot/baseline/diff workflows |
 | `extra_args` | no | `[]` | Extra command-line arguments for the Godot binary |
@@ -55,10 +55,17 @@ godot_launch(project_path="/path/to/project", headless=false, timeout_ms=45000)
 #### `godot_connect`
 Connect to an already-running Godot game with stagehand enabled.
 
+> **Prefer `godot_launch`.** The addon accepts many clients into one SceneTree and
+> 26700 is its default port, so connecting with defaults can attach you to a game
+> another agent started — you would then both mutate the same tree. Launching your
+> own instance (`port=0`, auto-assigned) is the paved road; use `godot_connect`
+> only for a game you know is yours, and pass its explicit `port`. When the MCP
+> server runs with `STAGEHAND_MULTI=1`, `port` is mandatory here.
+
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `host` | no | `127.0.0.1` | WebSocket host |
-| `port` | no | `26700` | WebSocket port |
+| `port` | no | `26700` | WebSocket port — the shared default; pass the port your own instance printed |
 
 ```
 godot_connect(host="127.0.0.1", port=26700)

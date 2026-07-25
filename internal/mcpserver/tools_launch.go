@@ -11,7 +11,9 @@ import (
 )
 
 var launchTool = mcp.NewTool("godot_launch",
-	mcp.WithDescription("Launch a Godot game with the stagehand addon enabled and connect to it"),
+	mcp.WithDescription("Launch a Godot game with the stagehand addon enabled and connect to it. "+
+		"This is the paved road: the default port 0 auto-assigns a free port, so you get a private instance that no other agent is driving. "+
+		"Use this instead of godot_connect unless you must attach to a game someone else already started — godot_connect's default port 26700 is shared and can land you in another agent's SceneTree."),
 	mcp.WithString("project_path",
 		mcp.Required(),
 		mcp.Description("Path to the Godot project directory (contains project.godot)"),
@@ -24,7 +26,7 @@ var launchTool = mcp.NewTool("godot_launch",
 		mcp.DefaultString(launch.DefaultHost),
 	),
 	mcp.WithNumber("port",
-		mcp.Description("TCP port for the WebSocket server (0 = auto-assign a free port)"),
+		mcp.Description("TCP port for the WebSocket server (0 = auto-assign a free port, recommended: keeps this instance private to you)"),
 		mcp.DefaultNumber(0),
 	),
 	mcp.WithBoolean("headless",
@@ -115,8 +117,15 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 		"unsafe_methods_enabled": allowUnsafe,
 		"connection_guidance":    connectionGuidance(),
 	}
+	var warnings []string
 	if headless {
-		jsonResult["warnings"] = []string{headlessScreenshotWarning}
+		warnings = append(warnings, headlessScreenshotWarning)
+	}
+	if warning := sharedPortWarning(result.Port); warning != "" {
+		warnings = append(warnings, warning)
+	}
+	if len(warnings) > 0 {
+		jsonResult["warnings"] = warnings
 	}
 	jsonBytes, err := json.MarshalIndent(jsonResult, "", "  ")
 	if err != nil {
