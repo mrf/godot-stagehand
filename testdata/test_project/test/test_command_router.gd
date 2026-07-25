@@ -1,6 +1,5 @@
-# GdUnit4 assertions are fluent and return self for chaining, so every
-# unchained assert_*() trips return_value_discarded=2. Scoped, deliberate
-# relaxation of that one warning; all other strict warnings stay errors.
+# GdUnit4's fluent assertions return self, so every unchained assert_*() is a
+# discarded return value. Scoped relaxation — see docs/gdscript-testing.md.
 @warning_ignore_start("return_value_discarded")
 extends GdUnitTestSuite
 ## Tests for StagehandCommandRouter — JSON-RPC method dispatch table.
