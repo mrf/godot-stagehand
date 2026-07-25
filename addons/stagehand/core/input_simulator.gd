@@ -83,10 +83,12 @@ static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var double_click: bool = _v_bool(params.get("double_click", false))
 
 	# A leading motion event mirrors how a real pointer always moves before it
-	# clicks, and — for selector-driven clicks — lets us confirm the click will
-	# actually land on the intended Control before we report success. See
-	# _gui_delivery_confirmed for why this check can't be made for raw
-	# position-only clicks.
+	# clicks, so it is always sent regardless of whether this is a
+	# selector-driven or raw position click. For selector-driven clicks it also
+	# lets us confirm the click will actually land on the intended Control
+	# before we report success — see _gui_delivery_confirmed for why that
+	# confirmation can't be made for raw position-only clicks.
+	_push_mouse_motion(target.viewport, target.position)
 	if has_selector and not _gui_delivery_confirmed(target, clicked_node):
 		return ERRORS.make(
 			ERRORS.NOT_SUPPORTED,
@@ -228,10 +230,10 @@ static func _push_mouse_button(viewport: Viewport, pos: Vector2, btn: int, press
 
 
 ## Best-effort confirmation that a click at [param target]'s position will
-## actually be observed by [param expected_node]. Sends the leading motion
-## event (see input_mouse) and inspects [method Viewport.gui_get_hovered_control]
-## afterward — the same lookup Godot's own GUI system uses to decide who a
-## pointer event belongs to.
+## actually be observed by [param expected_node]. Called after the leading
+## motion event (see input_mouse) has already been pushed, and inspects
+## [method Viewport.gui_get_hovered_control] — the same lookup Godot's own GUI
+## system uses to decide who a pointer event belongs to.
 ##
 ## This can only validate [Control] targets reached via a selector: a raw
 ## position click has no "expected" node (clicking empty space to dismiss a
@@ -241,7 +243,6 @@ static func _push_mouse_button(viewport: Viewport, pos: Vector2, btn: int, press
 ## documented limit of what's detectable here — see the AC discussion in
 ## godot-stagehand-nry.
 static func _gui_delivery_confirmed(target: ClickTarget, expected_node: Node) -> bool:
-	_push_mouse_motion(target.viewport, target.position)
 	if expected_node == null or target.viewport == null:
 		return true
 	var hovered: Control = target.viewport.gui_get_hovered_control()
