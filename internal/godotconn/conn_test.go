@@ -671,6 +671,54 @@ func TestReconnectAfterServerDrop(t *testing.T) {
 	}
 }
 
+func TestReconnectClosesOldSocketBeforeOverwrite(t *testing.T) {
+	// Server accepts one message then drops the connection, simulating a
+	// crash/flap on the Godot side.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := testUpgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		ws.ReadMessage()
+		ws.Close()
+	}))
+	defer srv.Close()
+	host, port := serverHostPort(t, srv)
+
+	ctx := context.Background()
+	conn, err := Dial(ctx, host, port)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	conn.mu.Lock()
+	oldWS := conn.ws
+	conn.mu.Unlock()
+
+	// Triggers the write that the server reads before dropping the conn.
+	_, _ = conn.Call(ctx, "ping", nil)
+
+	// Wait for readLoop to observe the drop and hand off to reconnectLoop,
+	// which will eventually overwrite conn.ws with a new socket.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && conn.State() == Connected {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if conn.State() == Connected {
+		t.Fatal("expected state to leave Connected after server drop")
+	}
+
+	// The old socket must already be closed locally (not just abandoned) by
+	// the time the disconnect is handled, regardless of whether a new one
+	// has replaced it yet. SetReadDeadline is a local-only operation that
+	// fails once the underlying conn has been closed, so this doesn't race
+	// against the remote peer or the reconnect goroutine.
+	if err := oldWS.UnderlyingConn().SetReadDeadline(time.Time{}); err == nil {
+		t.Fatal("old socket was not closed on disconnect; leaked connection")
+	}
+}
+
 func TestDialAddrIPv6(t *testing.T) {
 	// net.JoinHostPort must bracket IPv6 literals; verify without a live listener.
 	cases := []struct {
