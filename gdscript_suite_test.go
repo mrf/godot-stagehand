@@ -26,6 +26,7 @@ var requiredSuites = []string{
 	"test_input_simulator",
 	"test_json_rpc",
 	"test_method_handler",
+	"test_performance_sampler",
 	"test_property_handler",
 	"test_scene_handler",
 	"test_selector_engine",
