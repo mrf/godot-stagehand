@@ -719,6 +719,68 @@ func TestReconnectClosesOldSocketBeforeOverwrite(t *testing.T) {
 	}
 }
 
+func TestReconnectGivesUpAfterMaxAttempts(t *testing.T) {
+	srv := echoServer(t)
+	host, port := serverHostPort(t, srv)
+
+	conn, err := dialWithLimits(context.Background(), host, port, defaultLiveness, 2)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	// Kill the peer permanently: it will never accept a reconnect, so this
+	// models a permanently dead Godot instance rather than a transient blip.
+	srv.Close()
+
+	conn.mu.Lock()
+	ws := conn.ws
+	conn.mu.Unlock()
+	if err := ws.Close(); err != nil {
+		t.Fatalf("force-close local socket: %v", err)
+	}
+
+	// Wait for handleDisconnect to start the reconnect loop.
+	var reconnectDone chan struct{}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		conn.mu.Lock()
+		reconnectDone = conn.reconnectDone
+		conn.mu.Unlock()
+		if reconnectDone != nil {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if reconnectDone == nil {
+		t.Fatal("reconnect loop never started")
+	}
+
+	// The loop must actually exit (not leak) once retries are exhausted.
+	select {
+	case <-reconnectDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("reconnect loop leaked: did not exit after exhausting retries")
+	}
+
+	if conn.State() != Disconnected {
+		t.Fatalf("state after exhausted retries = %v, want Disconnected", conn.State())
+	}
+	if !conn.ReconnectExhausted() {
+		t.Error("ReconnectExhausted() = false, want true after giving up")
+	}
+
+	// A terminal state must fail calls immediately, not queue for queueTimeout.
+	start := time.Now()
+	_, err = conn.Call(context.Background(), "ping", nil)
+	if err == nil {
+		t.Fatal("expected error calling a connection that gave up")
+	}
+	if elapsed := time.Since(start); elapsed >= queueTimeout {
+		t.Errorf("Call took %v after give-up, want fast failure (< %v)", elapsed, queueTimeout)
+	}
+}
+
 func TestDialAddrIPv6(t *testing.T) {
 	// net.JoinHostPort must bracket IPv6 literals; verify without a live listener.
 	cases := []struct {

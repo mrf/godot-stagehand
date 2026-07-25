@@ -539,6 +539,68 @@ func TestStatusWhenConnected(t *testing.T) {
 	}
 }
 
+func TestStatusReportsGaveUpAfterReconnectExhausted(t *testing.T) {
+	t.Setenv("STAGEHAND_MAX_RECONNECT_ATTEMPTS", "1")
+
+	upgrader := websocket.Upgrader{}
+	firstConn := make(chan *websocket.Conn, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+		firstConn <- ws
+		for {
+			if _, _, err := ws.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+
+	_, portStr, _ := strings.Cut(srv.Listener.Addr().String(), ":")
+	port, _ := strconv.Atoi(portStr)
+
+	s := New()
+	conn, err := godotconn.Dial(context.Background(), "127.0.0.1", port)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	s.setConn(conn)
+	defer s.clearConn()
+
+	// Sever the peer for good, then stop accepting new connections, so the
+	// bounded reconnect budget is exhausted rather than succeeding again.
+	if err := (<-firstConn).Close(); err != nil {
+		t.Fatalf("drop first connection: %v", err)
+	}
+	srv.Close()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && !conn.ReconnectExhausted() {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !conn.ReconnectExhausted() {
+		t.Fatal("connection never gave up on a permanently dead peer")
+	}
+
+	result, err := s.handleStatus(context.Background(), mcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text, ok := mcp.AsTextContent(result.Content[0])
+	if !ok {
+		t.Fatal("expected TextContent")
+	}
+	if !strings.Contains(text.Text, "Disconnected") {
+		t.Errorf("expected 'Disconnected' in status output, got: %s", text.Text)
+	}
+	if !strings.Contains(text.Text, "gave up") {
+		t.Errorf("expected a give-up note in status output, got: %s", text.Text)
+	}
+}
+
 // TestScreenshotSelectorForcesFullPageFalse verifies that handleScreenshot sets
 // full_page=false when a selector is provided, even if the caller omits full_page.
 // This guards against the regression where the selector was silently ignored because
