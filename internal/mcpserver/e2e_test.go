@@ -1614,6 +1614,73 @@ func TestE2E_AssertPerformance(t *testing.T) {
 			t.Fatal("expected error when threshold is missing")
 		}
 	})
+
+	t.Run("SamplingParamsForwarded", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleAssertPerformance(ctx, toolReq(map[string]any{
+			"monitor":            "TIME_FPS",
+			"threshold":          float64(30),
+			"op":                 "gte",
+			"statistic":          "p95",
+			"warmup_ms":          float64(100),
+			"sample_count":       float64(10),
+			"sample_interval_ms": float64(20),
+		}))
+		if err != nil {
+			t.Fatalf("handleAssertPerformance: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("assert_performance failed unexpectedly: %+v", result)
+		}
+		p := stubParams(t, stub, "assert_performance")
+		for _, key := range []string{"statistic", "warmup_ms", "sample_count", "sample_interval_ms"} {
+			if _, ok := p[key]; !ok {
+				t.Errorf("%s was not forwarded to the addon", key)
+			}
+		}
+	})
+
+	t.Run("DurationMsForwardedInsteadOfSampleCount", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+		ctx := context.Background()
+
+		_, err := srv.handleAssertPerformance(ctx, toolReq(map[string]any{
+			"monitor":     "TIME_FPS",
+			"threshold":   float64(30),
+			"op":          "gte",
+			"duration_ms": float64(500),
+		}))
+		if err != nil {
+			t.Fatalf("handleAssertPerformance: %v", err)
+		}
+		p := stubParams(t, stub, "assert_performance")
+		if _, ok := p["duration_ms"]; !ok {
+			t.Error("duration_ms was not forwarded to the addon")
+		}
+		if _, ok := p["sample_count"]; ok {
+			t.Error("sample_count must not be sent alongside duration_ms")
+		}
+	})
+
+	t.Run("SampleCountAndDurationMsAreMutuallyExclusive", func(t *testing.T) {
+		srv, _ := setupE2ETest(t)
+		ctx := context.Background()
+
+		result, err := srv.handleAssertPerformance(ctx, toolReq(map[string]any{
+			"monitor":      "TIME_FPS",
+			"threshold":    float64(30),
+			"sample_count": float64(10),
+			"duration_ms":  float64(500),
+		}))
+		if err != nil {
+			t.Fatalf("handleAssertPerformance: %v", err)
+		}
+		if !result.IsError {
+			t.Fatal("expected error when sample_count and duration_ms are both set")
+		}
+	})
 }
 
 // stubParams unmarshals the params of the last stub call to method.

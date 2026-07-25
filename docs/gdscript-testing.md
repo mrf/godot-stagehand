@@ -45,6 +45,7 @@ One suite per module under `addons/stagehand/core` plus the protocol layer:
 | `test_input_simulator.gd` | `core/input_simulator.gd` |
 | `test_property_handler.gd` | `core/property_handler.gd` |
 | `test_method_handler.gd` | `core/method_handler.gd` |
+| `test_performance_sampler.gd` | `core/performance_sampler.gd` |
 | `test_expression_evaluator.gd` | `core/expression_evaluator.gd` |
 | `test_waiter.gd` | `core/waiter.gd` |
 | `test_scene_handler.gd` | `core/scene_handler.gd` |

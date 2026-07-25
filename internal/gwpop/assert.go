@@ -73,12 +73,20 @@ func NodeCount(raw json.RawMessage) (int, error) {
 
 // PerformanceOutcome is the shape of an assert_performance result.
 type PerformanceOutcome struct {
-	Passed    bool    `json:"passed"`
-	Monitor   string  `json:"monitor"`
-	Value     float64 `json:"value"`
-	Threshold float64 `json:"threshold"`
-	Op        string  `json:"op"`
-	Message   string  `json:"message,omitempty"`
+	Passed      bool           `json:"passed"`
+	Monitor     string         `json:"monitor"`
+	Value       float64        `json:"value"`
+	Threshold   float64        `json:"threshold"`
+	Op          string         `json:"op"`
+	Statistic   string         `json:"statistic,omitempty"`
+	SampleCount int            `json:"sample_count,omitempty"`
+	Min         float64        `json:"min,omitempty"`
+	Max         float64        `json:"max,omitempty"`
+	Mean        float64        `json:"mean,omitempty"`
+	Median      float64        `json:"median,omitempty"`
+	P95         float64        `json:"p95,omitempty"`
+	Environment map[string]any `json:"environment,omitempty"`
+	Message     string         `json:"message,omitempty"`
 }
 
 // DecodePerformance parses an assert_performance result.

@@ -85,6 +85,8 @@ godot-stagehand screenshot  --port 26788 --diff main_menu --threshold 0.01
 
 godot-stagehand performance --port 26788 --monitors TIME_FPS,MEMORY_STATIC
 godot-stagehand performance --port 26788 --assert TIME_FPS --threshold 55 --op gte
+godot-stagehand performance --port 26788 --assert TIME_FPS --threshold 55 --op gte \
+  --warmup-ms 500 --sample-count 30 --sample-interval-ms 16 --statistic p95
 ```
 
 Every command prints JSON on stdout, so `jq` works throughout. `property set`
@@ -192,7 +194,12 @@ Actions fall into three groups:
   `game_state`. Parameters match the MCP tool arguments.
 - **Assertions** — `assert_property` and `assert_node_count` read once and
   compare, failing the run with exit 5. `assert_performance` fails the step
-  when the addon's verdict is false.
+  when the addon's verdict is false; it defaults to one instantaneous sample,
+  but accepts `warmup_ms`, `sample_count` (or `duration_ms` +
+  `sample_interval_ms`), and a `statistic` (`min`, `max`, `mean`, `median`,
+  `p95`) to sample and assert monitors over time instead — see the
+  performance-monitoring note in the [README](../README.md) for what this is
+  not yet: proven statistical regression gating.
 - **Local** — `sleep`, `screenshot`, `save_baseline`, `screenshot_diff`.
 
 The `name` of a `save_baseline` / `screenshot_diff` step is a filename stem,

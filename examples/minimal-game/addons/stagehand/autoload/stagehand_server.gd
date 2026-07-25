@@ -53,6 +53,7 @@ const INPUT_SIMULATOR := preload("res://addons/stagehand/core/input_simulator.gd
 const JSON_RPC := preload("res://addons/stagehand/protocol/json_rpc.gd")
 const EXPRESSION_EVALUATOR := preload("res://addons/stagehand/core/expression_evaluator.gd")
 const METHOD_HANDLER := preload("res://addons/stagehand/core/method_handler.gd")
+const PERFORMANCE_SAMPLER := preload("res://addons/stagehand/core/performance_sampler.gd")
 const PROPERTY_HANDLER := preload("res://addons/stagehand/core/property_handler.gd")
 const SCENE_HANDLER := preload("res://addons/stagehand/core/scene_handler.gd")
 const SCREENSHOT_CAPTURE := preload("res://addons/stagehand/core/screenshot_capture.gd")
@@ -556,103 +557,115 @@ func _handle_wait_signal(params: Variant) -> Dictionary:
 	return result
 
 
-## Maps Performance monitor names to their enum values.
-const _PERFORMANCE_MONITORS: Dictionary = {
-	"TIME_FPS": Performance.TIME_FPS,
-	"TIME_PROCESS": Performance.TIME_PROCESS,
-	"TIME_PHYSICS_PROCESS": Performance.TIME_PHYSICS_PROCESS,
-	"TIME_NAVIGATION_PROCESS": Performance.TIME_NAVIGATION_PROCESS,
-	"MEMORY_STATIC": Performance.MEMORY_STATIC,
-	"MEMORY_STATIC_MAX": Performance.MEMORY_STATIC_MAX,
-	"MEMORY_MESSAGE_BUFFER_MAX": Performance.MEMORY_MESSAGE_BUFFER_MAX,
-	"OBJECT_COUNT": Performance.OBJECT_COUNT,
-	"OBJECT_RESOURCE_COUNT": Performance.OBJECT_RESOURCE_COUNT,
-	"OBJECT_NODE_COUNT": Performance.OBJECT_NODE_COUNT,
-	"OBJECT_ORPHAN_NODE_COUNT": Performance.OBJECT_ORPHAN_NODE_COUNT,
-	"RENDER_TOTAL_OBJECTS_IN_FRAME": Performance.RENDER_TOTAL_OBJECTS_IN_FRAME,
-	"RENDER_TOTAL_PRIMITIVES_IN_FRAME": Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME,
-	"RENDER_TOTAL_DRAW_CALLS_IN_FRAME": Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME,
-	"RENDER_VIDEO_MEM_USED": Performance.RENDER_VIDEO_MEM_USED,
-	"RENDER_TEXTURE_MEM_USED": Performance.RENDER_TEXTURE_MEM_USED,
-	"RENDER_BUFFER_MEM_USED": Performance.RENDER_BUFFER_MEM_USED,
-	"PHYSICS_2D_ACTIVE_OBJECTS": Performance.PHYSICS_2D_ACTIVE_OBJECTS,
-	"PHYSICS_2D_COLLISION_PAIRS": Performance.PHYSICS_2D_COLLISION_PAIRS,
-	"PHYSICS_2D_ISLAND_COUNT": Performance.PHYSICS_2D_ISLAND_COUNT,
-	"PHYSICS_3D_ACTIVE_OBJECTS": Performance.PHYSICS_3D_ACTIVE_OBJECTS,
-	"PHYSICS_3D_COLLISION_PAIRS": Performance.PHYSICS_3D_COLLISION_PAIRS,
-	"PHYSICS_3D_ISLAND_COUNT": Performance.PHYSICS_3D_ISLAND_COUNT,
-	"AUDIO_OUTPUT_LATENCY": Performance.AUDIO_OUTPUT_LATENCY,
-}
-
-const _DEFAULT_PERFORMANCE_MONITORS: Array[String] = [
-	"TIME_FPS", "TIME_PROCESS", "TIME_PHYSICS_PROCESS",
-	"MEMORY_STATIC", "OBJECT_COUNT", "RENDER_TOTAL_DRAW_CALLS_IN_FRAME",
-]
-
-
 func _handle_get_performance(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
 	var requested: Array = p.get("monitors", [])
-	var to_query: Array = requested if not requested.is_empty() else _DEFAULT_PERFORMANCE_MONITORS
+	var to_query: Array = requested if not requested.is_empty() else PERFORMANCE_SAMPLER.DEFAULT_MONITORS
 	var metrics: Dictionary = {}
 	for item: Variant in to_query:
 		var monitor_name: String = str(item)
-		if _PERFORMANCE_MONITORS.has(monitor_name):
-			var monitor_enum: Performance.Monitor = _PERFORMANCE_MONITORS[monitor_name]
+		if PERFORMANCE_SAMPLER.MONITORS.has(monitor_name):
+			var monitor_enum: Performance.Monitor = PERFORMANCE_SAMPLER.MONITORS[monitor_name]
 			metrics[monitor_name] = Performance.get_monitor(monitor_enum)
 		else:
 			metrics[monitor_name] = null
 	return {"metrics": metrics}
 
 
+## Samples a Performance monitor — optionally after a warmup, over several
+## samples spaced by sample_interval_ms — and asserts a chosen statistic
+## against a threshold. The defaults (1 sample, no warmup) reproduce the old
+## instantaneous single-read check exactly; naming sample_count/duration_ms
+## and a statistic trades that noise for a steadier read. See README's
+## performance-monitoring note for what this is not (yet): proven statistical
+## regression gating.
 func _handle_assert_performance(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
 	var monitor: String = p.get("monitor", "")
-	var threshold: float = _to_float(p.get("threshold", 0.0))
-	var op: String = p.get("op", "lte")
-
 	if monitor.is_empty():
 		return ERRORS.missing_param("monitor")
-
-	var perf: Dictionary = _handle_get_performance({"monitors": [monitor]})
-	if ERRORS.is_error(perf):
-		return perf
-
-	var metrics: Dictionary = perf.get("metrics", {})
-	if not metrics.has(monitor) or metrics[monitor] == null:
+	if not PERFORMANCE_SAMPLER.MONITORS.has(monitor):
 		return ERRORS.make(ERRORS.INVALID_PARAMS, "Unknown monitor: %s" % monitor, {
 			"monitor": monitor,
-			"known_monitors": _PERFORMANCE_MONITORS.keys(),
+			"known_monitors": PERFORMANCE_SAMPLER.MONITORS.keys(),
 		})
 
-	var value: float = _to_float(metrics[monitor])
-	var passed: bool = false
-	match op:
-		"lt":
-			passed = value < threshold
-		"lte":
-			passed = value <= threshold
-		"gt":
-			passed = value > threshold
-		"gte":
-			passed = value >= threshold
-		"eq":
-			passed = value == threshold
-		_:
-			return ERRORS.make(ERRORS.INVALID_PARAMS, "Unknown operator: %s" % op, {
-				"operator": op,
-				"known_operators": ["lt", "lte", "gt", "gte", "eq"],
+	var threshold: float = _to_float(p.get("threshold", 0.0))
+	var op: String = p.get("op", PERFORMANCE_SAMPLER.DEFAULT_OP)
+	if not PERFORMANCE_SAMPLER.OPERATORS.has(op):
+		return ERRORS.make(ERRORS.INVALID_PARAMS, "Unknown operator: %s" % op, {
+			"operator": op,
+			"known_operators": PERFORMANCE_SAMPLER.OPERATORS,
+		})
+
+	var statistic: String = p.get("statistic", PERFORMANCE_SAMPLER.DEFAULT_STATISTIC)
+	if not PERFORMANCE_SAMPLER.STATISTICS.has(statistic):
+		return ERRORS.make(ERRORS.INVALID_PARAMS, "Unknown statistic: %s" % statistic, {
+			"statistic": statistic,
+			"known_statistics": PERFORMANCE_SAMPLER.STATISTICS,
+		})
+
+	var warmup_ms: int = p.get("warmup_ms", PERFORMANCE_SAMPLER.DEFAULT_WARMUP_MS)
+	if warmup_ms < 0:
+		return ERRORS.make(ERRORS.INVALID_PARAMS, "warmup_ms must not be negative", {"warmup_ms": warmup_ms})
+
+	var sample_interval_ms: int = p.get("sample_interval_ms", PERFORMANCE_SAMPLER.DEFAULT_SAMPLE_INTERVAL_MS)
+	if sample_interval_ms < 0:
+		return ERRORS.make(ERRORS.INVALID_PARAMS, "sample_interval_ms must not be negative", {
+			"sample_interval_ms": sample_interval_ms,
+		})
+
+	if p.has("sample_count") and p.has("duration_ms"):
+		return ERRORS.make(ERRORS.INVALID_PARAMS, "Specify sample_count or duration_ms, not both", {})
+
+	var sample_count: int
+	if p.has("duration_ms"):
+		var duration_ms: int = p.get("duration_ms", 0)
+		if duration_ms < 0:
+			return ERRORS.make(ERRORS.INVALID_PARAMS, "duration_ms must not be negative", {"duration_ms": duration_ms})
+		if sample_interval_ms <= 0:
+			return ERRORS.make(ERRORS.INVALID_PARAMS, "duration_ms requires sample_interval_ms greater than 0", {
+				"sample_interval_ms": sample_interval_ms,
 			})
+		sample_count = maxi(1, floori(float(duration_ms) / float(sample_interval_ms)))
+	else:
+		sample_count = p.get("sample_count", PERFORMANCE_SAMPLER.DEFAULT_SAMPLE_COUNT)
+	if sample_count < 1:
+		return ERRORS.make(ERRORS.INVALID_PARAMS, "sample_count must be at least 1", {"sample_count": sample_count})
+
+	if warmup_ms > 0:
+		await get_tree().create_timer(warmup_ms * 0.001).timeout
+
+	var monitor_enum: Performance.Monitor = PERFORMANCE_SAMPLER.MONITORS[monitor]
+	var samples: Array[float] = []
+	for i: int in range(sample_count):
+		samples.append(Performance.get_monitor(monitor_enum))
+		if i < sample_count - 1 and sample_interval_ms > 0:
+			await get_tree().create_timer(sample_interval_ms * 0.001).timeout
+
+	var stats: Dictionary = PERFORMANCE_SAMPLER.compute_statistics(samples)
+	var value: float = _to_float(stats[statistic])
+	var passed: bool = PERFORMANCE_SAMPLER.compare(value, op, threshold)
 
 	var result: Dictionary = {
 		"passed": passed,
 		"monitor": monitor,
 		"value": value,
+		"statistic": statistic,
 		"threshold": threshold,
 		"op": op,
+		"sample_count": samples.size(),
+		"min": _to_float(stats["min"]),
+		"max": _to_float(stats["max"]),
+		"mean": _to_float(stats["mean"]),
+		"median": _to_float(stats["median"]),
+		"p95": _to_float(stats["p95"]),
+		"environment": PERFORMANCE_SAMPLER.environment_metadata(),
 	}
 	if not passed:
-		result["message"] = "%s: %.4f does not satisfy %s %.4f" % [monitor, value, op, threshold]
+		result["message"] = "%s %s (n=%d) = %.4f does not satisfy %s %.4f" % [
+			monitor, statistic, samples.size(), value, op, threshold,
+		]
 	return result
 
 

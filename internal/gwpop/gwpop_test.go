@@ -203,6 +203,42 @@ func TestExecuteClassifiesTimeout(t *testing.T) {
 	}
 }
 
+func TestExecuteAcceptsPerformanceSamplingParams(t *testing.T) {
+	caller := &recordingCaller{}
+	_, err := Execute(context.Background(), caller, Op{
+		Action: "assert_performance",
+		Params: map[string]any{
+			"monitor": "TIME_FPS", "threshold": 55.0, "op": "gte",
+			"statistic": "p95", "warmup_ms": 100, "sample_count": 30, "sample_interval_ms": 16,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	params := paramsMap(t, caller.params)
+	for _, key := range []string{"statistic", "warmup_ms", "sample_count", "sample_interval_ms"} {
+		if _, present := params[key]; !present {
+			t.Errorf("%s was not forwarded", key)
+		}
+	}
+}
+
+func TestExecuteAcceptsDurationMsForPerformanceSampling(t *testing.T) {
+	caller := &recordingCaller{}
+	_, err := Execute(context.Background(), caller, Op{
+		Action: "assert_performance",
+		Params: map[string]any{
+			"monitor": "TIME_FPS", "threshold": 55.0, "duration_ms": 500,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if _, present := paramsMap(t, caller.params)["duration_ms"]; !present {
+		t.Error("duration_ms was not forwarded")
+	}
+}
+
 func TestActionsAreSortedAndCoverThePublicSurface(t *testing.T) {
 	actions := Actions()
 	for _, want := range []string{
