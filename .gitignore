@@ -53,3 +53,8 @@ testdata/test_project/reports/
 /scenario-artifacts/
 /ci-artifacts/
 /stagehand-diffs/
+
+# Go CI Report Card output (reportcard/generate.py --output _site)
+/_site/
+__pycache__/
+*.pyc

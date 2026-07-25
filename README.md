@@ -1,5 +1,7 @@
 # Godot Stagehand
 
+[Go code quality report](https://mrf.github.io/godot-stagehand/) (gofmt, vet, build, tests, coverage; the Go module only — not the GDScript addon)
+
 External automation for running Godot games, exposed as an MCP server for AI agents and as a CLI plus scenario runner for CI and terminal debugging. Think Playwright, but for game engines.
 
 > ### Stagehand drives your *running game*, not the Godot editor.

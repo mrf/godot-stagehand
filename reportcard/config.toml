@@ -1,0 +1,70 @@
+[project]
+# Leave name and repository_url blank to derive them from GitHub Actions.
+name = "Godot Stagehand"
+# Go-only scope: this scores gofmt, go vet, build, tests+coverage, and module
+# integrity for the Go module rooted at source_dir. It has no view of
+# addons/stagehand (the GDScript half of the product, exercised by its own
+# GdUnit4 suite in ci.yml's gdscript-tests job) -- the README links to this
+# report labelled "Go code quality", not overall project quality.
+tagline = "Go code quality snapshot (gofmt, vet, build, tests+coverage, go mod verify). Excludes the GDScript addon, which has its own GdUnit4 suite."
+repository_url = ""
+source_dir = "."
+accent = "#e4572e"
+exclude = [
+  "vendor/**",
+  "**/testdata/**",
+  "*_generated.go",
+  "**/*_generated.go",
+  "*.pb.go",
+  "**/*.pb.go",
+]
+
+[quality]
+minimum_score = 80
+details_limit = 80
+# The tests check below runs the full suite with a real Godot binary, which
+# is slower than a plain `go test ./...`; 300s was too tight in practice.
+command_timeout_seconds = 600
+
+[checks.format]
+enabled = true
+weight = 15
+
+[checks.vet]
+enabled = true
+weight = 20
+
+[checks.build]
+enabled = true
+weight = 20
+
+[checks.tests]
+enabled = true
+weight = 30
+# Run with a real headless Godot binary and the "godot" build tag so coverage
+# reflects the whole suite, not just the Godot-free subset. Without this tag,
+# the transport, scenario runner, and launch paths gated behind
+# `//go:build godot` (scenario_smoke_godot_test.go, the godotconn integration
+# tests, and the internal/launch and internal/mcpserver *_godot_test.go files)
+# never compile or run. The workflow provisions GODOT_BIN the same way
+# ci.yml's scenario-smoke and gdscript-parse jobs do (scripts/ci-install-godot.sh).
+extra_args = ["-tags=godot"]
+# Measured 79.5% on 2026-07-25 with Godot 4.6.2 present and this tag enabled;
+# target set a few points below that to allow normal variance without masking
+# a real regression. Re-measure and adjust if the suite's real coverage moves.
+coverage_target = 75
+
+[checks.modules]
+enabled = true
+weight = 15
+
+# Add project-specific checks without changing the generator. Commands are
+# executed directly (never through a shell), relative to project.source_dir.
+#
+# [[custom_checks]]
+# id = "staticcheck"
+# label = "Staticcheck"
+# description = "Advanced static analysis is clean."
+# command = ["go", "tool", "staticcheck", "./..."]
+# weight = 15
+# enabled = true
