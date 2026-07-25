@@ -14,11 +14,11 @@
 .godot/
 *.import
 export_presets.cfg
-# Godot 4.4+ regenerates .uid sidecars on every headless import. They are
-# derived artifacts, and any that land under testdata/test_project/addons/
-# stagehand would break TestFixtureAddonCopiesMatchCanonical's byte-for-byte
-# fixture check (docs/addon-sync-contract.md). Never track them.
-*.uid
+# .uid sidecars (Godot 4.4+) are deliberately tracked, not ignored: Godot's
+# own guidance is that they must ship with the project, since a UID assigned
+# on one machine and never committed leaves every other clone with `ext_resource`
+# links Godot can't resolve until the editor re-imports and reassigns them
+# (the "invalid UID" warning). See docs/addon-sync-contract.md.
 
 # OS
 .DS_Store
