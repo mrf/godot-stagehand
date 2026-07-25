@@ -15,8 +15,8 @@ var vector3_prop: Vector3 = Vector3(1.0, 2.0, 3.0)
 var vector2i_prop: Vector2i = Vector2i(1, 2)
 var color_prop: Color = Color(1.0, 1.0, 1.0, 1.0)
 
-## Custom setter that silently rejects a falsy assignment — models the
-## keystone-reported SimManager.running incident (godot-stagehand-jzs): a
+## Custom setter that silently rejects a falsy assignment — models a
+## reported host-project SimManager.running incident (godot-stagehand-jzs): a
 ## guarded setter can leave the property unchanged even though the property
 ## was found and Object.set() was called without error.
 var guarded_flag: bool = true:

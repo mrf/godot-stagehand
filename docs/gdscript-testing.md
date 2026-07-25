@@ -9,7 +9,7 @@ identical to canonical `addons/stagehand` (see [addon-sync-contract.md](addon-sy
 ## Running
 
 ```bash
-export GODOT_BIN=~/.local/bin/godot-4.6.2-linux
+export GODOT_BIN=/path/to/Godot_v4.x-stable_linux.x86_64
 
 ./scripts/run-gdscript-tests.sh                              # direct
 go test -tags=gdscript -run TestGdUnitSuite .                # via Go

@@ -23,9 +23,9 @@ This project uses **br** (beads_rust) for issue tracking. Run `br robot-docs gui
 go vet ./...          # Lint
 go test ./...         # All Go tests pass
 # If GDScript changed — run the GdUnit4 unit suite (headless):
-GODOT_BIN=~/.local/bin/godot-4.6.2-linux ./scripts/run-gdscript-tests.sh
+GODOT_BIN=/path/to/Godot_v4.x-stable_linux.x86_64 ./scripts/run-gdscript-tests.sh
 # Or through Go, which parses the JUnit report and fails on any failure/skip:
-GODOT_BIN=~/.local/bin/godot-4.6.2-linux go test -tags=gdscript -run TestGdUnitSuite .
+GODOT_BIN=/path/to/Godot_v4.x-stable_linux.x86_64 go test -tags=gdscript -run TestGdUnitSuite .
 # Needs Godot 4.6+: GdUnit4 v6.1.3's CLI runner hangs on 4.4 headless. The addon
 # itself still targets 4.3+, which the gdscript-parse CI matrix covers.
 # If GDScript changed — strict-mode validation:
@@ -38,7 +38,7 @@ timeout 5 ${GODOT_BIN:-godot} --path testdata/test_project --headless --stagehan
 #   - Variable shadowing
 #   - Untyped function parameters
 #   - Unsafe property/method access on Variant
-# Set GODOT_BIN to your Godot binary (e.g. export GODOT_BIN=~/.local/bin/godot-4.6.2-linux)
+# Set GODOT_BIN to your Godot binary (e.g. export GODOT_BIN=/path/to/Godot_v4.x-stable_linux.x86_64)
 ```
 
 ### Rules
@@ -48,7 +48,7 @@ timeout 5 ${GODOT_BIN:-godot} --path testdata/test_project --headless --stagehan
 - **No hallucinated APIs.** Before using any Godot API in GDScript, verify it exists in the Godot docs or by grepping the engine source. `error_string()`, `node.tree`, and similar hallucinations have burned us before.
 - **Validate at the Go layer.** Use `selector.ParseChain()` to validate selectors before sending to Godot. Don't rely on GDScript to catch bad input.
 - **Test the addon installs cleanly.** If you modify any `.gd` file, verify the addon doesn't break a host project's compilation.
-- **GDScript must be strict-mode compliant.** The addon runs in host projects that may have all warnings elevated to errors. Every `.gd` file must use explicit type annotations, capture all return values, avoid `float()`/`int()`/`bool()`/`String()` constructors on Variant, and never shadow base class properties. Test against water-wars (which has strict settings) before committing any GDScript changes.
+- **GDScript must be strict-mode compliant.** The addon runs in host projects that may have all warnings elevated to errors. Every `.gd` file must use explicit type annotations, capture all return values, avoid `float()`/`int()`/`bool()`/`String()` constructors on Variant, and never shadow base class properties. Test against `testdata/test_project/` (which has strict warnings enabled) before committing any GDScript changes.
 - **GdUnit4 test suites need `@warning_ignore_start("return_value_discarded")`.** GdUnit4's assertions are fluent and return `self`, so every unchained `assert_*()` trips `return_value_discarded=2`. Put the annotation at the top of each test file — it is the one scoped, deliberate relaxation; every other strict warning stays an error. A per-function `@warning_ignore(...)` does **not** cover the function body, only `_start`/`_restore` works.
 - **GdUnit4 lifecycle hooks are `before()` / `after()` / `before_test()` / `after_test()`.** There is no `before_each()` — a suite using it silently gets no setup at all (this shipped undetected in `test_command_router.gd` because the suite had never been executed).
 - **Free test fixtures with `auto_free()`, not `queue_free()`.** `queue_free` is deferred, so a fixture created in `before_test` survives into the next test and pollutes group/name/meta selector queries with stale nodes.

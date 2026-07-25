@@ -31,8 +31,8 @@
 ## SCRIPT MEMBERS: Reading script-declared member variables on resolved nodes
 ## (e.g. `get_node("Foo")._hp`) works in current Godot — Expression's named
 ## index falls through to Object.get(), which honors GDScript properties,
-## including underscore-prefixed ones. The water-wars "Invalid named index"
-## report was not reproducible in 4.6.2; no change required here.
+## including underscore-prefixed ones. A reported "Invalid named index"
+## bug in a host project was not reproducible in 4.6.2; no change required here.
 class_name StagehandExpressionEvaluator
 extends RefCounted
 

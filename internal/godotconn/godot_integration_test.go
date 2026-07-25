@@ -631,7 +631,7 @@ func TestSmokeSetPropertyFalsyValues(t *testing.T) {
 // TestSmokeSetPropertyReportsFailureOnRejectedSet is a regression test for
 // godot-stagehand-jzs: when the underlying write doesn't actually take effect
 // (e.g. a custom GDScript setter that rejects the assignment, mirroring the
-// keystone-reported SimManager.running incident), set_property must report
+// a reported host-project SimManager.running incident), set_property must report
 // success:false instead of blindly reporting success because the property
 // was found and Object.set() was called without error.
 func TestSmokeSetPropertyReportsFailureOnRejectedSet(t *testing.T) {

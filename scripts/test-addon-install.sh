@@ -40,9 +40,6 @@ find_godot() {
       echo "$val"; return 0
     fi
   done
-  # Well-known install path used in this project.
-  local known="$HOME/.local/bin/godot-4.6.2-linux"
-  if [[ -x "$known" ]]; then echo "$known"; return 0; fi
   # Symlink / PATH fallback.
   for name in godot godot4 godot4.5 godot4.4 godot4.3; do
     if command -v "$name" &>/dev/null; then

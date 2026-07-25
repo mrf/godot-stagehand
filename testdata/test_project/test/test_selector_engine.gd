@@ -281,7 +281,7 @@ func test_chain_rejects_absolute_path_in_later_part() -> void:
 # ── rank_for_interaction() ───────────────────────────────────────────────
 
 func test_rank_prefers_button_over_label() -> void:
-	# Mirrors the water-wars bug: a Label and a Button both match "Continue".
+	# Mirrors a reported bug in a host project: a Label and a Button both match "Continue".
 	var label: Label = auto_free(Label.new())
 	label.text = "Continue from day 8, 13:00?"
 	var button: Button = auto_free(Button.new())
