@@ -3,6 +3,8 @@
 package launch
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -19,6 +21,12 @@ import (
 const (
 	reexecRoleEnv = "STAGEHAND_TEST_PDEATHSIG_ROLE"
 	pidFileEnv    = "STAGEHAND_TEST_PDEATHSIG_PIDFILE"
+	// projectEnv, godotBinEnv and portEnv carry the real-Godot "godot-parent"
+	// role's launch parameters; TestMain runs before any *testing.T exists, so
+	// they cannot be threaded through in the usual way.
+	projectEnv  = "STAGEHAND_TEST_PDEATHSIG_PROJECT"
+	godotBinEnv = "STAGEHAND_TEST_PDEATHSIG_GODOTBIN"
+	portEnv     = "STAGEHAND_TEST_PDEATHSIG_PORT"
 )
 
 func TestMain(m *testing.M) {
@@ -28,6 +36,9 @@ func TestMain(m *testing.M) {
 		return
 	case "child":
 		time.Sleep(30 * time.Second)
+		return
+	case "godot-parent":
+		runGodotPdeathsigTestParent()
 		return
 	}
 	os.Exit(m.Run())
@@ -49,6 +60,39 @@ func runPdeathsigTestParent() {
 	}
 	pidFile := os.Getenv(pidFileEnv)
 	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0o600); err != nil {
+		os.Exit(1)
+	}
+	time.Sleep(30 * time.Second)
+}
+
+// runGodotPdeathsigTestParent is the real-Godot analog of
+// runPdeathsigTestParent: instead of a synthetic sleeping child, it launches
+// an actual Godot process via Launch() -- exactly the code path the MCP
+// server uses -- reports its PID, then sleeps so the test can hard-kill this
+// process out from under it and confirm the real Godot process does not
+// survive.
+func runGodotPdeathsigTestParent() {
+	port, err := strconv.Atoi(os.Getenv(portEnv))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "godot-parent: invalid %s: %v\n", portEnv, err)
+		os.Exit(1)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	result, err := Launch(ctx, Config{
+		ProjectPath: os.Getenv(projectEnv),
+		GodotBin:    os.Getenv(godotBinEnv),
+		Host:        "127.0.0.1",
+		Port:        port,
+		Headless:    true,
+		TimeoutMs:   int(godotStartupTimeout.Milliseconds()),
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "godot-parent: launch failed: %v\n", err)
+		os.Exit(1)
+	}
+	pidFile := os.Getenv(pidFileEnv)
+	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(result.PID)), 0o600); err != nil {
 		os.Exit(1)
 	}
 	time.Sleep(30 * time.Second)

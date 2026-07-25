@@ -180,17 +180,7 @@ func startMCPServerWithGodot(t *testing.T) *Server {
 	}
 
 	root := setPropertyRepoRoot(t)
-	projectDir := filepath.Join(t.TempDir(), "project")
-	if err := os.CopyFS(projectDir, os.DirFS(filepath.Join(root, "testdata", "test_project"))); err != nil {
-		t.Fatalf("copy test project: %v", err)
-	}
-	addonDir := filepath.Join(projectDir, "addons", "stagehand")
-	if err := os.RemoveAll(addonDir); err != nil {
-		t.Fatalf("remove fixture addon copy: %v", err)
-	}
-	if err := os.CopyFS(addonDir, os.DirFS(filepath.Join(root, "addons", "stagehand"))); err != nil {
-		t.Fatalf("copy canonical addon: %v", err)
-	}
+	projectDir := prepareMCPGodotProject(t, root)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
