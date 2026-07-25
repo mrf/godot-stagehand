@@ -89,3 +89,22 @@ and `untyped_declaration` are errors, so no bare `:=` on a Variant-typed
 expression), avoid `as Dictionary` / `as Array` on a Variant (`unsafe_cast` — assign
 to a typed local instead), and do not name a helper `_get`/`_set`, which collide
 with `Object`'s virtuals.
+
+**4. Preload the class under test — don't reference its `class_name` directly.**
+Every suite in this directory preloads the script it exercises into a typed
+const (e.g. `const ACCESSIBILITY_TREE := preload("res://addons/stagehand/core/accessibility_tree.gd")`)
+rather than calling through the script's global `class_name`. This mirrors the
+convention documented in `addons/stagehand/autoload/stagehand_server.gd`: a
+headless game/CLI launch never runs an editor import pass, so
+`global_script_class_cache.cfg` can be empty and global `class_name`
+identifiers won't resolve. GdUnit4 test runs are not actually exposed to that
+hazard — `GdUnitCmdTool.gd` itself references other GdUnit4 classes by
+`class_name` and fails to parse without a prior import (confirmed: running it
+against a project with no `.godot` directory throws `Parse Error: Could not
+find type "GdUnitTestCIRunner"`), so `run-gdscript-tests.sh` always forces an
+import pass first — no suite ever runs against an empty class cache. Preload
+anyway, so the pattern stays uniform across `addons/stagehand/core` and its
+test suites and nobody has to re-derive this reasoning per file. If the class
+under test also declares a `class_name`, name the const in
+`SCREAMING_SNAKE_CASE` — naming it identically to the `class_name` trips
+`shadowed_global_identifier=2`.
