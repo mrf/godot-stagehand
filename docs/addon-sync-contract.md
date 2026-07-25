@@ -43,3 +43,29 @@ This overwrites both fixture copies from canonical. Then re-run
 (`godot --headless --path testdata/test_project --quit`,
 `godot --headless --path examples/minimal-game --quit`) to confirm strict-mode
 compliance before committing.
+
+## `.uid` sidecars are tracked, not ignored
+
+Godot 4.4+ assigns every script/resource a stable UID, cached in a `.uid`
+sidecar next to the file, and its own guidance is that these must ship with
+the project: a UID minted on one machine and left untracked leaves every
+other checkout with `ext_resource` links Godot can't resolve until it
+re-imports and silently reassigns fresh ones. Skipping that step is exactly
+what produced `WARNING: ext_resource, invalid UID ... using text path
+instead` the first time a clean `git clone` of `examples/minimal-game` was
+opened — the zero-tooling path this repo can't afford to warn on.
+
+So `testdata/test_project/**/*.uid` and `examples/minimal-game/**/*.uid` are
+committed like any other project file (only `.godot/` and `*.import` stay
+gitignored). `sync-addon-copies.sh` knows this and preserves each copy's
+existing `.uid` sidecars across a resync instead of deleting and letting
+Godot mint new ones — the ids are assigned per-project, not derived from
+content, so canonical `addons/stagehand` (which has no `project.godot` of its
+own and is never itself imported) has no `.uid` files to compare against,
+and `TestFixtureAddonCopiesMatchCanonical` deliberately excludes them from
+its identity check for that reason.
+
+If `sync-addon-copies.sh` adds a new script to a copy, that file has no
+`.uid` yet. Open the project in the editor once (or run the headless
+`--editor --quit` import) to let Godot mint one, then commit it alongside the
+script.

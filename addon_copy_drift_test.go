@@ -64,10 +64,14 @@ func TestFixtureAddonCopiesMatchCanonical(t *testing.T) {
 // Godot-generated sidecars are skipped: opening or importing a project (which
 // the GDScript suite in scripts/run-gdscript-tests.sh does, and which anyone
 // opening testdata/test_project in the editor does) writes a .uid file next to
-// every script. Those are derived artifacts with per-project ids — they are
-// gitignored, never present in canonical, and would otherwise be reported as
-// stray files the moment the fixture project is run. The contract this test
-// enforces is identity of addon *source*, not of Godot's import cache.
+// every script. Unlike canonical addons/stagehand — which has no project.godot
+// of its own, so Godot never assigns it UIDs — both fixture copies live inside
+// real projects and commit their own editor-assigned .uid files per
+// docs/addon-sync-contract.md. Those ids are per-project, not derived from
+// file content, so they legitimately differ from each other and have no
+// canonical counterpart to compare against; skipping them here avoids
+// reporting every one as a stray file. The contract this test enforces is
+// identity of addon *source*, not of Godot's import/UID bookkeeping.
 func hashTree(t *testing.T, dir string) map[string]string {
 	t.Helper()
 	hashes := make(map[string]string)
