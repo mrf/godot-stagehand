@@ -175,18 +175,6 @@ func toolResultToError(result *mcp.CallToolResult, fallback string) error {
 	return fmt.Errorf("%s", fallback)
 }
 
-// godotErrorResult renders a JSON-RPC error object from Godot as an isError
-// tool result. The addon reports handler failures as JSON-RPC errors carrying
-// the method, the selector, the machine kind, and an actionable next step (see
-// docs/error-model.md), all of which belong in the text an agent reads.
-//
-// method is the method this server called, used when the addon did not name one
-// itself — an addon predating the canonical error model, or a protocol-level
-// fault such as a parse error.
-func godotErrorResult(method string, rpcErr *godotconn.RPCError) *mcp.CallToolResult {
-	return mcp.NewToolResultError(rpcErr.Failure(method).Describe())
-}
-
 // checkGodotResult inspects a raw JSON result for a top-level "error" key.
 //
 // Current addons promote handler failures to JSON-RPC *error* responses, which
@@ -219,9 +207,14 @@ func (s *Server) callGodotInstance(ctx context.Context, instanceID, method strin
 
 	resp, err := conn.Call(callCtx, method, params)
 	if err != nil {
+		// A handler failure arrives as a JSON-RPC error carrying the method,
+		// the selector, the machine kind, and an actionable next step (see
+		// docs/error-model.md) — all of which belong in the text an agent
+		// reads. `method` fills in the method name when the addon did not
+		// supply one itself.
 		var rpcErr *godotconn.RPCError
 		if errors.As(err, &rpcErr) {
-			return nil, godotErrorResult(method, rpcErr)
+			return nil, mcp.NewToolResultError(rpcErr.Failure(method).Describe())
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
 			// A deadline means Godot never answered at all, which is a different

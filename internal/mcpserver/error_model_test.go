@@ -18,6 +18,8 @@ import (
 // a successful tool result that an agent then reads as "it worked".
 
 // errorText asserts that result is an MCP error result and returns its text.
+// A success here is the exact failure this whole model exists to prevent, so
+// it is worth its own assertion rather than folding into a text match.
 func errorText(t *testing.T, result *mcp.CallToolResult) string {
 	t.Helper()
 	if result == nil {
@@ -26,14 +28,7 @@ func errorText(t *testing.T, result *mcp.CallToolResult) string {
 	if !result.IsError {
 		t.Fatalf("expected IsError result, got success: %+v", result)
 	}
-	if len(result.Content) == 0 {
-		t.Fatal("error result carries no content")
-	}
-	text, ok := mcp.AsTextContent(result.Content[0])
-	if !ok {
-		t.Fatalf("error result content is not text: %+v", result.Content[0])
-	}
-	return text.Text
+	return mustText(t, result)
 }
 
 // errorData builds the `error.data` payload the addon attaches to a handler
