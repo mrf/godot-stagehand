@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="__DESCRIPTION__">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="__ACCENT__">
+    <title>__TITLE__ · Go CI Report Card</title>
+    <link rel="stylesheet" href="assets/style.css">
+  </head>
+  <body style="--accent: __ACCENT__">
+    <a class="skip-link" href="#checks">Skip to checks</a>
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="Go CI Report Card home">
+        <span class="brand-mark" aria-hidden="true">✓</span>
+        <span>Go CI Report Card</span>
+      </a>
+      <div class="header-actions">
+        <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle color theme">◐</button>
+        <button class="text-button" type="button" onclick="window.print()">Print report</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="project-name">
+        <div class="hero-copy">
+          <p class="eyebrow">AUTOMATED GO QUALITY REPORT</p>
+          <h1 id="project-name">__TITLE__</h1>
+          <p class="tagline" id="tagline">__DESCRIPTION__</p>
+          <div class="repo-meta" id="repo-meta" aria-label="Report metadata"></div>
+          <a class="repo-link" id="repo-link" hidden>View source <span aria-hidden="true">↗</span></a>
+        </div>
+        <div class="grade-wrap" aria-live="polite">
+          <div class="grade-card" id="grade-card">
+            <span class="grade-label">OVERALL GRADE</span>
+            <strong id="grade">—</strong>
+            <span class="score" id="score">Calculating</span>
+          </div>
+          <p class="gate" id="gate"></p>
+        </div>
+      </section>
+
+      <section class="summary-strip" aria-label="Report summary">
+        <div><span>Checks</span><strong id="check-count">—</strong></div>
+        <div><span>Passing</span><strong id="pass-count">—</strong></div>
+        <div><span>Needs attention</span><strong id="attention-count">—</strong></div>
+        <div><span>Generated</span><strong id="generated-at">—</strong></div>
+      </section>
+
+      <section class="checks-section" id="checks" aria-labelledby="checks-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">THE MARKS</p>
+            <h2 id="checks-title">Quality checks</h2>
+          </div>
+          <div class="filters" role="group" aria-label="Filter checks">
+            <button class="filter active" type="button" data-filter="all" aria-pressed="true">All</button>
+            <button class="filter" type="button" data-filter="passed" aria-pressed="false">Passing</button>
+            <button class="filter" type="button" data-filter="attention" aria-pressed="false">Attention</button>
+          </div>
+        </div>
+        <div class="check-grid" id="check-grid"></div>
+      </section>
+
+      <section class="about-section" aria-labelledby="about-title">
+        <p class="eyebrow">ABOUT THIS PAGE</p>
+        <h2 id="about-title">No service behind the curtain.</h2>
+        <p>This report was generated in this repository by GitHub Actions and published as static files on GitHub Pages. Its configuration, code, and visual assets live beside the project it measures.</p>
+      </section>
+    </main>
+
+    <footer>
+      <span>Generated from commit <code id="commit">unknown</code></span>
+      <span>No cookies. No analytics. No external assets.</span>
+    </footer>
+
+    <noscript>This report needs JavaScript enabled to display its locally embedded results.</noscript>
+    <script id="report-data" type="application/json">__REPORT_DATA__</script>
+    <script src="assets/app.js" defer></script>
+  </body>
+</html>

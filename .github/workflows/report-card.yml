@@ -1,0 +1,124 @@
+name: Go CI Report Card
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Same version ci.yml's scenario-smoke and gdscript-tests jobs pin to.
+  GODOT_VERSION: 4.6.2.stable
+  GODOT_CACHE_DIR: ~/.cache/godot-ci
+
+jobs:
+  analyze:
+    name: Analyze and build report
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      passed: ${{ steps.report.outputs.passed }}
+      score: ${{ steps.report.outputs.score }}
+      grade: ${{ steps.report.outputs.grade }}
+      # Raw coverage percentage from the tests check, for the README badge
+      # workflow to consume without scraping the report. See
+      # reportcard/config.toml's [checks.tests] for why Godot is required.
+      coverage: ${{ steps.report.outputs.coverage_percent }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      # The tests check runs `go test -tags=godot ./...`, which needs a real
+      # headless Godot binary to reach the transport, scenario runner, and
+      # launch paths gated behind that build tag. Same provisioning steps as
+      # ci.yml's scenario-smoke and gdscript-parse jobs.
+      - name: Cache Godot binary
+        id: godot-cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.GODOT_CACHE_DIR }}
+          key: godot-${{ env.GODOT_VERSION }}-linux
+
+      - name: Install Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: bash scripts/ci-install-godot.sh
+
+      - name: Locate Godot binary
+        run: |
+          source scripts/ci-install-godot.sh
+          echo "GODOT_BIN=${GODOT_BIN}" >> "$GITHUB_ENV"
+
+      - name: Generate static report
+        id: report
+        run: >-
+          python3 reportcard/generate.py
+          --config reportcard/config.toml
+          --output _site
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Configure GitHub Pages
+        if: ${{ github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch }}
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        if: ${{ github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch }}
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    name: Publish report
+    if: ${{ github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch }}
+    needs: analyze
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  quality-gate:
+    name: Quality gate
+    if: ${{ always() }}
+    needs: analyze
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check analysis completed
+        if: ${{ needs.analyze.result != 'success' }}
+        run: |
+          echo "Report generation did not complete."
+          exit 1
+
+      - name: Enforce minimum score
+        if: ${{ needs.analyze.outputs.passed != 'true' }}
+        env:
+          REPORT_SCORE: ${{ needs.analyze.outputs.score }}
+          REPORT_GRADE: ${{ needs.analyze.outputs.grade }}
+        run: |
+          echo "Quality gate failed: grade ${REPORT_GRADE}, score ${REPORT_SCORE}."
+          exit 1
+
+      - name: Confirm quality gate
+        if: ${{ needs.analyze.outputs.passed == 'true' }}
+        env:
+          REPORT_SCORE: ${{ needs.analyze.outputs.score }}
+          REPORT_GRADE: ${{ needs.analyze.outputs.grade }}
+        run: echo "Quality gate passed with grade ${REPORT_GRADE} (${REPORT_SCORE})."
