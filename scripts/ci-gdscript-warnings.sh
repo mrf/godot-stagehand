@@ -30,6 +30,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT="$REPO_ROOT/testdata/test_project"
 
+# `check` also loads examples/minimal-game: it vendors the same addon under
+# res://addons and ships its own strict warnings block (godot-stagehand-utb1),
+# so it needs the same clean-load proof. `selftest` stays on testdata/test_project
+# only — one negative control is enough to prove the gate mechanism is armed.
+EXAMPLE_PROJECT="$REPO_ROOT/examples/minimal-game"
+
 # Bare ERROR is intentionally excluded: headless Godot emits engine-level ERROR
 # lines (Vulkan, display driver, etc.) that are harmless on CI runners.
 DIAGNOSTIC_RE="SCRIPT ERROR|Parse Error"
@@ -70,32 +76,38 @@ diagnostics() {
     rm -f "${log}"
 }
 
-# scratch_project — copy testdata/test_project somewhere writable, minus the
-# .godot import cache, and echo the path. Godot rewrites project.godot on load,
-# so the gate must never run against the working tree copy.
+# scratch_project <project-dir> — copy the given project somewhere writable,
+# minus the .godot import cache, and echo the path. Godot rewrites
+# project.godot on load, so the gate must never run against the working tree
+# copy.
 scratch_project() {
-    local dir
-    dir="$(mktemp -d)/test_project"
-    cp -R "${PROJECT}" "${dir}"
+    local src="$1" dir
+    dir="$(mktemp -d)/$(basename "${src}")"
+    cp -R "${src}" "${dir}"
     rm -rf "${dir}/.godot"
     echo "${dir}"
 }
 
 cmd_check() {
-    local project found
-    project="$(scratch_project)"
-    found="$(diagnostics "${project}")"
-    if [[ -n "${found}" ]]; then
-        echo "GDScript warnings-as-errors violations detected in the addon:"
-        echo "${found}"
-        exit 1
-    fi
-    echo "OK: addon loads clean with every gdscript/warnings/* elevated to error."
+    local failed=0
+    local src project found
+    for src in "${PROJECT}" "${EXAMPLE_PROJECT}"; do
+        project="$(scratch_project "${src}")"
+        found="$(diagnostics "${project}")"
+        if [[ -n "${found}" ]]; then
+            echo "GDScript warnings-as-errors violations detected in ${src}:"
+            echo "${found}"
+            failed=1
+            continue
+        fi
+        echo "OK: $(basename "${src}") loads clean with every gdscript/warnings/* elevated to error."
+    done
+    [[ "${failed}" -eq 0 ]]
 }
 
 cmd_selftest() {
     local project found
-    project="$(scratch_project)"
+    project="$(scratch_project "${PROJECT}")"
     printf '%s' "${PROBE_SOURCE}" >>"${project}/${PROBE_FILE}"
     found="$(diagnostics "${project}")"
     if [[ -z "${found}" ]]; then
