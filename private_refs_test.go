@@ -25,12 +25,19 @@ var privateRefPattern = regexp.MustCompile(`(?i)` + strings.Join([]string{
 	`/mnt/c/Users`,
 }, "|"))
 
-// TestNoPrivateReferences fails if any tracked file names one of the
+// TestNoPrivateReferences fails if any tracked project asset names one of the
 // maintainer's private projects or a machine-local path.
 //
-// It scans everything git tracks, including .beads/, because the issue history
-// ships with the repo and is just as public as the source. The only exemption is
-// this file, which necessarily contains the patterns it searches for.
+// Scope is deliberately the project's own assets: source, docs, scripts,
+// fixtures and the addon. Two exemptions:
+//
+//   - This file, which necessarily contains the patterns it searches for.
+//   - .beads/, the issue tracker's history. Owner's call (2026-07-25): what a
+//     closed bug report said about the downstream project that reported it is
+//     not a project asset, and nobody reads it as documentation. Enforcing it
+//     there also cannot work from a worktree, since the authoritative
+//     .beads/beads.db is untracked and regenerates issues.jsonl on every flush,
+//     so the export would keep reverting under the test.
 func TestNoPrivateReferences(t *testing.T) {
 	out, err := exec.Command("git", "ls-files", "-z").Output()
 	if err != nil {
@@ -39,7 +46,7 @@ func TestNoPrivateReferences(t *testing.T) {
 
 	const self = "private_refs_test.go"
 	for _, path := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
-		if path == "" || path == self {
+		if path == "" || path == self || strings.HasPrefix(path, ".beads/") {
 			continue
 		}
 		// Binary fixtures (baseline PNGs, the addon icon) have no prose to leak.
