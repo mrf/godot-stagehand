@@ -123,11 +123,16 @@ no lock across blocking Kill/Close.
   with defaults attach to the *same* game on 26700 and mutate one SceneTree →
   cross-talk and nondeterministic tests. `instance_id` gives isolation only *within*
   one MCP process; nothing steers subagents toward launch-your-own.
-- **M2 HIGH — same-project cache/data race.** Isolation is by port only. Two launched
+- **M2 HIGH — same-project cache/data race.** ~~Isolation is by port only. Two launched
   instances of the same project share `.godot/` import cache and `user://`
   (`launch.go:116` passes only ProjectPath). Concurrent cold-import can corrupt the
   cache (matches the previously-observed gray-screen/stale-cache failure). No
-  per-instance `--user-data-dir` or project copy.
+  per-instance `--user-data-dir` or project copy.~~
+  **FIXED.** Note the audit's premise was wrong: Godot 4 has no `--user-data-dir`
+  flag. `user://` is now isolated per launch via the documented data-path
+  environment variables, and the un-relocatable `.godot` cache is made safe by a
+  cross-process locked import-once-before-fan-out step. Platform limits and the
+  contract are in `docs/architecture/instance-isolation.md`.
 - **M3 MED — port TOCTOU with no retry.** `findFreePort` closes its probe listener
   seconds before Godot binds; two concurrent launches can collide. The token check
   turns this into a clean error, but there is no retry loop.
@@ -148,9 +153,11 @@ no lock across blocking Kill/Close.
    warn that `godot_connect` on the default port may attach to another agent's game;
    consider requiring an explicit `port` when `STAGEHAND_MULTI` (or similar) is set.
    Fixes M1 ergonomically.
-4. **Per-instance data isolation**: unique `--user-data-dir` (Godot supports
+4. ~~**Per-instance data isolation**: unique `--user-data-dir` (Godot supports
    `user://` redirection via project override or `XDG_DATA_HOME`) and either a
-   pre-import step or documented "import once before fan-out" contract. Fixes M2.
+   pre-import step or documented "import once before fan-out" contract. Fixes M2.~~
+   **DONE** — env-var `user://` redirection plus a locked pre-import step. There is
+   no `--user-data-dir` flag; see `docs/architecture/instance-isolation.md`.
 5. **Retry loop on launch port collision** (bounded, e.g. 3 attempts) — fixes M3
    without cross-process registries; M4 then likely not worth building.
 6. **Addon hardening**: respond with JSON-RPC error on handler abort (S8), cap peers +

@@ -41,6 +41,12 @@ var launchTool = mcp.NewTool("godot_launch",
 		mcp.Description("Explicitly enable godot_evaluate and arbitrary godot_call_method requests for this launched session"),
 		mcp.DefaultBool(false),
 	),
+	mcp.WithBoolean("share_user_data",
+		mcp.Description("Let this instance use the project's real user:// directory instead of a private, throwaway one. "+
+			"Default false: each launch gets an isolated user:// so concurrent instances of one project cannot corrupt each other's saves and settings — "+
+			"but nothing written to user:// survives the instance. Set true when you need persistent save data and are running only one instance."),
+		mcp.DefaultBool(false),
+	),
 	mcp.WithArray("extra_args",
 		mcp.Description("Extra command-line arguments to pass to the Godot binary"),
 		mcp.WithStringItems(),
@@ -64,6 +70,7 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 	headless := req.GetBool("headless", true)
 	expectScreenshots := req.GetBool("expect_screenshots", false)
 	allowUnsafe := req.GetBool("allow_unsafe", false)
+	shareUserData := req.GetBool("share_user_data", false)
 	extraArgs := req.GetStringSlice("extra_args", nil)
 	timeoutMs := req.GetInt("timeout_ms", 30000)
 	instanceID := req.GetString("instance_id", "default")
@@ -94,6 +101,10 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 		AllowUnsafe: allowUnsafe,
 		ExtraArgs:   extraArgs,
 		TimeoutMs:   timeoutMs,
+		// Isolation is on by default: two agents launching the same project
+		// must not share user://, and the shared res://.godot import cache is
+		// populated by one serialized headless import before the game starts.
+		ShareUserData: shareUserData,
 	}
 
 	// Clean up any existing entry for this instanceID before launching.
@@ -115,11 +126,15 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 		"engine_version":         result.EngineVersion,
 		"stagehand_version":      result.StagehandVersion,
 		"unsafe_methods_enabled": allowUnsafe,
+		"user_data_dir":          result.UserDataDir,
 		"connection_guidance":    connectionGuidance(),
 	}
 	var warnings []string
 	if headless {
 		warnings = append(warnings, headlessScreenshotWarning)
+	}
+	if result.UserDataWarning != "" {
+		warnings = append(warnings, result.UserDataWarning)
 	}
 	if warning := sharedPortWarning(result.Port); warning != "" {
 		warnings = append(warnings, warning)

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -93,6 +94,55 @@ func copyFile(t *testing.T, src, dst string) {
 	if _, err := io.Copy(out, in); err != nil {
 		t.Fatalf("copy %s to %s: %v", src, dst, err)
 	}
+}
+
+// requirePOSIXFakeBinary skips tests that stand a /bin/sh script in for the
+// Godot binary.
+func requirePOSIXFakeBinary(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("fake /bin/sh Godot binary is POSIX-only")
+	}
+}
+
+// writeMinimalProject creates a bare Godot project directory at path.
+func writeMinimalProject(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", path, err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "project.godot"), []byte("config_version=5\n"), 0o644); err != nil {
+		t.Fatalf("write project.godot: %v", err)
+	}
+}
+
+// writeFakeGodot writes an executable /bin/sh stub standing in for the Godot
+// binary. Callers supply the script body (without the shebang).
+func writeFakeGodot(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+		t.Fatalf("write fake godot %s: %v", path, err)
+	}
+}
+
+// readInvocationLog returns the non-empty lines a fake Godot stub appended to
+// path, or nil when it was never invoked.
+func readInvocationLog(t *testing.T, path string) []string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		t.Fatalf("read invocation log %s: %v", path, err)
+	}
+	var lines []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
 }
 
 func freeTCPPort(t *testing.T) int {
