@@ -11,7 +11,15 @@ const BUTTON_MAP: Dictionary = {
 }
 
 
-## Simulate a mouse click at [param position] (screen coordinates).
+## The [Viewport] a synthesized pointer event should be delivered to, and the
+## canvas-space (i.e. [Control]/[Node2D] local coordinate space, not window
+## pixels) position within that viewport. See [method _resolve_click_target].
+class ClickTarget extends RefCounted:
+	var viewport: Viewport
+	var position: Vector2
+
+
+## Simulate a mouse click at [param position] (canvas coordinates).
 ## [param button] is "left", "right", or "middle".
 ## [param double_click] triggers a double-click event.
 static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
@@ -21,7 +29,7 @@ static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if not has_selector and not has_position:
 		return {"error": "Missing selector or position"}
 
-	var pos: Vector2
+	var target: ClickTarget
 	var matched_count: int = 0
 	var clicked_node: Node = null
 	if has_selector:
@@ -35,27 +43,40 @@ static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
 		var ranked: Array[Node] = SELECTOR_ENGINE.rank_for_interaction(nodes)
 		clicked_node = ranked[0]
 		if clicked_node is CanvasItem:
-			# Selector rects live in canvas (content-scale) space; translate the
-			# chosen target into window space so clicks land correctly under stretch.
 			var ci: CanvasItem = clicked_node
-			pos = _node_window_position(ci)
+			target = _resolve_click_target(ci)
 		else:
 			return {"error": "Node type does not support clicking"}
 	else:
 		var p: Dictionary = params["position"]
-		pos = Vector2(_v_float(p.get("x", 0)), _v_float(p.get("y", 0)))
+		target = ClickTarget.new()
+		target.viewport = tree.root
+		target.position = Vector2(_v_float(p.get("x", 0)), _v_float(p.get("y", 0)))
 
 	var btn_str: String = params.get("button", "left")
 	var btn: int = _v_int(BUTTON_MAP.get(btn_str, MOUSE_BUTTON_LEFT))
 	var double_click: bool = _v_bool(params.get("double_click", false))
 
-	_press_mouse(tree, pos, btn, double_click)
+	# A leading motion event mirrors how a real pointer always moves before it
+	# clicks, and — for selector-driven clicks — lets us confirm the click will
+	# actually land on the intended Control before we report success. See
+	# _gui_delivery_confirmed for why this check can't be made for raw
+	# position-only clicks.
+	if has_selector and not _gui_delivery_confirmed(target, clicked_node):
+		return {
+			"error": "Click target did not receive the event: %s is not the topmost Control at (%.1f, %.1f)" % [
+				clicked_node.get_path(), target.position.x, target.position.y,
+			],
+			"clicked_at": {"x": target.position.x, "y": target.position.y},
+		}
+
+	_push_mouse_button(target.viewport, target.position, btn, true, double_click)
 	var hold_ms: int = _v_int(params.get("hold_ms", 100))
-	_release_mouse_after(tree, pos, btn, hold_ms / 1000.0)
+	_release_mouse_after(tree, target.viewport, target.position, btn, hold_ms / 1000.0)
 
 	var result: Dictionary = {
 		"success": true,
-		"clicked_at": {"x": pos.x, "y": pos.y},
+		"clicked_at": {"x": target.position.x, "y": target.position.y},
 		"button": btn_str,
 	}
 	if has_selector:
@@ -101,25 +122,108 @@ static func input_key(tree: SceneTree, params: Dictionary) -> Dictionary:
 	return {"success": true, "key": key_str}
 
 
-static func _press_mouse(_tree: SceneTree, pos: Vector2, btn: int, double_click: bool) -> void:
+## Delivers [param event] directly to [param viewport]'s input/GUI dispatch
+## using local (canvas-space) coordinates, instead of routing it through
+## [method Input.parse_input_event] and the [DisplayServer] window pixel space.
+##
+## Under --headless, Godot never creates a real OS window, so the root
+## [Window]'s reported [member Window.size] is a degenerate stub (observed
+## 64x64 against a real Godot 4.6.2 binary) regardless of the project's
+## configured resolution. [method Viewport.push_input] with
+## in_local_coords=true skips [method Input.parse_input_event]'s window-pixel
+## coordinate remap, but Godot's GUI dispatch still hit-tests every pointer
+## event against the target [Window]'s own size — confirmed with
+## instrumentation: [method Viewport.gui_get_hovered_control] stays null for a
+## click computed at a real [Control]'s on-screen position until
+## [method _ensure_headless_window_sized] corrects that stub, at which point
+## it correctly reports the target [Control] (godot-stagehand-nry). Canvas
+## coordinates are otherwise correct in both the windowed
+## content-scale-stretch case (godot-stagehand-phase3-vrj.19) and the
+## headless case, making the separate window/canvas stretch-transform mapping
+## this addon previously needed unnecessary.
+static func _push(viewport: Viewport, event: InputEvent) -> void:
+	if viewport == null:
+		Input.parse_input_event(event)
+		return
+	_ensure_headless_window_sized(viewport)
+	viewport.push_input(event, true)
+
+
+## Corrects the degenerate root-[Window] size stub described on [method _push]
+## so GUI input dispatch has real bounds to hit-test synthesized pointer
+## events against. Gated on [method DisplayServer.get_name] == "headless"
+## (confirmed the reported name under --headless) so a real windowed
+## session — where [member Window.size] is legitimate and may deliberately
+## differ from the project's configured resolution (user-resized window,
+## content-scale stretch, etc.) — is never touched, preserving the
+## godot-stagehand-phase3-vrj.19 stretch-mode fix. Only [Window] targets are
+## corrected; a [SubViewport]'s size is developer-controlled already and
+## unaffected by this headless quirk.
+static func _ensure_headless_window_sized(viewport: Viewport) -> void:
+	if not (viewport is Window):
+		return
+	if DisplayServer.get_name() != "headless":
+		return
+	var window: Window = viewport
+	var wanted: Vector2i = Vector2i(
+		_v_int(ProjectSettings.get_setting("display/window/size/viewport_width", 1152)),
+		_v_int(ProjectSettings.get_setting("display/window/size/viewport_height", 648))
+	)
+	if wanted.x <= 0 or wanted.y <= 0:
+		return
+	if window.size != wanted:
+		window.size = wanted
+
+
+static func _push_mouse_motion(viewport: Viewport, pos: Vector2) -> void:
+	var ev: InputEventMouseMotion = InputEventMouseMotion.new()
+	ev.position = pos
+	ev.global_position = pos
+	ev.relative = Vector2.ZERO
+	_push(viewport, ev)
+
+
+static func _push_mouse_button(viewport: Viewport, pos: Vector2, btn: int, pressed: bool, double_click: bool) -> void:
 	var ev: InputEventMouseButton = InputEventMouseButton.new()
 	ev.position = pos
 	ev.global_position = pos
 	ev.button_index = btn as MouseButton
-	ev.pressed = true
+	ev.pressed = pressed
 	ev.double_click = double_click
-	Input.parse_input_event(ev)
+	_push(viewport, ev)
 
 
-static func _release_mouse_after(tree: SceneTree, pos: Vector2, btn: int, delay_sec: float) -> void:
+## Best-effort confirmation that a click at [param target]'s position will
+## actually be observed by [param expected_node]. Sends the leading motion
+## event (see input_mouse) and inspects [method Viewport.gui_get_hovered_control]
+## afterward — the same lookup Godot's own GUI system uses to decide who a
+## pointer event belongs to.
+##
+## This can only validate [Control] targets reached via a selector: a raw
+## position click has no "expected" node (clicking empty space to dismiss a
+## popup is legitimate), and a [Node2D] click has no equivalent engine-level
+## "who received this" signal to query, so [param expected_node] is null in
+## both of those cases and this always reports delivered. That gap is the
+## documented limit of what's detectable here — see the AC discussion in
+## godot-stagehand-nry.
+static func _gui_delivery_confirmed(target: ClickTarget, expected_node: Node) -> bool:
+	_push_mouse_motion(target.viewport, target.position)
+	if expected_node == null or target.viewport == null:
+		return true
+	var hovered: Control = target.viewport.gui_get_hovered_control()
+	if hovered == null:
+		return false
+	if hovered == expected_node:
+		return true
+	# A child inside the target's own rect (e.g. a Label/TextureRect painted
+	# over a Button) still counts as the target receiving the interaction.
+	return expected_node.is_ancestor_of(hovered)
+
+
+static func _release_mouse_after(tree: SceneTree, viewport: Viewport, pos: Vector2, btn: int, delay_sec: float) -> void:
 	var timer: SceneTreeTimer = tree.create_timer(delay_sec)
 	var _err: int = timer.timeout.connect(func() -> void:
-		var ev: InputEventMouseButton = InputEventMouseButton.new()
-		ev.position = pos
-		ev.global_position = pos
-		ev.button_index = btn as MouseButton
-		ev.pressed = false
-		Input.parse_input_event(ev)
+		_push_mouse_button(viewport, pos, btn, false, false)
 	)
 
 
@@ -192,28 +296,14 @@ static func input_text(tree: SceneTree, params: Dictionary) -> Dictionary:
 			return {"error": "Node not found for selector"}
 		# Prefer an interactive control so we focus the input, not a nearby label.
 		var node: Node = SELECTOR_ENGINE.rank_for_interaction(nodes)[0]
-		# Click the node to give it focus before typing
-		var pos: Vector2
-		if node is CanvasItem:
-			var ci: CanvasItem = node
-			pos = _node_window_position(ci)
-		else:
+		if not (node is CanvasItem):
 			return {"error": "Node type does not support focusing"}
+		var ci: CanvasItem = node
+		var target: ClickTarget = _resolve_click_target(ci)
 
-		# Emit mouse click to focus the control
-		var ev_click: InputEventMouseButton = InputEventMouseButton.new()
-		ev_click.position = pos
-		ev_click.global_position = pos
-		ev_click.button_index = MOUSE_BUTTON_LEFT
-		ev_click.pressed = true
-		Input.parse_input_event(ev_click)
-
-		var release_ev: InputEventMouseButton = InputEventMouseButton.new()
-		release_ev.position = pos
-		release_ev.global_position = pos
-		release_ev.button_index = MOUSE_BUTTON_LEFT
-		release_ev.pressed = false
-		Input.parse_input_event(release_ev)
+		# Click the node to give it focus before typing.
+		_push_mouse_button(target.viewport, target.position, MOUSE_BUTTON_LEFT, true, false)
+		_push_mouse_button(target.viewport, target.position, MOUSE_BUTTON_LEFT, false, false)
 
 	var chars: PackedStringArray = text.split("", false)
 	var total_delay: float = 0.0
@@ -242,6 +332,7 @@ static func input_touch(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if not params.has("position"):
 		return {"error": "Missing position"}
 
+	var viewport: Viewport = tree.root
 	var p: Dictionary = params["position"]
 	var pos: Vector2 = Vector2(_v_float(p.get("x", 0.0)), _v_float(p.get("y", 0.0)))
 	var index: int = _v_int(params.get("index", 0))
@@ -250,29 +341,29 @@ static func input_touch(tree: SceneTree, params: Dictionary) -> Dictionary:
 
 	match action:
 		"tap":
-			_touch_press(pos, index)
+			_touch_press(viewport, pos, index)
 			if params.has("drag_to"):
 				var dt: Dictionary = params["drag_to"]
 				var drag_pos: Vector2 = Vector2(_v_float(dt.get("x", 0.0)), _v_float(dt.get("y", 0.0)))
-				_touch_drag(pos, drag_pos, index)
-				_touch_release_after(tree, drag_pos, index, duration_ms / 1000.0)
+				_touch_drag(viewport, pos, drag_pos, index)
+				_touch_release_after(tree, viewport, drag_pos, index, duration_ms / 1000.0)
 				return {
 					"success": true,
 					"position": {"x": pos.x, "y": pos.y},
 					"drag_to": {"x": drag_pos.x, "y": drag_pos.y},
 					"index": index,
 				}
-			_touch_release_after(tree, pos, index, duration_ms / 1000.0)
+			_touch_release_after(tree, viewport, pos, index, duration_ms / 1000.0)
 			return {"success": true, "position": {"x": pos.x, "y": pos.y}, "index": index}
 		"begin":
-			_touch_press(pos, index)
+			_touch_press(viewport, pos, index)
 			return {"success": true, "position": {"x": pos.x, "y": pos.y}, "index": index, "action": "begin"}
 		"move":
 			if not params.has("drag_to"):
 				return {"error": "drag_to is required for action 'move'"}
 			var dt: Dictionary = params["drag_to"]
 			var drag_pos: Vector2 = Vector2(_v_float(dt.get("x", 0.0)), _v_float(dt.get("y", 0.0)))
-			_touch_drag(pos, drag_pos, index)
+			_touch_drag(viewport, pos, drag_pos, index)
 			return {
 				"success": true,
 				"from": {"x": pos.x, "y": pos.y},
@@ -281,99 +372,90 @@ static func input_touch(tree: SceneTree, params: Dictionary) -> Dictionary:
 				"action": "move",
 			}
 		"end":
-			_touch_release(pos, index)
+			_touch_release(viewport, pos, index)
 			return {"success": true, "position": {"x": pos.x, "y": pos.y}, "index": index, "action": "end"}
 		_:
 			return {"error": "Unknown action: %s" % action}
 
 
-static func _touch_press(pos: Vector2, index: int) -> void:
+static func _touch_press(viewport: Viewport, pos: Vector2, index: int) -> void:
 	var ev: InputEventScreenTouch = InputEventScreenTouch.new()
 	ev.position = pos
 	ev.index = index
 	ev.pressed = true
-	Input.parse_input_event(ev)
+	_push(viewport, ev)
 
 
-static func _touch_release(pos: Vector2, index: int) -> void:
+static func _touch_release(viewport: Viewport, pos: Vector2, index: int) -> void:
 	var ev: InputEventScreenTouch = InputEventScreenTouch.new()
 	ev.position = pos
 	ev.index = index
 	ev.pressed = false
-	Input.parse_input_event(ev)
+	_push(viewport, ev)
 
 
-static func _touch_release_after(tree: SceneTree, pos: Vector2, index: int, delay_sec: float) -> void:
+static func _touch_release_after(tree: SceneTree, viewport: Viewport, pos: Vector2, index: int, delay_sec: float) -> void:
 	var timer: SceneTreeTimer = tree.create_timer(delay_sec)
 	var _err: int = timer.timeout.connect(func() -> void:
-		_touch_release(pos, index)
+		_touch_release(viewport, pos, index)
 	)
 
 
-static func _touch_drag(from: Vector2, to: Vector2, index: int) -> void:
+static func _touch_drag(viewport: Viewport, from: Vector2, to: Vector2, index: int) -> void:
 	var ev: InputEventScreenDrag = InputEventScreenDrag.new()
 	ev.position = to
 	ev.index = index
 	ev.relative = to - from
 	ev.velocity = Vector2.ZERO
-	Input.parse_input_event(ev)
+	_push(viewport, ev)
 
 
 ## Moves mouse cursor to specified position without clicking
 static func input_mouse_move(tree: SceneTree, params: Dictionary) -> Dictionary:
-	var pos: Vector2
+	var target: ClickTarget
 	if params.has("selector"):
 		var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, str(params["selector"]))
 		if nodes.is_empty():
 			return {"error": "Node not found for selector"}
 		# Prefer an interactive control when the selector is ambiguous.
 		var node: Node = SELECTOR_ENGINE.rank_for_interaction(nodes)[0]
-
-		if node is CanvasItem:
-			var ci: CanvasItem = node
-			pos = _node_window_position(ci)
-		else:
+		if not (node is CanvasItem):
 			return {"error": "Node type does not support mouse positioning"}
+		var ci: CanvasItem = node
+		target = _resolve_click_target(ci)
 	elif params.has("coordinates"):
 		var coords: Dictionary = params["coordinates"]
-		pos = Vector2(_v_float(coords.get("x", 0)), _v_float(coords.get("y", 0)))
+		target = ClickTarget.new()
+		target.viewport = tree.root
+		target.position = Vector2(_v_float(coords.get("x", 0)), _v_float(coords.get("y", 0)))
 	else:
 		return {"error": "Either selector or coordinates is required"}
 
-	var ev_motion: InputEventMouseMotion = InputEventMouseMotion.new()
-	ev_motion.position = pos
-	ev_motion.global_position = pos
-	ev_motion.relative = Vector2.ZERO
-	Input.parse_input_event(ev_motion)
+	_push_mouse_motion(target.viewport, target.position)
 
 	return {
 		"success": true,
-		"moved_to": {"x": pos.x, "y": pos.y},
+		"moved_to": {"x": target.position.x, "y": target.position.y},
 		"mode": "by_selector" if params.has("selector") else "absolute",
 	}
 
 
-## Converts a selector-matched node's click target into window/display coordinates.
-##
-## Selector-derived node rects live in the viewport's canvas (content-scale) space,
-## but [method Input.parse_input_event] delivers events in window/display pixels.
-## When the project uses content-scale stretch (window size differs from the
-## content scale size), those spaces diverge, so a position computed in canvas
-## space lands off-target by the stretch ratio (see godot-stagehand-phase3-vrj.19).
-## We map canvas -> window via the viewport's stretch transform.
+## Resolves the [Viewport] a selector-matched node's synthesized pointer
+## event should be delivered to, and the node's click target in that
+## viewport's own canvas (local) coordinate space.
 ## [method CanvasItem.get_global_transform_with_canvas] resolves the node's
 ## on-canvas position, honoring CanvasLayer and Camera2D transforms; for a
 ## [Control] the target is its center, for a [Node2D] its origin.
-static func _node_window_position(node: CanvasItem) -> Vector2:
+static func _resolve_click_target(node: CanvasItem) -> ClickTarget:
 	var local_target: Vector2 = Vector2.ZERO
 	if node is Control:
 		var ctrl: Control = node
 		local_target = ctrl.size / 2.0
 	var canvas_point: Vector2 = node.get_global_transform_with_canvas() * local_target
-	var viewport: Viewport = node.get_viewport()
-	if viewport == null:
-		return canvas_point
-	return viewport.get_stretch_transform() * canvas_point
+	var target: ClickTarget = ClickTarget.new()
+	target.position = canvas_point
+	target.viewport = node.get_viewport()
+	return target
 
 
 static func _v_int(v: Variant) -> int:
