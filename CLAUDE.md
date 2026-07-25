@@ -4,8 +4,19 @@ MCP server (Go) + Godot addon (GDScript) for external game automation and testin
 
 ## Architecture
 
-- `main.go` — CLI entry point
+- `main.go` — entry point. **No arguments = MCP stdio server** (hard
+  compatibility contract); any argument dispatches to `setup`, `--version`, or
+  `internal/cli`
 - `internal/mcpserver/` — MCP server, tool handlers
+- `internal/cli/` — CLI frontend: one-shot commands + `run <scenario>`. A
+  sibling of `mcpserver`, not built on it
+- `internal/scenario/` — scenario model, validation, runner, JSON/JUnit/trace
+  reporters — see `docs/cli.md`
+- `internal/gwpop/` — shared action registry: action name → GWP method +
+  validated params, typed failure kinds, the blocked-method list. Used by
+  `cli`/`scenario`; `mcpserver` deliberately does not route through it
+- `internal/visual/` — screenshot decode, baselines, pixel diff (shared by
+  `mcpserver` and `scenario`)
 - `internal/godotconn/` — WebSocket connection to Godot addon
 - `internal/selector/` — Selector parsing and validation
 - `addons/stagehand/` — GDScript addon (WebSocket server inside the game); the
@@ -24,8 +35,11 @@ go run .                           # run
 ## Test
 
 ```bash
-go test ./...                      # all tests
+go test ./...                      # all tests (no Godot needed)
 go test ./internal/selector/       # selector tests only
+
+# Real-Godot scenario runner gate (mirrors CI's scenario-smoke job)
+GODOT_BIN=/path/to/godot go test -tags=godot -run '^TestScenarioRunner' .
 ```
 
 ## Lint

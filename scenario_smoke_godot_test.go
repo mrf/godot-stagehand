@@ -25,10 +25,7 @@ import (
 // dispatch, exit codes, or artifact writing fails here rather than in a user's
 // pipeline.
 func TestScenarioRunnerSmoke(t *testing.T) {
-	godotBin, err := launch.FindGodotBinary()
-	if err != nil || godotBin == "" {
-		t.Skip("no Godot binary: set GODOT_BIN to run the scenario smoke gate")
-	}
+	godotBin := requireGodotBinary(t)
 
 	binary := buildBinary(t)
 	outDir := t.TempDir()
@@ -130,10 +127,7 @@ func TestScenarioRunnerSmoke(t *testing.T) {
 // pass quietly. A green-only smoke test would not catch a runner that swallows
 // failures.
 func TestScenarioRunnerFailsWithAssertionExitCode(t *testing.T) {
-	godotBin, err := launch.FindGodotBinary()
-	if err != nil || godotBin == "" {
-		t.Skip("no Godot binary: set GODOT_BIN to run the scenario smoke gate")
-	}
+	godotBin := requireGodotBinary(t)
 
 	binary := buildBinary(t)
 	dir := t.TempDir()
@@ -172,6 +166,22 @@ func TestScenarioRunnerFailsWithAssertionExitCode(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Stagehand Test Scene") {
 		t.Errorf("the failure report does not include the observed value:\n%s", stdout.String())
 	}
+}
+
+// requireGodotBinary fails rather than skips: the //go:build godot tag is the
+// guard for "this needs an engine", so invoking the tag without a binary is a
+// setup error. A skip here would let the CI gate report success having run
+// nothing (AGENTS.md: no skipped tests).
+func requireGodotBinary(t *testing.T) string {
+	t.Helper()
+	godotBin, err := launch.FindGodotBinary()
+	if err != nil {
+		t.Fatalf("locate Godot binary: %v", err)
+	}
+	if godotBin == "" {
+		t.Fatal("no Godot binary found: set GODOT_BIN, GODOT_PATH or STAGEHAND_GODOT_BIN before running -tags=godot")
+	}
+	return godotBin
 }
 
 func readIfPresent(path string) string {
