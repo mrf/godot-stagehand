@@ -182,6 +182,8 @@ func (s *stubGodot) handleReq(req godotconn.Request) godotconn.Response {
 		}
 	case "input_mouse", "input_action", "input_key", "input_touch":
 		resp.Result = rawJSON(`{"success":true}`)
+	case "focus_window":
+		resp.Result = rawJSON(`{"success":true,"window":"/root/Dialog","auto_selected":true,"already_focused":false}`)
 	case "screenshot":
 		payload, _ := json.Marshal(map[string]any{
 			"data":      testPNG1x1Base64,
@@ -550,6 +552,74 @@ func TestE2E_PressKey(t *testing.T) {
 		mods, ok := p["modifiers"].([]any)
 		if !ok || len(mods) == 0 {
 			t.Errorf("expected modifiers [ctrl], got %v", p["modifiers"])
+		}
+	})
+}
+
+// godot_focus_window is the explicit recovery for a modal that has lost window
+// focus and is therefore deaf to godot_press_key (godot-stagehand-z6iu). It is
+// a distinct tool precisely so the focus mutation is never a side effect of
+// pressing a key.
+func TestE2E_FocusWindow(t *testing.T) {
+	t.Run("NoSelectorSendsNoParams", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+
+		result, err := srv.handleFocusWindow(context.Background(), toolReq(nil))
+		if err != nil {
+			t.Fatalf("handleFocusWindow: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("focus_window error: %+v", result)
+		}
+		if n := stub.callCount("focus_window"); n != 1 {
+			t.Fatalf("expected 1 focus_window call, got %d", n)
+		}
+		var p map[string]any
+		if params := stub.lastCallParams("focus_window"); params != nil {
+			if err := json.Unmarshal(params, &p); err != nil {
+				t.Fatalf("unmarshal focus_window params: %v", err)
+			}
+		}
+		if _, present := p["selector"]; present {
+			t.Errorf("selector must be omitted when unset, got %v", p["selector"])
+		}
+	})
+
+	t.Run("SelectorIsForwarded", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+
+		result, err := srv.handleFocusWindow(context.Background(), toolReq(map[string]any{
+			"selector": "class:AcceptDialog",
+		}))
+		if err != nil {
+			t.Fatalf("handleFocusWindow: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("focus_window error: %+v", result)
+		}
+		var p map[string]any
+		if err := json.Unmarshal(stub.lastCallParams("focus_window"), &p); err != nil {
+			t.Fatalf("unmarshal focus_window params: %v", err)
+		}
+		if p["selector"] != "class:AcceptDialog" {
+			t.Errorf("selector = %v, want class:AcceptDialog", p["selector"])
+		}
+	})
+
+	t.Run("MalformedSelectorNeverReachesTheWire", func(t *testing.T) {
+		srv, stub := setupE2ETest(t)
+
+		result, err := srv.handleFocusWindow(context.Background(), toolReq(map[string]any{
+			"selector": "name:",
+		}))
+		if err != nil {
+			t.Fatalf("handleFocusWindow: %v", err)
+		}
+		if !result.IsError {
+			t.Fatal("expected a malformed selector to be rejected")
+		}
+		if n := stub.callCount("focus_window"); n != 0 {
+			t.Errorf("expected 0 focus_window calls, got %d", n)
 		}
 	})
 }

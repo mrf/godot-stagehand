@@ -185,16 +185,7 @@ func test_touch_outside_a_modal_subwindow_returns_a_typed_failure() -> void:
 # ── (b) key input: an unfocused modal loses every key ────────────────────
 
 func test_key_input_while_the_modal_is_unfocused_returns_a_typed_failure() -> void:
-	# Reproduce the focus loss the way the engine does it, bypassing the
-	# simulator so the guard under test is not the thing setting up the state.
-	for pressed: bool in [true, false]:
-		var ev: InputEventMouseButton = InputEventMouseButton.new()
-		ev.position = Vector2(60.0, 30.0)
-		ev.global_position = ev.position
-		ev.button_index = MOUSE_BUTTON_LEFT
-		ev.pressed = pressed
-		get_tree().root.push_input(ev, true)
-	await get_tree().process_frame
+	await _drop_modal_focus()
 	assert_bool(_dialog.has_focus()).is_false()
 
 	var result: Dictionary = StagehandInputSimulator.input_key(get_tree(), {"key": "Escape"})
@@ -210,6 +201,120 @@ func test_key_input_reaches_a_focused_modal_subwindow() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	assert_bool(_dialog.visible).is_false()
+
+
+## The refusal has to name the recovery, otherwise a caller is told what went
+## wrong and given nothing to do about it (godot-stagehand-z6iu).
+func test_the_unfocused_modal_refusal_points_at_focus_window() -> void:
+	await _drop_modal_focus()
+	var result: Dictionary = StagehandInputSimulator.input_key(get_tree(), {"key": "Escape"})
+	var details: Dictionary = result.get("details", {})
+	assert_str(str(details.get("next_action", ""))).contains("focus_window")
+
+
+# ── (c) focus_window: the explicit recovery from an unfocused modal ──────
+
+## Reproduces the engine's own focus loss without going through the simulator,
+## so the guard under test is never the thing that set the state up.
+func _drop_modal_focus() -> void:
+	for pressed: bool in [true, false]:
+		var ev: InputEventMouseButton = InputEventMouseButton.new()
+		ev.position = Vector2(60.0, 30.0)
+		ev.global_position = ev.position
+		ev.button_index = MOUSE_BUTTON_LEFT
+		ev.pressed = pressed
+		get_tree().root.push_input(ev, true)
+	await get_tree().process_frame
+
+
+## The whole point of the action: recover a stuck caller. Focus, then the key
+## that was previously refused actually dismisses the dialog.
+func test_focus_window_then_key_dismisses_the_modal() -> void:
+	await _drop_modal_focus()
+	assert_bool(_dialog.has_focus()).is_false()
+
+	var focused: Dictionary = StagehandInputSimulator.focus_window(get_tree(), {})
+	assert_str(str(focused.get("error", ""))).is_empty()
+	assert_bool(focused.get("success", false)).is_true()
+	assert_str(str(focused.get("window", ""))).is_equal(str(_dialog.get_path()))
+	assert_bool(focused.get("auto_selected", false)).is_true()
+	assert_bool(focused.get("already_focused", true)).is_false()
+	assert_bool(_dialog.has_focus()).is_true()
+
+	var key: Dictionary = StagehandInputSimulator.input_key(get_tree(), {"key": "Escape"})
+	assert_bool(key.get("success", false)).is_true()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	assert_bool(_dialog.visible).is_false()
+
+
+func test_focus_window_accepts_an_explicit_selector() -> void:
+	await _drop_modal_focus()
+	var result: Dictionary = StagehandInputSimulator.focus_window(
+		get_tree(), {"selector": "name:SubwindowSplashDialog"}
+	)
+	assert_bool(result.get("success", false)).is_true()
+	assert_bool(result.get("auto_selected", true)).is_false()
+	assert_bool(_dialog.has_focus()).is_true()
+
+
+## Idempotent: focusing what is already focused is a no-op success, not an
+## error, so a caller can call it unconditionally before sending keys.
+func test_focus_window_on_an_already_focused_window_succeeds() -> void:
+	assert_bool(_dialog.has_focus()).is_true()
+	var result: Dictionary = StagehandInputSimulator.focus_window(
+		get_tree(), {"selector": "name:SubwindowSplashDialog"}
+	)
+	assert_bool(result.get("success", false)).is_true()
+	assert_bool(result.get("already_focused", false)).is_true()
+
+
+func test_focus_window_rejects_a_selector_that_is_not_a_window() -> void:
+	var result: Dictionary = StagehandInputSimulator.focus_window(
+		get_tree(), {"selector": "group:%s" % INNER_GROUP}
+	)
+	assert_bool(result.get("success", false)).is_false()
+	assert_str(str(result.get("error_code", ""))).is_equal("not_supported")
+	assert_str(str(result.get("error", ""))).contains("Button")
+
+
+func test_focus_window_reports_node_not_found_for_an_unmatched_selector() -> void:
+	var result: Dictionary = StagehandInputSimulator.focus_window(
+		get_tree(), {"selector": "name:NoSuchDialogAnywhere"}
+	)
+	assert_bool(result.get("success", false)).is_false()
+	assert_str(str(result.get("error_code", ""))).is_equal("node_not_found")
+
+
+## grab_focus() on a hidden Window is a silent no-op (confirmed against Godot
+## 4.6.2), so reporting success would hand the caller a lie.
+func test_focus_window_refuses_a_hidden_window() -> void:
+	var hidden: Window = auto_free(Window.new())
+	hidden.name = "HiddenSubwindow"
+	add_child(hidden)
+	hidden.hide()
+	await get_tree().process_frame
+
+	var result: Dictionary = StagehandInputSimulator.focus_window(
+		get_tree(), {"selector": "name:HiddenSubwindow"}
+	)
+	assert_bool(result.get("success", false)).is_false()
+	assert_str(str(result.get("error_code", ""))).is_equal("not_supported")
+	assert_str(str(result.get("error", ""))).contains("not visible")
+
+
+## Auto-selection only has an answer while a modal is actually stuck. With
+## nothing to recover it must say so rather than silently focusing something
+## the caller did not ask for.
+func test_focus_window_without_a_selector_and_nothing_stuck_returns_a_typed_failure() -> void:
+	_dialog.hide()
+	await get_tree().process_frame
+
+	var result: Dictionary = StagehandInputSimulator.focus_window(get_tree(), {})
+	assert_bool(result.get("success", false)).is_false()
+	assert_str(str(result.get("error_code", ""))).is_equal("not_supported")
+	var details: Dictionary = result.get("details", {})
+	assert_str(str(details.get("next_action", ""))).contains("selector")
 
 
 # ── regression: the main-window path must keep phase3-vrj.19's behaviour ──

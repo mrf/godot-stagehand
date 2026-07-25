@@ -70,6 +70,7 @@ godot-stagehand scene       --port 26788 res://scenes/main_menu.tscn
 godot-stagehand input click  --port 26788 --selector 'text:Start'
 godot-stagehand input click  --port 26788 --position '{"x":100,"y":200}'
 godot-stagehand input key    --port 26788 Enter --modifiers ctrl,shift
+godot-stagehand input focus  --port 26788   # refocus the modal that lost focus
 godot-stagehand input action --port 26788 ui_accept
 godot-stagehand input text   --port 26788 'hello' --selector 'class:LineEdit'
 godot-stagehand input move   --port 26788 --coordinates '{"x":10,"y":10}'
@@ -188,7 +189,8 @@ Actions fall into three groups:
 
 - **Pass-through** — `tree`, `find`, `get_property`, `set_property`,
   `call_method`, `evaluate`, `change_scene`, `click`, `press_key`,
-  `press_action`, `type_text`, `mouse_move`, `touch`, `wait_for_node`,
+  `press_action`, `focus_window`, `type_text`, `mouse_move`, `touch`,
+  `wait_for_node`,
   `wait_for_signal`, `wait_for_property`, `get_performance`,
   `assert_performance`, `record_start`, `record_stop`, `replay`, `ping`,
   `game_state`. Parameters match the MCP tool arguments.

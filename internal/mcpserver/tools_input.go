@@ -6,6 +6,25 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
+// setSelectorParam validates an optional "selector" argument and copies it into
+// params. A present-but-unusable selector returns the tool error to hand back to
+// the caller and copies nothing, so a malformed chain never reaches the wire.
+func setSelectorParam(params map[string]any, req mcp.CallToolRequest) *mcp.CallToolResult {
+	sel, present := req.GetArguments()["selector"]
+	if !present {
+		return nil
+	}
+	selStr, isString := sel.(string)
+	if !isString {
+		return mcp.NewToolResultError("'selector' must be a string")
+	}
+	if errResult := validateSelector(selStr); errResult != nil {
+		return errResult
+	}
+	params["selector"] = sel
+	return nil
+}
+
 var clickTool = mcp.NewTool("godot_click",
 	mcp.WithDescription("Click on a node or at screen coordinates in the Godot game"),
 	mcp.WithString("selector",
@@ -33,29 +52,19 @@ var clickTool = mcp.NewTool("godot_click",
 func (s *Server) handleClick(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	instanceID := req.GetString("instance_id", "default")
 	args := req.GetArguments()
-	selector, hasSelector := args["selector"]
+	_, hasSelector := args["selector"]
 	position, hasPosition := args["position"]
 
 	if !hasSelector && !hasPosition {
 		return mcp.NewToolResultError("one of 'selector' or 'position' is required"), nil
 	}
 
-	if hasSelector {
-		selStr, ok := selector.(string)
-		if !ok {
-			return mcp.NewToolResultError("'selector' must be a string"), nil
-		}
-		if errResult := validateSelector(selStr); errResult != nil {
-			return errResult, nil
-		}
-	}
-
 	params := map[string]any{
 		"button":       req.GetString("button", "left"),
 		"double_click": req.GetBool("double_click", false),
 	}
-	if hasSelector {
-		params["selector"] = selector
+	if errResult := setSelectorParam(params, req); errResult != nil {
+		return errResult, nil
 	}
 	if hasPosition {
 		params["position"] = position
@@ -102,6 +111,36 @@ func (s *Server) handlePressKey(ctx context.Context, req mcp.CallToolRequest) (*
 	}
 
 	result, errResult := s.callGodotInstance(ctx, instanceID, "input_key", params)
+	if errResult != nil {
+		return errResult, nil
+	}
+	return mcp.NewToolResultText(string(result)), nil
+}
+
+// godot_focus_window is the recovery path for godot_press_key's
+// "modal dialog is visible but does not have window focus" refusal. Key events
+// are routed by the engine to whichever window holds focus, so a key cannot be
+// addressed at a named window — restoring that window's focus is the only thing
+// that works. It is a separate tool rather than a godot_press_key parameter
+// because focusing mutates application state the caller did not otherwise ask
+// for, and pressing a key must never do that implicitly (godot-stagehand-z6iu).
+var focusWindowTool = mcp.NewTool("godot_focus_window",
+	mcp.WithDescription("Give window focus to a Window (e.g. a modal dialog) so godot_press_key reaches it. With no selector, targets the visible modal subwindow that has lost focus."),
+	mcp.WithString("selector",
+		mcp.Description("Window to focus, e.g. \"class:AcceptDialog\" or \"name:SplashDialog\". Omit to auto-target the modal subwindow that lost focus."),
+	),
+	instanceIDOpt,
+)
+
+func (s *Server) handleFocusWindow(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	instanceID := req.GetString("instance_id", "default")
+
+	params := map[string]any{}
+	if errResult := setSelectorParam(params, req); errResult != nil {
+		return errResult, nil
+	}
+
+	result, errResult := s.callGodotInstance(ctx, instanceID, "focus_window", params)
 	if errResult != nil {
 		return errResult, nil
 	}
@@ -177,15 +216,8 @@ func (s *Server) handleTypeText(ctx context.Context, req mcp.CallToolRequest) (*
 		"delay_ms": req.GetInt("delay_ms", 50),
 	}
 
-	if sel, hasSelector := req.GetArguments()["selector"]; hasSelector {
-		selStr, ok := sel.(string)
-		if !ok {
-			return mcp.NewToolResultError("'selector' must be a string"), nil
-		}
-		if errResult := validateSelector(selStr); errResult != nil {
-			return errResult, nil
-		}
-		params["selector"] = sel
+	if errResult := setSelectorParam(params, req); errResult != nil {
+		return errResult, nil
 	}
 
 	result, errResult := s.callGodotInstance(ctx, instanceID, "input_text", params)
@@ -274,26 +306,16 @@ func (s *Server) handleTouch(ctx context.Context, req mcp.CallToolRequest) (*mcp
 func (s *Server) handleMouseMove(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	instanceID := req.GetString("instance_id", "default")
 	args := req.GetArguments()
-	selector, hasSelector := args["selector"]
+	_, hasSelector := args["selector"]
 	coords, hasCoords := args["coordinates"]
 
 	if !hasSelector && !hasCoords {
 		return mcp.NewToolResultError("one of 'selector' or 'coordinates' is required"), nil
 	}
 
-	if hasSelector {
-		selStr, ok := selector.(string)
-		if !ok {
-			return mcp.NewToolResultError("'selector' must be a string"), nil
-		}
-		if errResult := validateSelector(selStr); errResult != nil {
-			return errResult, nil
-		}
-	}
-
 	params := map[string]any{}
-	if hasSelector {
-		params["selector"] = selector
+	if errResult := setSelectorParam(params, req); errResult != nil {
+		return errResult, nil
 	}
 	if hasCoords {
 		params["coordinates"] = coords

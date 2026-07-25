@@ -88,9 +88,13 @@ success that did nothing:
 - clicking or touching outside the dialog → `not_supported`, naming the
   blocking window and its rect in `details`
 - `godot_press_key` while a visible modal has lost focus → `not_supported`,
-  telling you to click inside the dialog first
+  naming the unfocused window
 
-So the way past a modal is through it: click one of its own controls.
+So the way past a modal is through it: click one of its own controls. If the
+dialog has already lost focus, `godot_focus_window` (no arguments) restores it
+to whichever modal is stuck, after which `godot_press_key` reaches it again.
+Focusing is a separate call precisely because it mutates state the caller did
+not otherwise ask for — pressing a key never does it implicitly.
 
 ### Meta: `"meta:key=value"` or `"meta:someKey"`
 Finds nodes based on metadata values attached to them. This includes exported variables, custom properties, or Godot's built-in metadata.

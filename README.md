@@ -91,6 +91,7 @@ Running the binary with **no arguments** serves MCP over stdio. That is what MCP
 | `godot_click` | Click nodes or coordinates |
 | `godot_press_key` | Simulate keyboard input |
 | `godot_press_action` | Trigger input actions |
+| `godot_focus_window` | Focus a Window (e.g. a modal dialog) so key input reaches it |
 | `godot_touch` | Simulate touch/drag |
 | `godot_type_text` | Type text into controls |
 | `godot_mouse_move` | Move mouse cursor |
