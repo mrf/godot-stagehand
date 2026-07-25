@@ -32,7 +32,7 @@ func TestReadmeToolTableMatchesRegisteredTools(t *testing.T) {
 	}
 
 	const heading = "## Available tools"
-	section, err := readmeSection(string(content), heading)
+	section, err := markdownSection(string(content), heading)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,12 +55,13 @@ func TestReadmeToolTableMatchesRegisteredTools(t *testing.T) {
 	}
 }
 
-// readmeSection returns the text between a heading and the next top-level
-// (##) heading, exclusive of both.
-func readmeSection(content, heading string) (string, error) {
+// markdownSection returns the text between a heading and the next top-level
+// (##) heading, exclusive of both. Shared by readme_tools_test.go and
+// skill_tools_test.go.
+func markdownSection(content, heading string) (string, error) {
 	start := strings.Index(content, heading)
 	if start == -1 {
-		return "", fmt.Errorf("README.md has no %q section", heading)
+		return "", fmt.Errorf("no %q section", heading)
 	}
 	rest := content[start+len(heading):]
 	if next := strings.Index(rest, "\n## "); next != -1 {

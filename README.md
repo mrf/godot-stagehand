@@ -79,6 +79,7 @@ assert performance, record and replay input.
 - **Visual regression testing.** Save baseline screenshots, diff them later. Catch UI regressions before your players do. See the [visual smoke contract](docs/visual-smoke-contract.md) for how to set up a visual gate in your game repo. **Headless Godot cannot render real screenshots**, so this needs a visible window (a real display or something like Xvfb) even in CI.
 - **Input recording/replay.** Record a play session's input events with millisecond timestamps, then replay them on the same wall-clock schedule, optionally sped up. This reproduces a rough repro case, not a frame-perfect deterministic run: actual game state during replay still depends on frame timing, which can vary between runs. The on-disk format is versioned; see the [recording format](docs/recording-format.md).
 - **Performance monitoring.** `godot_assert_performance` can sample and assert monitors: an optional warm-up, a fixed sample count or duration, and a statistic (min, max, mean, median, p95) to threshold against, instead of one instantaneous read. This is still not proven statistical regression gating (no baseline tracking, outlier rejection, or variance-aware thresholds), so treat it as a steadier smoke check, not a certified regression gate.
+- **Agent skill.** [`skills/stagehand.md`](skills/stagehand.md) teaches an agent the full tool workflow — launch, inspect, interact, test — so you don't have to re-explain it in every session. Point your agent at the file directly, or copy it into wherever your client loads custom skills from (e.g. a Claude Code project's `.claude/skills/` directory).
 
 Full walkthrough: [Quickstart guide](docs/quickstart.md). Full tool list: [Available tools](#available-tools) below.
 
@@ -309,6 +310,11 @@ For Windows Godot controlled from WSL, see the remote-bind opt-in in the
 [Windows setup guide](docs/windows-setup.md).
 
 > **Windows / WSL?** See the [Windows setup guide](docs/windows-setup.md).
+
+**Optional: give your agent the skill.** [`skills/stagehand.md`](skills/stagehand.md)
+is a ready-to-use skill file covering the tool workflow above. It ships in this
+source tree (not in the binary release, since it's a prompt file, not a
+runtime asset) — copy it into wherever your agent loads custom skills from.
 
 ## Configuration
 
