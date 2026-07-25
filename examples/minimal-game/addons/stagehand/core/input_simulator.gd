@@ -87,6 +87,12 @@ static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
 		target.hit_viewport = tree.root
 		target.position = Vector2(_v_float(p.get("x", 0)), _v_float(p.get("y", 0)))
 
+	# A target in a real OS window is unreachable however the click is framed,
+	# so it is refused before the modal check rather than misdiagnosed by it.
+	var os_window: Window = _unreachable_os_window(target)
+	if os_window != null:
+		return _os_subwindow_unreachable(os_window, "this click")
+
 	# Checked before anything is pushed. Refusing after the fact is not good
 	# enough: the swallowed button event also costs the modal its window focus,
 	# which breaks every subsequent key event (see _blocking_modal).
@@ -316,12 +322,23 @@ static func _push(viewport: Viewport, event: InputEvent) -> void:
 ## godot-stagehand-phase3-vrj.19 stretch-mode fix. Only [Window] targets are
 ## corrected; a [SubViewport]'s size is developer-controlled already and
 ## unaffected by this headless quirk.
+##
+## Restricted to the root [Window]. The degenerate stub is a root-window
+## artifact, but a project with
+## [code]display/window/subwindows/embed_subwindows = false[/code] resolves a
+## click inside a dialog to that non-embedded [Window] instead — and applying
+## the correction there rewrites the application's own dialog geometry.
+## Observed under --headless against Godot 4.6.2 (godot-stagehand-inpw): a
+## 306x88 [AcceptDialog] came back 1152x648 after one click attempt.
 static func _ensure_headless_window_sized(viewport: Viewport) -> void:
 	if not (viewport is Window):
 		return
 	if DisplayServer.get_name() != "headless":
 		return
 	var window: Window = viewport
+	var tree: SceneTree = window.get_tree()
+	if tree == null or tree.root != window:
+		return
 	var wanted: Vector2i = Vector2i(
 		_v_int(ProjectSettings.get_setting("display/window/size/viewport_width", 1152)),
 		_v_int(ProjectSettings.get_setting("display/window/size/viewport_height", 648))
@@ -614,6 +631,12 @@ static func input_mouse_move(tree: SceneTree, params: Dictionary) -> Dictionary:
 			}
 		)
 
+	# This path has no delivery confirmation of its own, so without the guard an
+	# OS-window target reported success for a hover that never happened.
+	var os_window: Window = _unreachable_os_window(target)
+	if os_window != null:
+		return _os_subwindow_unreachable(os_window, "this mouse move")
+
 	_push_mouse_motion(target.viewport, target.position)
 
 	return {
@@ -673,6 +696,68 @@ static func _resolve_click_target(node: CanvasItem) -> ClickTarget:
 	target.position = point
 	target.viewport = viewport
 	return target
+
+
+## The non-embedded (real operating-system) [Window] [param target] resolves
+## into, or null when the target is reachable — i.e. the main window, an
+## embedded subwindow, or a [SubViewport].
+##
+## [method _resolve_click_target]'s walk stops at the first non-embedded
+## [Window]. For a project running with the engine default
+## ([code]embed_subwindows = true[/code]) that is always the root window and
+## there is nothing to report. With the setting turned off a popped dialog
+## becomes its own OS window, the walk stops there, and Stagehand cannot drive
+## it — see [method _os_subwindow_unreachable] for the evidence.
+static func _unreachable_os_window(target: ClickTarget) -> Window:
+	if not (target.viewport is Window):
+		return null
+	var window: Window = target.viewport
+	var tree: SceneTree = window.get_tree()
+	if tree == null or tree.root == window:
+		return null
+	if window.is_embedded():
+		return null
+	return window
+
+
+## Canonical refusal for a [Control] that lives in a real OS-level [Window].
+##
+## Godot does establish GUI dispatch for such a window — a pushed event reaches
+## the inner [Control]'s [method Control._gui_input] — but it never sets the
+## window's mouse-over state from a synthesized event, and [BaseButton] needs
+## that state to emit [signal BaseButton.pressed]. Confirmed against a real
+## Godot 4.6.2 on the X11 display server (NOT --headless), one process, two
+## targets, identical push sequence (godot-stagehand-inpw):
+##
+## [codeblock]
+## DS=X11
+## root-only   hovered=MainBtn:<Button#...>  presses=1
+## win.embedded=false
+## os-window   hovered=<Object#null>         presses=0
+## [/codeblock]
+##
+## Turning embedding back on at runtime is not a recovery — the engine refuses
+## it outright while the window is up ("Can't change \"gui_embed_subwindows\"
+## while a child window is displayed", viewport.cpp:4153, same run) — so the
+## next_action names the project setting instead.
+##
+## Reporting this rather than guessing matters: the previous behaviour was a
+## [method _gui_delivery_confirmed] miss reported as "is not the topmost
+## Control … something is covering the target", which sends a caller hunting
+## for an overlay that does not exist, and a [method input_mouse_move] that
+## returned success for a hover that never happened.
+static func _os_subwindow_unreachable(window: Window, operation: String) -> Dictionary:
+	return ERRORS.make(
+		ERRORS.NOT_SUPPORTED,
+		"Window %s is a non-embedded (OS-level) subwindow: synthesized input cannot reach %s inside it" % [
+			window.get_path(), operation,
+		],
+		{
+			"window": str(window.get_path()),
+			"operation": operation,
+			"next_action": "Set display/window/subwindows/embed_subwindows = true (the Godot default) so dialogs are embedded in the main window, then retry.",
+		}
+	)
 
 
 ## The [Viewport] that hosts [param window] as an embedded subwindow, or null

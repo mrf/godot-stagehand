@@ -96,6 +96,36 @@ to whichever modal is stuck, after which `godot_press_key` reaches it again.
 Focusing is a separate call precisely because it mutates state the caller did
 not otherwise ask for — pressing a key never does it implicitly.
 
+#### Non-embedded (OS-level) subwindows are not drivable
+
+All of the above assumes the Godot default,
+`display/window/subwindows/embed_subwindows = true`. With that setting turned
+off, a popped dialog becomes a real operating-system window instead, and
+Stagehand cannot deliver synthesized input to it. Godot never establishes such
+a window's GUI mouse-over state from a pushed event — the event does reach the
+inner `Control`, but a `Button` never fires — and re-embedding at runtime is
+refused by the engine while the window is up.
+
+So a selector that resolves into an OS-level subwindow gets a `not_supported`
+refusal naming the window and pointing at the project setting, rather than a
+click reported as delivered:
+
+```json
+{
+  "error_code": "not_supported",
+  "error": "Window /root/Splash is a non-embedded (OS-level) subwindow: synthesized input cannot reach this click inside it",
+  "details": {
+    "window": "/root/Splash",
+    "next_action": "Set display/window/subwindows/embed_subwindows = true (the Godot default) so dialogs are embedded in the main window, then retry."
+  }
+}
+```
+
+Selectors, property reads, method calls and every other non-input operation
+work normally against nodes in an OS-level subwindow; only pointer input is
+affected. Verified against a real windowed Godot, not just headless — see
+`testdata/test_project/os_subwindow_probe.gd`.
+
 ### Meta: `"meta:key=value"` or `"meta:someKey"`
 Finds nodes based on metadata values attached to them. This includes exported variables, custom properties, or Godot's built-in metadata.
 
