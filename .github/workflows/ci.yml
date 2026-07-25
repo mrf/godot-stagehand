@@ -90,6 +90,9 @@ jobs:
       - name: Stagehand security boundary
         run: go test -tags=godot ./internal/godotconn -run '^TestStagehand' -count=1 -timeout=2m
 
+      - name: Smoke test tool coverage
+        run: go test -tags=godot ./internal/godotconn -run '^Test(Smoke|IntegrationGodot)' -count=1 -timeout=3m
+
       - name: Secure launch handshake
         run: go test -tags=godot ./internal/launch -run '^TestLaunch(EstablishesAuthenticatedSafeConnection|CanExplicitlyEnableUnsafeMethods)$' -count=1 -timeout=2m
 
