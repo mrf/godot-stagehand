@@ -281,7 +281,7 @@ locally; 4.3-4.7 are all tested and supported.
 
 | Godot version | Status | Notes |
 |----------------|--------|-------|
-| 4.2 | **Not supported** | Addon fails to parse — see below |
+| 4.2 | **Not supported** | Addon fails to parse; not exercised by CI — see below |
 | 4.3 | Supported (minimum) | |
 | 4.4 | Supported | |
 | 4.5 | Supported | |
@@ -296,14 +296,23 @@ matrix on every push/PR to `main`.
 
 ### Known incompatibilities
 
-- **Godot 4.2 — GDScript `is not` operator not available.** The addon uses
-  `is not` (e.g. `internal/godotconn`'s JSON-RPC decoding, `stagehand_server.gd`,
-  `input_recorder.gd`) for readability. That operator was added in
-  [godotengine/godot#87939](https://github.com/godotengine/godot/pull/87939),
-  first released in Godot 4.3, so it fails to parse on 4.2 with
-  `Parse Error: Expected type specifier after "is"`. There is no workaround
-  short of rewriting those checks as `not (x is T)`; 4.2 is treated as
-  unsupported rather than carrying that rewrite for one older release.
+- **Godot 4.2 — two 4.3+ features the addon depends on.** Verified against a
+  real `Godot_v4.2-stable_linux.x86_64` binary:
+  1. **GDScript `is not`.** The addon uses `is not` (e.g. `stagehand_server.gd`,
+     `input_recorder.gd`, `protocol/json_rpc.gd`) for readability. That operator
+     was added in [godotengine/godot#87939](https://github.com/godotengine/godot/pull/87939),
+     first released in Godot 4.3, so 4.2 fails at load with
+     `Parse Error: Expected type specifier after "is"`.
+  2. **`OS.get_entropy()`** (`addons/stagehand/autoload/stagehand_server.gd`),
+     which generates the per-session auth token. Also 4.3+; on 4.2 it reports
+     `Static function "get_entropy()" not found in base "GDScriptNativeClass"`.
+     It surfaces only once the `is not` errors are cleared.
+
+  Supporting 4.2 would mean rewriting those checks as `not (x is T)` and adding
+  a `Crypto.generate_random_bytes()` fallback in the token path. 4.2 is treated
+  as unsupported rather than carrying both for one older release, and CI does
+  not run it — every job in the compat matrix is blocking, so a red job means a
+  real regression.
 
 ## Troubleshooting
 

@@ -41,21 +41,18 @@ jobs:
   #
   # 4.3-4.7.1 are the supported range (4.3 is the documented minimum — see
   # README.md's Godot version compatibility section) and block the pipeline.
-  # 4.2 is known-incompatible (GDScript `is not`, added in Godot 4.3) and runs
-  # non-blocking via continue-on-error so a regression *or* an unexpected fix
-  # shows up without failing CI on a version we don't claim to support.
+  # Every version here is one the README claims support for, and every job is
+  # blocking: a red job must mean a real regression. 4.2 is deliberately absent
+  # (GDScript `is not` and `OS.get_entropy` are both 4.3+) — see the support
+  # matrix in README.md. TestCICompatMatrixMatchesREADMESupportTable enforces
+  # that this list and the README table stay in agreement.
   gdscript-parse:
     name: Godot compat (${{ matrix.godot-version }})
     runs-on: ubuntu-latest
-    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
         godot-version: ["4.3.stable", "4.4.stable", "4.5.stable", "4.6.2.stable", "4.7.1.stable"]
-        experimental: [false]
-        include:
-          - godot-version: "4.2.stable"
-            experimental: true
     env:
       GODOT_VERSION: ${{ matrix.godot-version }}
     steps:
