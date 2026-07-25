@@ -136,7 +136,7 @@ func TestMultiInstanceModeEnabled(t *testing.T) {
 }
 
 func TestFormatConnectSuccessWarnsOnSharedDefaultPort(t *testing.T) {
-	shared := formatConnectSuccess("127.0.0.1", defaultSharedPort, "default", `{"ok":true}`)
+	shared := formatConnectSuccess("127.0.0.1", defaultSharedPort, "default", `{"ok":true}`, nil)
 	if !strings.Contains(shared, "shared") {
 		t.Fatalf("connecting on the shared default port must warn: %q", shared)
 	}
@@ -144,7 +144,7 @@ func TestFormatConnectSuccessWarnsOnSharedDefaultPort(t *testing.T) {
 		t.Fatalf("shared-port warning must point at the paved road: %q", shared)
 	}
 
-	private := formatConnectSuccess("127.0.0.1", defaultSharedPort+1, "default", `{"ok":true}`)
+	private := formatConnectSuccess("127.0.0.1", defaultSharedPort+1, "default", `{"ok":true}`, nil)
 	if strings.Contains(private, "shared") {
 		t.Fatalf("a non-default port must not warn about sharing: %q", private)
 	}

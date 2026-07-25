@@ -7,6 +7,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mrf/godot-stagehand/internal/godotconn"
+	"github.com/mrf/godot-stagehand/internal/gwp"
 	"github.com/mrf/godot-stagehand/internal/launch"
 )
 
@@ -81,11 +82,20 @@ func (s *Server) handleConnect(ctx context.Context, req mcp.CallToolRequest) (*m
 		_ = conn.Close()
 		return errResult, nil
 	}
+	// Reject an addon from a different GWP generation here rather than letting
+	// it fail opaquely on the first real tool call.
+	handshake, err := gwp.Negotiate(resp.Result)
+	if err != nil {
+		_ = conn.Close()
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 
 	// Replace any existing entry for this instanceID (closes old conn/process).
 	s.instances.add(instanceID, host, port, conn, nil)
 
-	return mcp.NewToolResultText(formatConnectSuccess(host, port, instanceID, string(resp.Result))), nil
+	return mcp.NewToolResultText(
+		formatConnectSuccess(host, port, instanceID, string(resp.Result), handshake),
+	), nil
 }
 
 var getGameStateTool = mcp.NewTool("godot_get_game_state",

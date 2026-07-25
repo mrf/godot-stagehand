@@ -188,7 +188,12 @@ async def ping():
             raise RuntimeError(f"unexpected ping response: {response}")
         engine_version = result.get("engine_version", "?")
         stagehand_version = result.get("stagehand_version", "?")
-        print(f"PONG engine={engine_version} stagehand={stagehand_version}")
+        protocol = result.get("protocol", "?")
+        capabilities = ",".join(result.get("capabilities", []))
+        print(
+            f"PONG engine={engine_version} stagehand={stagehand_version} "
+            f"protocol={protocol} capabilities={capabilities}"
+        )
 
 try:
     asyncio.run(ping())

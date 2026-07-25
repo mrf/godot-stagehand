@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"github.com/mrf/godot-stagehand/internal/gwp"
 )
 
 // defaultSharedPort is the port the addon listens on when STAGEHAND_PORT is unset.
@@ -56,9 +58,12 @@ func sharedPortWarning(port int) string {
 }
 
 // formatConnectSuccess renders the godot_connect success payload, appending the
-// shared-port warning when one applies.
-func formatConnectSuccess(host string, port int, instanceID string, payload string) string {
+// negotiated protocol summary and the shared-port warning when one applies.
+func formatConnectSuccess(host string, port int, instanceID string, payload string, handshake *gwp.Info) string {
 	text := fmt.Sprintf("Connected to Godot at %s:%d (instance_id=%q)\n%s", host, port, instanceID, payload)
+	if handshake != nil {
+		text += "\n\n" + handshake.Summary()
+	}
 	if warning := sharedPortWarning(port); warning != "" {
 		text += "\n\n" + warning
 	}

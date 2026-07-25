@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/mrf/godot-stagehand/internal/godotconn"
+	"github.com/mrf/godot-stagehand/internal/gwp"
 )
 
 // Config holds parameters for launching a Godot process.
@@ -74,6 +74,8 @@ type LaunchResult struct {
 	EngineVersion string
 	// StagehandVersion is the stagehand addon version reported by ping.
 	StagehandVersion string
+	// Handshake is the negotiated GWP protocol version and capability set.
+	Handshake *gwp.Info
 	// Conn is the established WebSocket connection to the launched Godot instance.
 	// Callers are responsible for closing this connection when done.
 	Conn *godotconn.Connection
@@ -247,25 +249,18 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		return nil, fmt.Errorf("ping returned error: %v", pingResp.Error)
 	}
 
-	var ping struct {
-		Status           string `json:"status"`
-		Engine           string `json:"engine"`
-		EngineVersion    string `json:"engine_version"`
-		StagehandVersion string `json:"stagehand_version"`
-		InstanceToken    string `json:"instance_token"`
-	}
-	if err := json.Unmarshal(pingResp.Result, &ping); err != nil {
+	// Negotiate the wire protocol before handing the session back: an addon
+	// from a different GWP generation would otherwise connect here and fail
+	// opaquely on the first real tool call.
+	handshake, err := gwp.Negotiate(pingResp.Result)
+	if err != nil {
 		cleanup()
-		return nil, fmt.Errorf("malformed ping response: %w", err)
-	}
-	if ping.Status != "ok" || ping.Engine != "godot" {
-		cleanup()
-		return nil, fmt.Errorf("unexpected ping response: status=%q, engine=%q", ping.Status, ping.Engine)
+		return nil, err
 	}
 	// Prove the instance we connected to is the one we spawned. If the token
 	// does not match, we reached a different Stagehand instance (e.g. a stale
 	// process that still holds the port) and our own process failed to bind.
-	if err := verifyInstanceToken(ping.InstanceToken, instanceToken, host, port); err != nil {
+	if err := verifyInstanceToken(handshake.InstanceToken, instanceToken, host, port); err != nil {
 		cleanup()
 		return nil, err
 	}
@@ -275,8 +270,9 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		PID:              cmd.Process.Pid,
 		Host:             host,
 		Port:             port,
-		EngineVersion:    ping.EngineVersion,
-		StagehandVersion: ping.StagehandVersion,
+		EngineVersion:    handshake.EngineVersion,
+		StagehandVersion: handshake.StagehandVersion,
+		Handshake:        handshake,
 		Conn:             conn,
 		Process:          cmd,
 		UserDataDir:      isolation.dir,

@@ -6,7 +6,6 @@ extends Node
 
 const DEFAULT_PORT: int = 26700
 const DEFAULT_BIND_ADDRESS: String = "127.0.0.1"
-const VERSION: String = "0.1.0"
 const AUTHENTICATION_REQUIRED: int = -32001
 const AUTHENTICATION_FAILED: int = -32002
 const UNSAFE_CAPABILITY_REQUIRED: int = -32003
@@ -42,6 +41,7 @@ const METHOD_HANDLER := preload("res://addons/stagehand/core/method_handler.gd")
 const PROPERTY_HANDLER := preload("res://addons/stagehand/core/property_handler.gd")
 const SCENE_HANDLER := preload("res://addons/stagehand/core/scene_handler.gd")
 const SCREENSHOT_CAPTURE := preload("res://addons/stagehand/core/screenshot_capture.gd")
+const STAGEHAND_VERSION := preload("res://addons/stagehand/stagehand_version.gd")
 const TREE_SERIALIZER := preload("res://addons/stagehand/core/tree_serializer.gd")
 const WAITER := preload("res://addons/stagehand/core/waiter.gd")
 
@@ -369,7 +369,14 @@ func _handle_ping(_unused_params: Variant) -> Dictionary:
 		"status": "ok",
 		"engine": "godot",
 		"engine_version": Engine.get_version_info()["string"],
-		"stagehand_version": VERSION,
+		"stagehand_version": STAGEHAND_VERSION.VERSION,
+		# The protocol version is the compatibility contract the client checks
+		# before it hands the session to a caller; capabilities tell it which
+		# method families this process will actually serve. See
+		# internal/gwp/gwp.go for the matching negotiation rules.
+		"protocol_version": STAGEHAND_VERSION.PROTOCOL_VERSION,
+		"protocol": STAGEHAND_VERSION.PROTOCOL_ID,
+		"capabilities": STAGEHAND_VERSION.capabilities(_allow_unsafe),
 		"instance_token": OS.get_environment("STAGEHAND_INSTANCE_TOKEN"),
 	}
 

@@ -80,7 +80,7 @@ JSON-RPC 2.0 over WebSocket. Every message is a standard JSON-RPC request/respon
 
 | Method | Purpose |
 |--------|---------|
-| `ping` | Health check, returns engine info |
+| `ping` | Handshake: engine info, versions, protocol version, capabilities |
 | `get_tree` | Full scene tree snapshot |
 | `query_nodes` | Find nodes matching a selector |
 | `get_property` | Read a property from a node |
@@ -96,6 +96,16 @@ JSON-RPC 2.0 over WebSocket. Every message is a standard JSON-RPC request/respon
 | `wait_signal` | Wait for a signal to be emitted |
 | `evaluate` | Execute arbitrary GDScript expression |
 | `get_game_state` | Current scene, FPS, physics state, window size |
+
+### Version and capability negotiation
+
+`ping` doubles as the compatibility handshake. Alongside `engine_version` and
+`stagehand_version` it reports `protocol_version` (an integer that must match
+the client exactly), `protocol` (`gwp/1`), and a `capabilities` list naming the
+method families the running addon will serve. Both `godot_launch` and
+`godot_connect` negotiate before returning, so an incompatible pair is refused
+at connect time rather than failing on a later call. Release versions may differ
+across the pair; the protocol version may not. See `docs/versioning.md`.
 
 ## Selector System
 

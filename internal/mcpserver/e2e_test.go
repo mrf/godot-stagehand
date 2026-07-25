@@ -99,7 +99,7 @@ func (s *stubGodot) handleReq(req godotconn.Request) godotconn.Response {
 	case "authenticate":
 		resp.Result = rawJSON(`{"authenticated":true}`)
 	case "ping":
-		resp.Result = rawJSON(`{"status":"ok","engine":"godot","engine_version":"4.2.1"}`)
+		resp.Result = rawJSON(currentHandshakeJSON(nil))
 	case "get_tree":
 		resp.Result = rawJSON(`{"name":"root","class":"Node","path":"/root","children":[{"name":"UI","class":"CanvasLayer","path":"/root/UI","children":[{"name":"StartButton","class":"Button","path":"/root/UI/StartButton"}]}],"count":3}`)
 	case "query_nodes":
@@ -1153,7 +1153,7 @@ func blockingStubGodot(t *testing.T, dropConn bool) (host string, port int, clos
 				<-release
 				return
 			default:
-				result, _ := json.Marshal(map[string]string{"status": "ok"})
+				result := json.RawMessage(currentHandshakeJSON(nil))
 				_ = ws.WriteJSON(godotconn.Response{JSONRPC: "2.0", ID: req.ID, Result: result})
 			}
 		}

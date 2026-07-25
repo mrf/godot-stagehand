@@ -13,6 +13,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/mrf/godot-stagehand/internal/godotconn"
 	"github.com/mrf/godot-stagehand/internal/selector"
+	"github.com/mrf/godot-stagehand/internal/version"
 )
 
 // instanceIDOpt is the shared mcp.ToolOption that adds the optional instance_id
@@ -65,7 +66,7 @@ func New() *Server {
 
 	s.mcp = server.NewMCPServer(
 		"godot-stagehand",
-		"0.1.0",
+		version.Version,
 		server.WithDescription("Automate and test running Godot games from external processes"),
 	)
 

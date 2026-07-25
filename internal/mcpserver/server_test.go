@@ -355,7 +355,7 @@ func TestConnectAuthenticatesBeforePing(t *testing.T) {
 				})
 				continue
 			}
-			result, _ := json.Marshal(map[string]string{"status": "ok", "engine": "godot"})
+			result := json.RawMessage(currentHandshakeJSON(nil))
 			_ = ws.WriteJSON(godotconn.Response{JSONRPC: "2.0", ID: req.ID, Result: result})
 		}
 	}))

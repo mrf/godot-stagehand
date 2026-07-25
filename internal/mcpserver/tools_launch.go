@@ -7,6 +7,7 @@ import (
 	"net"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mrf/godot-stagehand/internal/gwp"
 	"github.com/mrf/godot-stagehand/internal/launch"
 )
 
@@ -129,6 +130,10 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 		"user_data_dir":          result.UserDataDir,
 		"connection_guidance":    connectionGuidance(),
 	}
+	if result.Handshake != nil {
+		jsonResult["protocol"] = gwp.ProtocolID
+		jsonResult["capabilities"] = result.Handshake.Capabilities
+	}
 	var warnings []string
 	if headless {
 		warnings = append(warnings, headlessScreenshotWarning)
@@ -138,6 +143,11 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 	}
 	if warning := sharedPortWarning(result.Port); warning != "" {
 		warnings = append(warnings, warning)
+	}
+	// A capability the addon does not serve fails on first use otherwise, with
+	// nothing pointing at the addon build as the cause.
+	if result.Handshake != nil && len(result.Handshake.MissingOptional) > 0 {
+		warnings = append(warnings, result.Handshake.Summary())
 	}
 	if len(warnings) > 0 {
 		jsonResult["warnings"] = warnings

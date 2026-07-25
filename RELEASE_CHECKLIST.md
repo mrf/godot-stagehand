@@ -18,7 +18,10 @@ workflow publishes the same bare files, then downloads and executes each one on
 its matching GitHub-hosted runner.
 
 ## Pre-Build Checks
-- [ ] Update version in `plugin.cfg` (in `addons/stagehand/plugin.cfg`)
+- [ ] Bump the version with `./scripts/set-version.sh <version>` — it rewrites the
+      authoritative constant in `internal/version/version.go` and every mirror
+      (`plugin.cfg`, `stagehand_version.gd`, all addon copies). Never hand-edit
+      a single file; see `docs/versioning.md`.
 - [ ] Update version in documentation if needed
 - [ ] Ensure all tests pass: `go test ./...`
 - [ ] Check syntax errors in GDScript files
@@ -39,7 +42,8 @@ its matching GitHub-hosted runner.
 - [ ] Quickstart in README.md works in clean environment
 - [ ] Examples/ directory updated to use correct stagehand version
 - [ ] Copy addon script works correctly
-- [ ] Version numbers are consistent across all files
+- [ ] Version numbers are consistent across all files (`go test ./internal/version/`)
+- [ ] `godot-stagehand --version` reports the tag version and the `gwp/N` protocol
 - [ ] Changelog or release notes updated
 
 ## Release Artifacts Preparation

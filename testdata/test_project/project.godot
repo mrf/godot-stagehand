@@ -41,6 +41,8 @@ gdscript/warnings/unsafe_cast=2
 gdscript/warnings/unsafe_call_argument=2
 gdscript/warnings/inferred_declaration=2
 gdscript/warnings/untyped_declaration=2
+# The addon under test lives in res://addons, so addon warnings must count.
+gdscript/warnings/exclude_addons=false
 
 [editor_plugins]
 

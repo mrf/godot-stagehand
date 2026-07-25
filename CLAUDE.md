@@ -40,7 +40,8 @@ go vet ./...
 - GDScript: static typing, GDScript style guide, GdUnit4 for tests
 - WebSocket port: 26700 (configurable)
 - Activation guard: `STAGEHAND_ENABLED=1` or `--stagehand` CLI flag
-- Protocol: JSON-RPC 2.0 over WebSocket (Godot Wire Protocol)
+- Protocol: JSON-RPC 2.0 over WebSocket (Godot Wire Protocol), version-negotiated at `ping`
+- Versions: `internal/version/version.go` is authoritative; bump with `./scripts/set-version.sh` — see `docs/versioning.md`
 
 ## Quality Standards
 

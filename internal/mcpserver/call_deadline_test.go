@@ -169,7 +169,7 @@ func deadlineStubGodot(t *testing.T) (string, int, *atomic.Bool) {
 			case "authenticate":
 				result = json.RawMessage(`{"authenticated":true}`)
 			case "ping":
-				result = json.RawMessage(`{"status":"ok","engine":"godot"}`)
+				result = json.RawMessage(currentHandshakeJSON(nil))
 			default:
 				if !respond.Load() {
 					continue
