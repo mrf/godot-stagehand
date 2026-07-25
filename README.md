@@ -2,24 +2,36 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/mrf/godot-stagehand)](https://goreportcard.com/report/github.com/mrf/godot-stagehand)
 
-External automation and testing for running Godot games — like Playwright, but for game engines.
+External automation for running Godot games, exposed as an MCP server — like Playwright, but for game engines.
 
-**New to Stagehand?** → [Quickstart guide](docs/quickstart.md) — zero to connected in 5 minutes, no Go or JSON experience required.
+**Status: beta (v0.2.0), pre-1.0.** No binary releases are published yet; the
+supported install path today is building from source (see [Setup](#setup)).
+Tool schemas and the wire protocol may still change between minor versions.
+
+**New to Stagehand?** → [Quickstart guide](docs/quickstart.md) for a full walkthrough, no Go or JSON experience required.
 
 ## Why
 
-Game testing is manual. You click through menus, eyeball the results, and hope you caught the regressions. Automated UI tests exist for the web, but Godot has nothing equivalent — no way for an external process to connect to a running game and drive it programmatically.
+Game testing is manual. You click through menus, eyeball the results, and hope
+you caught the regressions. Godot's own testing tools (GUT, GdUnit4) run
+in-process, inside the editor or a headless engine instance — they don't give
+an *external* process a live connection to a running game. A few projects are
+starting to fill that gap; Stagehand is one of them, focused on an MCP
+interface so AI agents can drive it directly.
 
-Stagehand fixes that. It gives AI agents, test runners, and CI pipelines a real connection to your running game. Click buttons, read properties, wait for signals, take screenshots, assert performance — all from outside the engine.
+Stagehand gives an MCP client — Claude, another AI agent, or your own
+MCP-calling script — a real connection to your running game. Click buttons,
+read properties, wait for signals, take screenshots, assert performance — all
+from outside the engine.
 
 ## What you can do
 
 - **AI-assisted playtesting** — Let Claude (or any MCP client) explore your game, find bugs, and verify fixes without manual clicking.
-- **Visual regression testing** — Save baseline screenshots, diff them later. Catch UI regressions before your players do. See the [visual smoke contract](docs/visual-smoke-contract.md) for how to set up a visual gate in your game repo.
-- **Integration tests** — Write tests that drive your actual game: navigate menus, trigger gameplay, assert on real game state.
-- **CI pipelines** — Run headless Godot in CI, connect Stagehand, and gate merges on automated gameplay checks.
-- **Performance monitoring** — Poll engine performance counters and fail builds when frame times regress.
-- **Input recording/replay** — Record a play session, replay it deterministically for regression testing.
+- **Visual regression testing** — Save baseline screenshots, diff them later. Catch UI regressions before your players do. See the [visual smoke contract](docs/visual-smoke-contract.md) for how to set up a visual gate in your game repo. **Headless Godot cannot render real screenshots**, so this needs a visible window (a real display or something like Xvfb) even in CI.
+- **Scripted exploration** — Drive menus, trigger gameplay, and assert on real game state by calling these tools from any MCP client — there is no bundled test-runner or assertion library; you build the harness around the tool calls.
+- **CI checks** — Headless Godot works for structural checks (scene tree, properties, performance counters) in CI. Wire the tool calls into your own script that fails the build on assertion failure; Stagehand does not ship a ready-made CI action.
+- **Performance monitoring** — `godot_assert_performance` reads one instantaneous sample of a `Performance` monitor per call and compares it to a threshold — there's no built-in averaging, warm-up, or percentile handling, so treat a single assertion as a coarse smoke check, not a statistically robust regression gate.
+- **Input recording/replay** — Record a play session's input events with millisecond timestamps, then replay them on the same wall-clock schedule. This reproduces a rough repro case, not a frame-perfect deterministic run — actual game state during replay still depends on frame timing, which can vary between runs.
 
 ## How it works
 
@@ -42,6 +54,8 @@ Stagehand fixes that. It gives AI agents, test runners, and CI pipelines a real 
 | `godot_connect` | Authenticate and connect to a running game |
 | `godot_launch` | Launch Godot with a fresh session secret and connect |
 | `godot_status` | Connection status |
+| `godot_list_instances` | List all active Godot connections managed by this server |
+| `godot_disconnect` | Disconnect and remove a named instance |
 | `godot_get_tree` | Snapshot the scene tree |
 | `godot_find_nodes` | Find nodes by selector |
 | `godot_get_property` / `godot_set_property` | Read/write node properties |
@@ -77,11 +91,41 @@ Target nodes using familiar patterns:
 | Meta | `meta:id=player` | Nodes with metadata |
 | Chain | `class:Panel >> name:*Btn*` | Scoped search (find within) |
 
+## Security boundary
+
+Stagehand is a development automation control plane, not a public game
+endpoint. It binds to `127.0.0.1` by default and rejects every command on each
+WebSocket peer until that peer supplies the current session token. `godot_launch`
+creates and authenticates with a fresh secret automatically; manual/editor
+starts generate one and print it in the local Godot output.
+
+Remote binding requires both a non-loopback `STAGEHAND_BIND_ADDRESS` and
+`STAGEHAND_ALLOW_REMOTE=1`, and emits a prominent warning. Use it only on a
+trusted network with an appropriate host firewall, and never publish the token.
+The WebSocket transport is not encrypted; this boundary is not a substitute for
+TLS, network isolation, or a trustworthy local host.
+Expression evaluation and arbitrary method calls are disabled unless the
+session separately opts into unsafe capabilities. Authentication limits who can
+reach automation; unsafe opt-in controls what an authenticated peer may execute.
+
+**Read this before the setup steps below.** Once a game is running with
+Stagehand enabled, anyone who has the session token can inspect and mutate its
+state, including calling arbitrary methods if unsafe capabilities are opted
+in. Treat it like any other local dev/debug port.
+
 ## Setup
 
 ### 1. Get the server binary
 
-Download the prebuilt binary for your platform from the [latest release](https://github.com/mrf/godot-stagehand/releases/latest):
+**Build from source** (works today; requires Go 1.25+ and Godot 4.3+):
+
+```bash
+go build -o godot-stagehand .
+```
+
+**Prebuilt binaries are planned but not published yet** — there is no
+GitHub release for this project at the time of writing. Once one ships, it
+will provide these platform binaries:
 
 | Platform | File |
 |----------|------|
@@ -90,13 +134,7 @@ Download the prebuilt binary for your platform from the [latest release](https:/
 | macOS Intel | `godot-stagehand-darwin-amd64` |
 | Windows x86-64 | `godot-stagehand-windows-amd64.exe` |
 
-macOS/Linux: mark the downloaded binary executable with `chmod +x godot-stagehand-*`.
-
-**From source** (requires Go 1.25+ and Godot 4.3+):
-
-```bash
-go build -o godot-stagehand .
-```
+macOS/Linux: mark a downloaded binary executable with `chmod +x godot-stagehand-*`.
 
 ### 2. Install into your Godot project (one command)
 
@@ -193,23 +231,6 @@ server process. In that mode `godot_connect` refuses to fall back to the shared
 default and requires an explicit `port`, so an accidental default connection
 fails loudly instead of silently joining someone else's game. Single-instance
 setups need no new arguments — leave `STAGEHAND_MULTI` unset.
-
-## Security boundary
-
-Stagehand is a development automation control plane, not a public game
-endpoint. It binds to `127.0.0.1` by default and rejects every command on each
-WebSocket peer until that peer supplies the current session token. `godot_launch`
-creates and authenticates with a fresh secret automatically; manual/editor
-starts generate one and print it in the local Godot output.
-
-Remote binding requires both a non-loopback `STAGEHAND_BIND_ADDRESS` and
-`STAGEHAND_ALLOW_REMOTE=1`, and emits a prominent warning. Use it only on a
-trusted network with an appropriate host firewall, and never publish the token.
-The WebSocket transport is not encrypted; this boundary is not a substitute for
-TLS, network isolation, or a trustworthy local host.
-Expression evaluation and arbitrary method calls are disabled unless the
-session separately opts into unsafe capabilities. Authentication limits who can
-reach automation; unsafe opt-in controls what an authenticated peer may execute.
 
 ## Godot version compatibility
 
