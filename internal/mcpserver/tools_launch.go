@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 
@@ -10,6 +11,13 @@ import (
 	"github.com/mrf/godot-stagehand/internal/gwp"
 	"github.com/mrf/godot-stagehand/internal/launch"
 )
+
+// maxAutoPortAttempts bounds the retry loop in launchWithAutoPort. findFreePort
+// closes its probe listener before Godot actually binds, so a concurrent
+// launch (or any other process) can win the race for that port in the gap; a
+// few attempts absorbs that without looping forever on a genuinely exhausted
+// port range.
+const maxAutoPortAttempts = 3
 
 var launchTool = mcp.NewTool("godot_launch",
 	mcp.WithDescription("Launch a Godot game with the stagehand addon enabled and connect to it. "+
@@ -85,14 +93,6 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 	}
 	defer release()
 
-	if port == 0 {
-		p, err := findFreePort()
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Failed to find a free port: %v", err)), nil
-		}
-		port = p
-	}
-
 	cfg := launch.Config{
 		ProjectPath: projectPath,
 		GodotBin:    godotBin,
@@ -111,7 +111,14 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 	// Clean up any existing entry for this instanceID before launching.
 	s.instances.remove(instanceID)
 
-	result, err := launch.Launch(ctx, cfg)
+	var result *launch.LaunchResult
+	if port == 0 {
+		// Auto-assigned: a lost port race is retryable with a fresh port.
+		result, err = launchWithAutoPort(ctx, cfg, findFreePort, launch.Launch)
+	} else {
+		// Caller pinned an explicit port: a collision is a one-shot, clean error.
+		result, err = launch.Launch(ctx, cfg)
+	}
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to launch Godot: %v", err)), nil
 	}
@@ -168,4 +175,38 @@ func findFreePort() (int, error) {
 	}
 	defer l.Close()
 	return l.Addr().(*net.TCPAddr).Port, nil
+}
+
+// launchWithAutoPort picks a free port and launches Godot on it, retrying up
+// to maxAutoPortAttempts times when the previous attempt lost the TOCTOU race
+// for the port: pickPort's probe listener closes before Godot actually binds,
+// so another process (including a concurrent launch also auto-assigning a
+// port) can grab the same one in that window. doLaunch reports this as
+// launch.ErrPortUnavailable (see assertPortFree / verifyInstanceToken in the
+// launch package); any other error is returned immediately without retrying,
+// so a genuinely broken launch (bad project path, missing binary, ...) fails
+// clean on the first attempt instead of being masked by this loop.
+func launchWithAutoPort(
+	ctx context.Context,
+	cfg launch.Config,
+	pickPort func() (int, error),
+	doLaunch func(context.Context, launch.Config) (*launch.LaunchResult, error),
+) (*launch.LaunchResult, error) {
+	var lastErr error
+	for attempt := 0; attempt < maxAutoPortAttempts; attempt++ {
+		port, err := pickPort()
+		if err != nil {
+			return nil, fmt.Errorf("failed to find a free port: %w", err)
+		}
+		cfg.Port = port
+		result, err := doLaunch(ctx, cfg)
+		if err == nil {
+			return result, nil
+		}
+		if !errors.Is(err, launch.ErrPortUnavailable) {
+			return nil, err
+		}
+		lastErr = err
+	}
+	return nil, fmt.Errorf("gave up after %d auto-assigned ports all collided with another process: %w", maxAutoPortAttempts, lastErr)
 }

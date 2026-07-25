@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -27,6 +28,12 @@ func TestVerifyInstanceToken(t *testing.T) {
 	}
 	if !contains(err.Error(), "26700") {
 		t.Errorf("mismatch error should mention the port, got: %v", err)
+	}
+	// A token mismatch means we lost the port-assignment race to another
+	// process; callers that auto-assigned the port need to detect this to
+	// retry with a freshly picked one instead of failing the whole launch.
+	if !errors.Is(err, ErrPortUnavailable) {
+		t.Errorf("token mismatch should be identifiable as ErrPortUnavailable, got: %v", err)
 	}
 
 	// Empty echoed token (addon too old or different process) is also a failure:
@@ -76,5 +83,11 @@ func TestLaunchRejectsOccupiedPort(t *testing.T) {
 	}
 	if !contains(err.Error(), "already in use") {
 		t.Errorf("expected an 'already in use' error, got: %v", err)
+	}
+	// This is the other half of the TOCTOU race: something already held the
+	// port before we even spawned Godot. Callers that auto-assigned the port
+	// need to retry with a freshly picked one instead of failing outright.
+	if !errors.Is(err, ErrPortUnavailable) {
+		t.Errorf("occupied-port error should be identifiable as ErrPortUnavailable, got: %v", err)
 	}
 }

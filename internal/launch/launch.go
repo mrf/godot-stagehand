@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -16,6 +17,15 @@ import (
 	"github.com/mrf/godot-stagehand/internal/godotconn"
 	"github.com/mrf/godot-stagehand/internal/gwp"
 )
+
+// ErrPortUnavailable marks an error as a lost port-assignment race rather than
+// any other launch failure: something else bound host:port between our
+// free-port probe and Godot's own bind attempt (assertPortFree), or Godot
+// itself failed to bind and we ended up talking to a pre-existing squatter
+// instead (verifyInstanceToken). Callers that auto-assigned the port can
+// retry with a freshly picked one; callers that pinned an explicit port
+// should treat this as a clean, non-retryable failure.
+var ErrPortUnavailable = errors.New("port unavailable")
 
 // Config holds parameters for launching a Godot process.
 type Config struct {
@@ -311,7 +321,7 @@ func assertPortFree(host string, port int) error {
 		return nil
 	}
 	_ = conn.Close()
-	return fmt.Errorf("port %d on %s is already in use; another Godot/Stagehand instance is likely still running — free the port (kill the stale instance) or choose another port before launching", port, host)
+	return fmt.Errorf("%w: port %d on %s is already in use; another Godot/Stagehand instance is likely still running — free the port (kill the stale instance) or choose another port before launching", ErrPortUnavailable, port, host)
 }
 
 // verifyInstanceToken asserts that the token echoed by the addon in its ping
@@ -322,7 +332,7 @@ func verifyInstanceToken(got, want, host string, port int) error {
 	if got == want {
 		return nil
 	}
-	return fmt.Errorf("connected to a different Stagehand instance on %s:%d (instance token mismatch): the process we launched failed to bind the port — free the port (kill the stale instance) or choose another port", host, port)
+	return fmt.Errorf("%w: connected to a different Stagehand instance on %s:%d (instance token mismatch): the process we launched failed to bind the port — free the port (kill the stale instance) or choose another port", ErrPortUnavailable, host, port)
 }
 
 // Kill terminates the Godot process and waits for it to exit, then removes the
