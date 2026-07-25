@@ -159,7 +159,7 @@ func buildSpecs() map[string]Spec {
 			Summary: "Evaluate a GDScript expression"},
 		{Action: "change_scene", Method: "change_scene", Capability: gwp.CapabilityCore,
 			Required: []string{"scene_path"},
-			Summary: "Change to a different scene"},
+			Summary:  "Change to a different scene"},
 
 		{Action: "click", Method: "input_mouse", Capability: gwp.CapabilityInput,
 			OneOf: [][]string{{"selector", "position"}}, Optional: []string{"selector", "position", "button", "double_click"}, Selectors: []string{"selector"},
@@ -199,19 +199,19 @@ func buildSpecs() map[string]Spec {
 
 		{Action: "get_performance", Method: "get_performance", Capability: gwp.CapabilityPerformance,
 			Optional: []string{"monitors"},
-			Summary: "Read Performance singleton monitors"},
+			Summary:  "Read Performance singleton monitors"},
 		{Action: "assert_performance", Method: "assert_performance", Capability: gwp.CapabilityPerformance,
 			Required: []string{"monitor", "threshold"}, Optional: []string{"op"},
 			Summary: "Assert a performance monitor against a threshold"},
 
 		{Action: "record_start", Method: "record_start", Capability: gwp.CapabilityRecording,
 			Required: []string{"output_path"},
-			Summary: "Start recording input"},
+			Summary:  "Start recording input"},
 		{Action: "record_stop", Method: "record_stop", Capability: gwp.CapabilityRecording,
 			Summary: "Stop the active recording"},
 		{Action: "replay", Method: "replay", Capability: gwp.CapabilityRecording,
 			Required: []string{"input_path"},
-			Summary: "Replay a recorded input session"},
+			Summary:  "Replay a recorded input session"},
 	}
 	byName := make(map[string]Spec, len(list))
 	for _, spec := range list {
@@ -282,12 +282,7 @@ func Execute(ctx context.Context, c Caller, op Op) (json.RawMessage, error) {
 // file up front — before launching Godot — with the identical rules Execute
 // applies at call time.
 func (s Spec) Params(supplied map[string]any) (map[string]any, error) {
-	allowed := make([]string, 0, len(s.Required)+len(s.Optional))
-	allowed = append(allowed, s.Required...)
-	allowed = append(allowed, s.Optional...)
-	for _, group := range s.OneOf {
-		allowed = append(allowed, group...)
-	}
+	allowed := s.acceptedParams(true)
 
 	out := make(map[string]any, len(supplied))
 	for name, value := range supplied {
@@ -295,7 +290,7 @@ func (s Spec) Params(supplied map[string]any) (map[string]any, error) {
 			continue
 		}
 		if !slices.Contains(allowed, name) {
-			return nil, newError(KindUsage, s.Action, "unknown parameter %q (accepted: %s)", name, strings.Join(dedupe(allowed), ", "))
+			return nil, newError(KindUsage, s.Action, "unknown parameter %q (accepted: %s)", name, strings.Join(allowed, ", "))
 		}
 		out[name] = value
 	}
@@ -373,6 +368,23 @@ func checkAddonError(action string, raw json.RawMessage) error {
 		return newError(KindRemote, action, "godot handler error (unparseable)")
 	}
 	return newError(KindRemote, action, "%s", gwp.FormatError(payload.Error, payload.ErrorCode, payload.Details))
+}
+
+// AcceptedParams lists the optional parameters an action takes, deduplicated
+// and in declaration order. The CLI documents the scenario vocabulary from it,
+// so help output cannot drift from what Params actually accepts.
+func (s Spec) AcceptedParams() []string { return s.acceptedParams(false) }
+
+func (s Spec) acceptedParams(includeRequired bool) []string {
+	all := make([]string, 0, len(s.Required)+len(s.Optional))
+	if includeRequired {
+		all = append(all, s.Required...)
+	}
+	all = append(all, s.Optional...)
+	for _, group := range s.OneOf {
+		all = append(all, group...)
+	}
+	return dedupe(all)
 }
 
 func hasAny(params map[string]any, names []string) bool {

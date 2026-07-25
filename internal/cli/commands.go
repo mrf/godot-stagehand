@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -541,9 +542,8 @@ var cmdActions = &command{
 				if len(spec.Required) > 0 {
 					b.WriteString(fmt.Sprintf("%-20s   required: %s\n", "", strings.Join(spec.Required, ", ")))
 				}
-				optional := append(append([]string{}, spec.Optional...), flatten(spec.OneOf)...)
-				if len(optional) > 0 {
-					b.WriteString(fmt.Sprintf("%-20s   optional: %s\n", "", strings.Join(dedupe(optional), ", ")))
+				if optional := spec.AcceptedParams(); len(optional) > 0 {
+					b.WriteString(fmt.Sprintf("%-20s   optional: %s\n", "", strings.Join(optional, ", ")))
 				}
 			}
 			_, err := fmt.Fprint(e.stdout, b.String())
@@ -552,30 +552,11 @@ var cmdActions = &command{
 	},
 }
 
-func flatten(groups [][]string) []string {
-	var out []string
-	for _, group := range groups {
-		out = append(out, group...)
-	}
-	return out
-}
-
-func dedupe(values []string) []string {
-	seen := make(map[string]bool, len(values))
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		if seen[value] {
-			continue
-		}
-		seen[value] = true
-		out = append(out, value)
-	}
-	return out
-}
-
+// rawOrString decodes an addon result for embedding in a composite report,
+// falling back to the literal text when it is not JSON.
 func rawOrString(raw []byte) any {
 	var decoded any
-	if err := jsonUnmarshal(raw, &decoded); err != nil {
+	if err := json.Unmarshal(raw, &decoded); err != nil {
 		return string(raw)
 	}
 	return decoded

@@ -1,0 +1,74 @@
+{
+  "name": "stagehand-smoke",
+  "description": "Structural smoke gate: launch the test project headless, wait for the scene, and assert on real node state. Deliberately screenshot-free so it runs on a headless CI runner with no display.",
+  "target": {
+    "mode": "launch",
+    "project_path": "../test_project",
+    "headless": true,
+    "timeout_ms": 60000
+  },
+  "steps": [
+    {
+      "name": "scene root is present",
+      "action": "wait_for_node",
+      "with": { "selector": "name:TestScene", "state": "exists", "timeout_ms": 15000 }
+    },
+    {
+      "name": "title label reads the expected text",
+      "action": "assert_property",
+      "with": {
+        "selector": "name:titleLabel",
+        "property": "text",
+        "operator": "equals",
+        "expected": "Stagehand Test Scene"
+      }
+    },
+    {
+      "name": "the UI has buttons",
+      "action": "assert_node_count",
+      "with": { "selector": "class:Button", "operator": "greater_than", "expected": 0 }
+    },
+    {
+      "name": "the tree is walkable",
+      "action": "tree",
+      "with": { "root_path": "/root", "max_depth": 4 }
+    },
+    {
+      "name": "status label can be driven",
+      "action": "set_property",
+      "with": { "selector": "name:statusLabel", "property": "text", "value": "driven by the scenario runner" }
+    },
+    {
+      "name": "the write is observable",
+      "action": "assert_property",
+      "with": {
+        "selector": "name:statusLabel",
+        "property": "text",
+        "operator": "contains",
+        "expected": "scenario runner"
+      }
+    },
+    {
+      "name": "input reaches the game",
+      "action": "click",
+      "with": { "selector": "name:clickButton" }
+    },
+    {
+      "name": "let the frame settle",
+      "action": "sleep",
+      "with": { "duration_ms": 200 }
+    },
+    {
+      "name": "the engine reports performance counters",
+      "action": "get_performance",
+      "with": { "monitors": ["TIME_FPS", "MEMORY_STATIC"] }
+    }
+  ],
+  "teardown": [
+    {
+      "name": "restore the status label",
+      "action": "set_property",
+      "with": { "selector": "name:statusLabel", "property": "text", "value": "Ready for tests" }
+    }
+  ]
+}

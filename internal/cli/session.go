@@ -16,11 +16,9 @@ import (
 	"github.com/mrf/godot-stagehand/internal/launch"
 )
 
-// defaultSharedPort mirrors the addon's default. The CLI still requires an
-// explicit --port: the shared default routinely belongs to a game somebody
-// else launched, and silently driving another agent's SceneTree is worse than
-// a usage error.
-const defaultSharedPort = 26700
+// The CLI requires an explicit --port even though launch.DefaultPort exists:
+// the shared default routinely belongs to a game somebody else launched, and
+// silently driving another agent's SceneTree is worse than a usage error.
 
 // connectionFlags are the flags every game-touching command accepts.
 type connectionFlags struct {
@@ -60,7 +58,7 @@ func (c *connectionFlags) open(ctx context.Context) (*session, error) {
 	if c.port == 0 {
 		return nil, usagef(fmt.Errorf(
 			"--port is required: the addon's default %d is shared and may belong to another agent's game; pass the port your instance printed at startup",
-			defaultSharedPort))
+			launch.DefaultPort))
 	}
 	if c.timeout <= 0 {
 		return nil, usagef(fmt.Errorf("--timeout must be positive"))

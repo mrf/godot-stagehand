@@ -46,3 +46,10 @@ testdata/test_project/reports/
 .orchestrator-note
 .orchestrator-findings.jsonl
 .orchestrator-findings.harvested.jsonl
+
+# Scenario runner output. --out-dir is arbitrary, so these cover the
+# conventional names the docs and CI use; a project checking in its own
+# baselines should keep stagehand-baselines/ tracked deliberately.
+/scenario-artifacts/
+/ci-artifacts/
+/stagehand-diffs/

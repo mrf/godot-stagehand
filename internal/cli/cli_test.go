@@ -3,11 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
-	"image"
-	"image/color"
-	"image/png"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -20,6 +17,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/mrf/godot-stagehand/internal/godotconn"
 	"github.com/mrf/godot-stagehand/internal/gwp/gwptest"
+	"github.com/mrf/godot-stagehand/internal/visual/visualtest"
 )
 
 const testToken = "cli-test-token"
@@ -96,22 +94,28 @@ func (s *stubGodot) resultFor(method string) json.RawMessage {
 	return raw
 }
 
+func (s *stubGodot) port(t *testing.T) int {
+	t.Helper()
+	return stubPort(t, s.server.URL)
+}
+
 func (s *stubGodot) portFlag(t *testing.T) string {
 	t.Helper()
-	_, port, err := splitHostPort(strings.TrimPrefix(s.server.URL, "http://"))
+	return "--port=" + strconv.Itoa(s.port(t))
+}
+
+// stubPort extracts the port an httptest server bound.
+func stubPort(t *testing.T, serverURL string) int {
+	t.Helper()
+	_, rawPort, err := net.SplitHostPort(strings.TrimPrefix(serverURL, "http://"))
 	if err != nil {
 		t.Fatalf("parse stub address: %v", err)
 	}
-	return "--port=" + strconv.Itoa(port)
-}
-
-func splitHostPort(addr string) (string, int, error) {
-	idx := strings.LastIndex(addr, ":")
-	if idx < 0 {
-		return "", 0, os.ErrInvalid
+	port, err := strconv.Atoi(rawPort)
+	if err != nil {
+		t.Fatalf("parse stub port: %v", err)
 	}
-	port, err := strconv.Atoi(addr[idx+1:])
-	return addr[:idx], port, err
+	return port
 }
 
 // invoke runs the CLI and returns (exit code, stdout, stderr).
@@ -281,7 +285,7 @@ func TestOneShotCommandsCoverTheDocumentedSurface(t *testing.T) {
 func TestScreenshotWritesPNG(t *testing.T) {
 	withToken(t)
 	stub := newStubGodot(t, map[string]any{
-		"screenshot": map[string]any{"data": solidPNGBase64(t, 4, 4, color.RGBA{A: 255}), "width": 4, "height": 4},
+		"screenshot": map[string]any{"data": visualtest.SolidPNGBase64(4, 4, visualtest.Opaque), "width": 4, "height": 4},
 	})
 	out := filepath.Join(t.TempDir(), "frame.png")
 
@@ -299,7 +303,7 @@ func TestScreenshotDiffFailsWithAssertionExitCode(t *testing.T) {
 	baselineDir := t.TempDir()
 
 	stub := newStubGodot(t, map[string]any{
-		"screenshot": map[string]any{"data": solidPNGBase64(t, 4, 4, color.RGBA{A: 255}), "width": 4, "height": 4},
+		"screenshot": map[string]any{"data": visualtest.SolidPNGBase64(4, 4, visualtest.Opaque), "width": 4, "height": 4},
 	})
 	port := stub.portFlag(t)
 
@@ -309,7 +313,7 @@ func TestScreenshotDiffFailsWithAssertionExitCode(t *testing.T) {
 
 	// Now the game renders a different frame.
 	stub.mu.Lock()
-	stub.results["screenshot"] = map[string]any{"data": solidPNGBase64(t, 4, 4, color.RGBA{R: 255, A: 255}), "width": 4, "height": 4}
+	stub.results["screenshot"] = map[string]any{"data": visualtest.SolidPNGBase64(4, 4, visualtest.Red), "width": 4, "height": 4}
 	stub.mu.Unlock()
 
 	artifactDir := t.TempDir()
@@ -421,10 +425,7 @@ func TestRunScenarioEndToEndProducesArtifactsAndExitCode(t *testing.T) {
 	stub := newStubGodot(t, map[string]any{
 		"get_property": map[string]any{"value": "Loading", "type": "String"},
 	})
-	_, port, err := splitHostPort(strings.TrimPrefix(stub.server.URL, "http://"))
-	if err != nil {
-		t.Fatalf("parse stub address: %v", err)
-	}
+	port := stub.port(t)
 
 	dir := t.TempDir()
 	scenarioPath := filepath.Join(dir, "smoke.json")
@@ -460,10 +461,7 @@ func TestRunScenarioPassingExitsZero(t *testing.T) {
 	stub := newStubGodot(t, map[string]any{
 		"get_property": map[string]any{"value": "Ready", "type": "String"},
 	})
-	_, port, err := splitHostPort(strings.TrimPrefix(stub.server.URL, "http://"))
-	if err != nil {
-		t.Fatalf("parse stub address: %v", err)
-	}
+	port := stub.port(t)
 
 	dir := t.TempDir()
 	scenarioPath := filepath.Join(dir, "pass.json")
@@ -510,21 +508,6 @@ func TestRunRejectsMissingScenarioFile(t *testing.T) {
 	if code != ExitUsage {
 		t.Fatalf("exit = %d, want %d", code, ExitUsage)
 	}
-}
-
-func solidPNGBase64(t *testing.T, w, h int, c color.RGBA) string {
-	t.Helper()
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			img.SetRGBA(x, y, c)
-		}
-	}
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		t.Fatalf("encode png: %v", err)
-	}
-	return base64.StdEncoding.EncodeToString(buf.Bytes())
 }
 
 func mustMarshal(t *testing.T, v any) string {

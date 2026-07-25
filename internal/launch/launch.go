@@ -63,6 +63,11 @@ type Config struct {
 const (
 	// DefaultHost is the deterministic local loopback address used when no host is supplied.
 	DefaultHost = "127.0.0.1"
+	// DefaultPort is the port the addon listens on when STAGEHAND_PORT is unset.
+	// The addon accepts many clients into one SceneTree, so every agent that
+	// connects here without an explicit port drives the same game — which is
+	// why both the MCP connect tool and the CLI push callers off it.
+	DefaultPort = 26700
 	// defaultTimeout is used when TimeoutMs is zero.
 	defaultTimeout = 30000 // 30 seconds
 )
@@ -123,7 +128,7 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 	host = normalizeHost(host)
 	port := cfg.Port
 	if port == 0 {
-		port = 26700
+		port = DefaultPort
 	}
 	timeout := time.Duration(cfg.TimeoutMs) * time.Millisecond
 	if timeout == 0 {

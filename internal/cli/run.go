@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -10,8 +9,6 @@ import (
 
 	"github.com/mrf/godot-stagehand/internal/scenario"
 )
-
-func jsonUnmarshal(data []byte, v any) error { return json.Unmarshal(data, v) }
 
 // cmdRun is the scenario runner entry point. It deliberately does NOT take the
 // shared connection flags: how to reach Godot is part of the scenario file, so

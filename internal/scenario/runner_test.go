@@ -1,15 +1,10 @@
 package scenario
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
-	"image"
-	"image/color"
-	"image/png"
 	"io"
 	"os"
 	"path/filepath"
@@ -20,6 +15,7 @@ import (
 
 	"github.com/mrf/godot-stagehand/internal/godotconn"
 	"github.com/mrf/godot-stagehand/internal/visual"
+	"github.com/mrf/godot-stagehand/internal/visual/visualtest"
 )
 
 // stubGodot answers RPCs from a canned table, standing in for the addon.
@@ -96,21 +92,6 @@ func mustParse(t *testing.T, body string) *Scenario {
 		t.Fatalf("Parse: %v", err)
 	}
 	return sc
-}
-
-func solidPNGBase64(t *testing.T, w, h int, c color.RGBA) string {
-	t.Helper()
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			img.SetRGBA(x, y, c)
-		}
-	}
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		t.Fatalf("encode png: %v", err)
-	}
-	return base64.StdEncoding.EncodeToString(buf.Bytes())
 }
 
 func TestRunExecutesStepsInOrderAndReportsPass(t *testing.T) {
@@ -292,7 +273,7 @@ func TestRunReportsConnectionFailureWithoutSteps(t *testing.T) {
 
 func TestRunWritesEveryArtifact(t *testing.T) {
 	godot := &stubGodot{results: map[string]any{
-		"screenshot": map[string]any{"data": solidPNGBase64(t, 4, 4, color.RGBA{A: 255}), "width": 4, "height": 4},
+		"screenshot": map[string]any{"data": visualtest.SolidPNGBase64(4, 4, visualtest.Opaque), "width": 4, "height": 4},
 	}}
 	opts := stubOptions(t, godot)
 	opts.BaselineDir = filepath.Join(t.TempDir(), "baselines")
@@ -347,14 +328,14 @@ func TestRunWritesEveryArtifact(t *testing.T) {
 func TestRunWritesDiffArtifactsOnVisualRegression(t *testing.T) {
 	baselineDir := t.TempDir()
 	if _, err := visual.SaveBaseline(baselineDir, "menu", "", visual.Shot{
-		PNG:   decodeBase64(t, solidPNGBase64(t, 4, 4, color.RGBA{A: 255})),
+		PNG:   visualtest.SolidPNG(4, 4, visualtest.Opaque),
 		Width: 4, Height: 4,
 	}); err != nil {
 		t.Fatalf("SaveBaseline: %v", err)
 	}
 
 	godot := &stubGodot{results: map[string]any{
-		"screenshot": map[string]any{"data": solidPNGBase64(t, 4, 4, color.RGBA{R: 255, A: 255}), "width": 4, "height": 4},
+		"screenshot": map[string]any{"data": visualtest.SolidPNGBase64(4, 4, visualtest.Red), "width": 4, "height": 4},
 	}}
 	opts := stubOptions(t, godot)
 	opts.BaselineDir = baselineDir
@@ -490,13 +471,4 @@ func TestSleepStepDoesNotCallGodot(t *testing.T) {
 	if len(godot.called()) != 0 {
 		t.Errorf("sleep issued RPCs: %v", godot.called())
 	}
-}
-
-func decodeBase64(t *testing.T, s string) []byte {
-	t.Helper()
-	data, err := base64.StdEncoding.DecodeString(s)
-	if err != nil {
-		t.Fatalf("decode base64: %v", err)
-	}
-	return data
 }

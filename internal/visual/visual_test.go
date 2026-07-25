@@ -4,29 +4,14 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"image"
 	"image/color"
-	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-)
 
-func solidPNG(t *testing.T, w, h int, c color.RGBA) []byte {
-	t.Helper()
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			img.SetRGBA(x, y, c)
-		}
-	}
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		t.Fatalf("encode png: %v", err)
-	}
-	return buf.Bytes()
-}
+	"github.com/mrf/godot-stagehand/internal/visual/visualtest"
+)
 
 func screenshotJSON(t *testing.T, payload map[string]any) json.RawMessage {
 	t.Helper()
@@ -75,7 +60,7 @@ func TestDecodeRejectsAddonReportedFailure(t *testing.T) {
 
 func TestDecodeRejectsDimensionMismatch(t *testing.T) {
 	raw := screenshotJSON(t, map[string]any{
-		"data":   base64.StdEncoding.EncodeToString(solidPNG(t, 4, 4, color.RGBA{A: 255})),
+		"data":   base64.StdEncoding.EncodeToString(visualtest.SolidPNG(4, 4, visualtest.Opaque)),
 		"width":  8,
 		"height": 4,
 	})
@@ -85,7 +70,7 @@ func TestDecodeRejectsDimensionMismatch(t *testing.T) {
 }
 
 func TestDecodeReturnsShot(t *testing.T) {
-	pngBytes := solidPNG(t, 4, 4, color.RGBA{R: 10, G: 20, B: 30, A: 255})
+	pngBytes := visualtest.SolidPNG(4, 4, color.RGBA{R: 10, G: 20, B: 30, A: 255})
 	raw := screenshotJSON(t, map[string]any{
 		"data": base64.StdEncoding.EncodeToString(pngBytes),
 	})
@@ -106,7 +91,7 @@ func TestDecodeReturnsShot(t *testing.T) {
 
 func TestSaveBaselineWritesFile(t *testing.T) {
 	dir := t.TempDir()
-	shot := Shot{PNG: solidPNG(t, 2, 3, color.RGBA{A: 255}), Width: 2, Height: 3}
+	shot := Shot{PNG: visualtest.SolidPNG(2, 3, visualtest.Opaque), Width: 2, Height: 3}
 	outcome, err := SaveBaseline(dir, "main_menu", "name:Root", shot)
 	if err != nil {
 		t.Fatalf("SaveBaseline: %v", err)
@@ -125,7 +110,7 @@ func TestSaveBaselineWritesFile(t *testing.T) {
 
 func TestSaveBaselineRejectsUnsafeName(t *testing.T) {
 	dir := t.TempDir()
-	shot := Shot{PNG: solidPNG(t, 1, 1, color.RGBA{A: 255}), Width: 1, Height: 1}
+	shot := Shot{PNG: visualtest.SolidPNG(1, 1, visualtest.Opaque), Width: 1, Height: 1}
 	if _, err := SaveBaseline(dir, "../escape", "", shot); err == nil {
 		t.Fatal("SaveBaseline accepted a path-traversing baseline name")
 	}
@@ -135,12 +120,12 @@ func TestCompareBaselineDetectsRegressionAndWritesArtifacts(t *testing.T) {
 	baselineDir := t.TempDir()
 	artifactDir := t.TempDir()
 
-	baseline := Shot{PNG: solidPNG(t, 4, 4, color.RGBA{A: 255}), Width: 4, Height: 4}
+	baseline := Shot{PNG: visualtest.SolidPNG(4, 4, visualtest.Opaque), Width: 4, Height: 4}
 	if _, err := SaveBaseline(baselineDir, "main_menu", "", baseline); err != nil {
 		t.Fatalf("SaveBaseline: %v", err)
 	}
 
-	current := Shot{PNG: solidPNG(t, 4, 4, color.RGBA{R: 255, A: 255}), Width: 4, Height: 4}
+	current := Shot{PNG: visualtest.SolidPNG(4, 4, visualtest.Red), Width: 4, Height: 4}
 	outcome, err := CompareBaseline(DiffConfig{
 		BaselineDir: baselineDir,
 		ArtifactDir: artifactDir,
@@ -170,7 +155,7 @@ func TestCompareBaselineDetectsRegressionAndWritesArtifacts(t *testing.T) {
 
 func TestCompareBaselinePassesWithinThreshold(t *testing.T) {
 	baselineDir := t.TempDir()
-	baseline := Shot{PNG: solidPNG(t, 4, 4, color.RGBA{A: 255}), Width: 4, Height: 4}
+	baseline := Shot{PNG: visualtest.SolidPNG(4, 4, visualtest.Opaque), Width: 4, Height: 4}
 	if _, err := SaveBaseline(baselineDir, "hud", "", baseline); err != nil {
 		t.Fatalf("SaveBaseline: %v", err)
 	}
@@ -180,7 +165,7 @@ func TestCompareBaselinePassesWithinThreshold(t *testing.T) {
 		ArtifactDir: t.TempDir(),
 		Name:        "hud",
 		Threshold:   1.0,
-	}, Shot{PNG: solidPNG(t, 4, 4, color.RGBA{G: 255, A: 255}), Width: 4, Height: 4})
+	}, Shot{PNG: visualtest.SolidPNG(4, 4, visualtest.Green), Width: 4, Height: 4})
 	if err != nil {
 		t.Fatalf("CompareBaseline: %v", err)
 	}
@@ -197,7 +182,7 @@ func TestCompareBaselineMissingBaselineIsActionable(t *testing.T) {
 		BaselineDir: t.TempDir(),
 		ArtifactDir: t.TempDir(),
 		Name:        "absent",
-	}, Shot{PNG: solidPNG(t, 1, 1, color.RGBA{A: 255}), Width: 1, Height: 1})
+	}, Shot{PNG: visualtest.SolidPNG(1, 1, visualtest.Opaque), Width: 1, Height: 1})
 	if err == nil {
 		t.Fatal("CompareBaseline succeeded without a baseline on disk")
 	}
