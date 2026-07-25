@@ -1,7 +1,9 @@
 package mcpserver
 
 import (
+	"fmt"
 	"net"
+	"os"
 	"sort"
 	"strconv"
 	"sync"
@@ -93,12 +95,19 @@ func (m *instanceManager) closeAll() {
 	}
 }
 
+// closeEntry closes the connection and kills the launched process, if any.
+// A kill failure (e.g. a timeout waiting for the process to exit) means the
+// Godot process may be left running; the MCP stdio transport reserves stdout
+// for protocol traffic, so this is reported on stderr rather than silently
+// swallowed.
 func closeEntry(e *instanceEntry) {
 	if e.conn != nil {
 		e.conn.Close()
 	}
 	if e.lr != nil {
-		_ = e.lr.Kill()
+		if err := e.lr.Kill(); err != nil {
+			fmt.Fprintf(os.Stderr, "stagehand: failed to kill Godot instance %q (pid %d): %v\n", e.id, e.pid, err)
+		}
 	}
 }
 

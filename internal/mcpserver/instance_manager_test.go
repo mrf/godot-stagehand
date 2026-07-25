@@ -2,13 +2,18 @@ package mcpserver
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/gorilla/websocket"
 	"github.com/mrf/godot-stagehand/internal/godotconn"
+	"github.com/mrf/godot-stagehand/internal/launch"
 )
 
 // dialTestConn creates a real WebSocket connection to a minimal httptest server
@@ -163,6 +168,44 @@ func TestInstanceManager_PIDFromLaunchResult(t *testing.T) {
 	e := m.get("default")
 	if e.pid != -1 {
 		t.Errorf("expected pid=-1 for manual connect, got %d", e.pid)
+	}
+}
+
+// TestCloseEntry_ReportsKillFailureOnStderr verifies that a Kill() failure
+// (e.g. a process that has already exited) is reported on stderr rather than
+// silently discarded, since it means the entry's process may have leaked.
+func TestCloseEntry_ReportsKillFailureOnStderr(t *testing.T) {
+	cmd := exec.Command("true")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to run helper process: %v", err)
+	}
+	// The process has already exited; killing it again fails with
+	// "os: process already finished", which is the error closeEntry must
+	// surface rather than swallow via `_ = e.lr.Kill()`.
+	lr := &launch.LaunchResult{Process: cmd}
+
+	origStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stderr = w
+	defer func() { os.Stderr = origStderr }()
+
+	closeEntry(&instanceEntry{id: "leaked", pid: cmd.Process.Pid, lr: lr})
+
+	_ = w.Close()
+	os.Stderr = origStderr
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("reading captured stderr: %v", err)
+	}
+
+	if !strings.Contains(string(out), "leaked") {
+		t.Errorf("expected stderr to mention the instance id, got: %q", out)
+	}
+	if !strings.Contains(string(out), "failed to kill") {
+		t.Errorf("expected stderr to report the kill failure, got: %q", out)
 	}
 }
 
