@@ -311,19 +311,58 @@ func _dispatch_and_respond(peer_id: int, id: Variant, method: String, params: Va
 	var handler: Callable = _router.get_handler(method)
 	var result: Variant = await handler.call(params)
 	# Notifications (no id) get no response per JSON-RPC 2.0 spec.
-	if id != null:
-		var response_text: String = JSON_RPC.make_response(id, result)
-		var send_error: Error = _send_to_peer(peer_id, response_text)
-		if send_error != OK:
-			var fallback_result: Dictionary = {
-				"error": "Failed to send Stagehand response to WebSocket peer: %s" % error_string(send_error),
-				"error_code": "send_buffer_failed",
-				"details": {
-					"payload_bytes": response_text.to_utf8_buffer().size(),
-					"next_action": "Reduce screenshot size/crop area or increase the WebSocket outbound buffer.",
-				},
-			}
-			var _fallback_send_error: Error = _send_to_peer(peer_id, JSON_RPC.make_response(id, fallback_result))
+	if id == null:
+		return
+
+	# GDScript has no try/catch, so an unhandled runtime error inside a handler
+	# (a bad evaluate/call_method/set_property, say) doesn't unwind as an
+	# exception the way it would in most languages. Confirmed by instrumented
+	# reproduction against this engine build (Godot 4.6.2): the error aborts
+	# only the erroring function, and the awaiter above resumes normally with
+	# that function's *declared-type default value* — every handler here
+	# declares `-> Dictionary`, so an abort resumes _dispatch_and_respond with
+	# an empty `{}`. Every handler's real success and defined-error paths
+	# always return a non-empty Dictionary (see _handler_aborted's doc
+	# comment), so an exactly-empty result is an unambiguous abort signal.
+	# Without this check that bogus `{}` would be forwarded as a *successful*
+	# JSON-RPC result, silently masking the failure from the client instead of
+	# surfacing it (docs/audits/2026-07-08-implementation-audit.md finding S8).
+	if _handler_aborted(result):
+		_send_rpc_error(
+			peer_id, id, JSON_RPC.INTERNAL_ERROR,
+			"Handler '%s' failed with an internal error" % method
+		)
+		return
+
+	var response_text: String = JSON_RPC.make_response(id, result)
+	var send_error: Error = _send_to_peer(peer_id, response_text)
+	if send_error != OK:
+		var fallback_result: Dictionary = {
+			"error": "Failed to send Stagehand response to WebSocket peer: %s" % error_string(send_error),
+			"error_code": "send_buffer_failed",
+			"details": {
+				"payload_bytes": response_text.to_utf8_buffer().size(),
+				"next_action": "Reduce screenshot size/crop area or increase the WebSocket outbound buffer.",
+			},
+		}
+		var _fallback_send_error: Error = _send_to_peer(peer_id, JSON_RPC.make_response(id, fallback_result))
+
+
+## Whether a handler's returned result indicates that the handler Callable
+## aborted partway through execution (a GDScript runtime error) rather than
+## completing normally. Every handler registered in _register_builtin_handlers
+## declares `-> Dictionary` and always returns a non-empty Dictionary on both
+## its success path and its own defined `{"error": ...}` path — verified by
+## reading every handler function in this file and every core/*.gd module it
+## delegates to. An aborted call instead resumes with the return type's
+## default value: `{}` for a Dictionary-typed handler, or `null`/anything
+## else non-Dictionary if a future handler is declared with a looser return
+## type. Both are treated as an abort.
+static func _handler_aborted(result: Variant) -> bool:
+	if result is not Dictionary:
+		return true
+	var dict: Dictionary = result
+	return dict.is_empty()
 
 
 func _send_to_peer(peer_id: int, text: String) -> Error:
