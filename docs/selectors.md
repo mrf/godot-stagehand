@@ -71,6 +71,27 @@ Label never gets clicked ahead of the real Button it shares a word with. The
 resolved to more than one node. Prefer `text=` or a chained/`name:`/`meta:`
 selector when you need a guaranteed-unique target.
 
+#### Modal dialogs (embedded subwindows)
+
+`AcceptDialog`, `ConfirmationDialog`, `FileDialog` and friends are `Window`
+subclasses that Godot renders as *embedded subwindows*. Selectors reach into
+them normally, and `godot_click` translates the target's in-subwindow position
+into the coordinates the embedder hit-tests against, so clicking a button
+inside a dialog works the same as clicking one in the main window.
+
+What a modal dialog changes is everything *outside* it. While one is up, the
+engine discards pointer events that land elsewhere, and a discarded mouse
+button additionally drops the dialog's window focus, after which key events go
+nowhere either. Stagehand refuses those up front rather than reporting a
+success that did nothing:
+
+- clicking or touching outside the dialog → `not_supported`, naming the
+  blocking window and its rect in `details`
+- `godot_press_key` while a visible modal has lost focus → `not_supported`,
+  telling you to click inside the dialog first
+
+So the way past a modal is through it: click one of its own controls.
+
 ### Meta: `"meta:key=value"` or `"meta:someKey"`
 Finds nodes based on metadata values attached to them. This includes exported variables, custom properties, or Godot's built-in metadata.
 
