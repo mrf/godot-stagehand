@@ -22,6 +22,17 @@ const BIND_FAILURE_EXIT_CODE: int = 70
 const QUIT_ON_DISCONNECT_GRACE_MS: int = 10000
 ## Replay speed used when the client does not ask for one: realtime.
 const RECORDER_SPEED_DEFAULT: float = 1.0
+## Hard cap on concurrent client connections. Each accepted peer reserves
+## inbound_buffer_size + outbound_buffer_size (24 MiB, see
+## _accept_new_connections), so an unbounded accept path is a memory-exhaustion
+## vector. Connections beyond the cap are refused at the TCP layer before a
+## WebSocketPeer (and its buffers) is ever allocated for them.
+const MAX_CONCURRENT_CLIENTS: int = 32
+## A peer that never completes the WebSocket handshake (stuck in
+## STATE_CONNECTING — e.g. a TCP connection opened and then abandoned) is
+## force-closed and reaped after this many milliseconds, so it can't hold a
+## client slot and its buffers forever.
+const HANDSHAKE_TIMEOUT_MS: int = 10000
 
 # These scripts are preloaded into SCREAMING_SNAKE_CASE constants rather than
 # referenced by their global `class_name`. Two constraints force this:
@@ -50,6 +61,7 @@ const WAITER := preload("res://addons/stagehand/core/waiter.gd")
 var _tcp_server: TCPServer
 var _clients: Dictionary = {}  # int -> WebSocketPeer
 var _authenticated_peers: Dictionary = {}  # int -> true
+var _peer_connected_at_msec: Dictionary = {}  # int -> int
 var _next_peer_id: int = 0
 var _router: COMMAND_ROUTER
 var _port: int = DEFAULT_PORT
@@ -128,6 +140,17 @@ func get_port() -> int:
 func _accept_new_connections() -> void:
 	while _tcp_server.is_connection_available():
 		var tcp_peer: StreamPeerTCP = _tcp_server.take_connection()
+		if _clients.size() >= MAX_CONCURRENT_CLIENTS:
+			# Refuse before a WebSocketPeer (and its 24 MiB of buffers) is ever
+			# allocated. No WebSocket close handshake is possible here — the
+			# stream hasn't been upgraded yet — so a clean TCP disconnect is the
+			# best available refusal.
+			push_warning(
+				"Stagehand: Refusing connection — at MAX_CONCURRENT_CLIENTS (%d)"
+				% MAX_CONCURRENT_CLIENTS
+			)
+			tcp_peer.disconnect_from_host()
+			continue
 		var ws_peer: WebSocketPeer = WebSocketPeer.new()
 		# Screenshot responses are base64-encoded PNGs of the full viewport and
 		# routinely exceed the 64 KiB default WebSocket buffer. If the outbound
@@ -140,33 +163,53 @@ func _accept_new_connections() -> void:
 			var peer_id: int = _next_peer_id
 			_next_peer_id += 1
 			_clients[peer_id] = ws_peer
+			_peer_connected_at_msec[peer_id] = Time.get_ticks_msec()
 			_had_client = true
 			_pending_quit_at_msec = -1
 		else:
 			push_warning("Stagehand: Failed to accept WebSocket stream: %s" % error_string(err))
 
 
-func _poll_clients() -> void:
+## Polls every connected peer, dispatches messages from open peers, and reaps
+## peers that are closed or that never completed the WebSocket handshake
+## within HANDSHAKE_TIMEOUT_MS. `now_msec` defaults to the real clock; callers
+## (namely tests) may inject a synthetic value to exercise the handshake
+## deadline without sleeping in wall-clock time.
+func _poll_clients(now_msec: int = -1) -> void:
+	if now_msec < 0:
+		now_msec = Time.get_ticks_msec()
 	var disconnected: Array[int] = []
 	for peer_id: int in _clients:
 		var ws: WebSocketPeer = _clients[peer_id]
 		ws.poll()
-		match ws.get_ready_state():
-			WebSocketPeer.STATE_OPEN:
-				while ws.get_available_packet_count() > 0:
-					var packet: PackedByteArray = ws.get_packet()
-					var text: String = packet.get_string_from_utf8()
-					_handle_message(peer_id, text)
-			WebSocketPeer.STATE_CLOSED:
+		var state: WebSocketPeer.State = ws.get_ready_state()
+		if state == WebSocketPeer.STATE_CLOSED:
+			disconnected.append(peer_id)
+			continue
+		if state == WebSocketPeer.STATE_CONNECTING:
+			var connected_at_msec: int = _peer_connected_at_msec.get(peer_id, now_msec)
+			if now_msec - connected_at_msec >= HANDSHAKE_TIMEOUT_MS:
+				push_warning(
+					"Stagehand: Closing peer %d — handshake did not complete within %dms"
+					% [peer_id, HANDSHAKE_TIMEOUT_MS]
+				)
+				ws.close()
 				disconnected.append(peer_id)
+			continue
+		if state == WebSocketPeer.STATE_OPEN:
+			while ws.get_available_packet_count() > 0:
+				var packet: PackedByteArray = ws.get_packet()
+				var text: String = packet.get_string_from_utf8()
+				_handle_message(peer_id, text)
 	for peer_id: int in disconnected:
 		var _erased: bool = _clients.erase(peer_id)
 		var _auth_erased: bool = _authenticated_peers.erase(peer_id)
+		var _time_erased: bool = _peer_connected_at_msec.erase(peer_id)
 	if (
 		_had_client and _clients.is_empty() and _quit_on_disconnect
 		and _pending_quit_at_msec < 0
 	):
-		_pending_quit_at_msec = Time.get_ticks_msec() + QUIT_ON_DISCONNECT_GRACE_MS
+		_pending_quit_at_msec = now_msec + QUIT_ON_DISCONNECT_GRACE_MS
 
 
 ## Self-quit once the last client has been gone for QUIT_ON_DISCONNECT_GRACE_MS
@@ -651,6 +694,7 @@ func _stop() -> void:
 		ws.close()
 	_clients.clear()
 	_authenticated_peers.clear()
+	_peer_connected_at_msec.clear()
 	if _tcp_server:
 		_tcp_server.stop()
 	_active = false
