@@ -1,3 +1,7 @@
+# GdUnit4 assertions are fluent and return self for chaining, so every
+# unchained assert_*() trips return_value_discarded=2. Scoped, deliberate
+# relaxation of that one warning; all other strict warnings stay errors.
+@warning_ignore_start("return_value_discarded")
 extends GdUnitTestSuite
 ## Tests for StagehandScreenshotCapture error diagnostics.
 

@@ -1,3 +1,7 @@
+# GdUnit4 assertions are fluent and return self for chaining, so every
+# unchained assert_*() trips return_value_discarded=2. Scoped, deliberate
+# relaxation of that one warning; all other strict warnings stay errors.
+@warning_ignore_start("return_value_discarded")
 extends GdUnitTestSuite
 ## Tests for StagehandMethodHandler — call_method dispatch and the
 ## allow_multiple multi-match contract (results array).
@@ -11,8 +15,8 @@ class _Doubler:
 
 
 func _make_target(group: StringName) -> void:
-	var node: _Doubler = _Doubler.new()
-	add_child(auto_free(node))
+	var node: _Doubler = auto_free(_Doubler.new())
+	add_child(node)
 	node.add_to_group(group)
 
 
@@ -80,3 +84,101 @@ func test_blocked_method_returns_error() -> void:
 	}
 	var result: Dictionary = StagehandMethodHandler.call_method(get_tree(), params)
 	assert_str(result.get("error", "")).contains("destructive")
+
+
+# ── safety boundary: blocklist and private methods ───────────────────────
+
+func test_every_blocked_method_is_rejected() -> void:
+	_make_target(&"doublers_blocklist")
+	for method: String in StagehandMethodHandler.BLOCKED_METHODS:
+		var result: Dictionary = StagehandMethodHandler.call_method(get_tree(), {
+			"selector": "group:doublers_blocklist",
+			"method": method,
+		})
+		assert_str(str(result.get("error", ""))) \
+			.override_failure_message("expected '%s' to be blocked" % method) \
+			.contains("destructive")
+
+
+func test_blocklist_covers_the_destructive_lifecycle_methods() -> void:
+	# Guards against a future edit silently shrinking the blocklist.
+	for method: String in ["free", "queue_free", "set_script", "add_child", "remove_child"]:
+		assert_bool(method in StagehandMethodHandler.BLOCKED_METHODS) \
+			.override_failure_message("'%s' must stay on the blocklist" % method) \
+			.is_true()
+
+
+func test_private_method_is_rejected() -> void:
+	_make_target(&"doublers_private")
+	var result: Dictionary = StagehandMethodHandler.call_method(get_tree(), {
+		"selector": "group:doublers_private",
+		"method": "_ready",
+	})
+	assert_str(str(result.get("error", ""))).contains("private/lifecycle")
+
+
+func test_private_method_rejected_before_node_lookup() -> void:
+	# The name check must run first, so a private method is refused even when
+	# the selector matches nothing — never leaking which nodes exist.
+	var result: Dictionary = StagehandMethodHandler.call_method(get_tree(), {
+		"selector": "group:no_such_group_at_all",
+		"method": "_enter_tree",
+	})
+	assert_str(str(result.get("error", ""))).contains("private/lifecycle")
+
+
+func test_blocked_method_rejected_before_node_lookup() -> void:
+	var result: Dictionary = StagehandMethodHandler.call_method(get_tree(), {
+		"selector": "group:no_such_group_at_all",
+		"method": "queue_free",
+	})
+	assert_str(str(result.get("error", ""))).contains("destructive")
+
+
+# ── allowed methods ──────────────────────────────────────────────────────
+
+func test_allowed_builtin_method_is_callable() -> void:
+	# A non-destructive engine method must pass the safety check.
+	_make_target(&"doublers_builtin")
+	var result: Dictionary = StagehandMethodHandler.call_method(get_tree(), {
+		"selector": "group:doublers_builtin",
+		"method": "get_class",
+	})
+	assert_bool(result.get("success", false)).is_true()
+
+
+func test_method_with_no_args_is_callable() -> void:
+	_make_target(&"doublers_noargs")
+	var result: Dictionary = StagehandMethodHandler.call_method(get_tree(), {
+		"selector": "group:doublers_noargs",
+		"method": "is_inside_tree",
+	})
+	assert_bool(result.get("success", false)).is_true()
+	assert_bool(result.get("return_value", false)).is_true()
+
+
+# ── remaining error cases ────────────────────────────────────────────────
+
+func test_missing_method_name_returns_error() -> void:
+	var result: Dictionary = StagehandMethodHandler.call_method(
+		get_tree(), {"selector": "group:doublers_single"}
+	)
+	assert_str(str(result.get("error", ""))).contains("Missing selector or method")
+
+
+func test_unmatched_selector_returns_node_not_found() -> void:
+	var result: Dictionary = StagehandMethodHandler.call_method(get_tree(), {
+		"selector": "group:no_such_group_at_all",
+		"method": "double",
+		"args": [1],
+	})
+	assert_str(str(result.get("error", ""))).contains("Node not found")
+
+
+func test_unknown_method_on_matched_node_returns_error() -> void:
+	_make_target(&"doublers_unknown")
+	var result: Dictionary = StagehandMethodHandler.call_method(get_tree(), {
+		"selector": "group:doublers_unknown",
+		"method": "no_such_method_at_all",
+	})
+	assert_str(str(result.get("error", ""))).contains("Method not found")

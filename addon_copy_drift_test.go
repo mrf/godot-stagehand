@@ -60,6 +60,14 @@ func TestFixtureAddonCopiesMatchCanonical(t *testing.T) {
 
 // hashTree returns a map of slash-separated relative path -> sha256 hex
 // digest for every regular file under dir.
+//
+// Godot-generated sidecars are skipped: opening or importing a project (which
+// the GDScript suite in scripts/run-gdscript-tests.sh does, and which anyone
+// opening testdata/test_project in the editor does) writes a .uid file next to
+// every script. Those are derived artifacts with per-project ids — they are
+// gitignored, never present in canonical, and would otherwise be reported as
+// stray files the moment the fixture project is run. The contract this test
+// enforces is identity of addon *source*, not of Godot's import cache.
 func hashTree(t *testing.T, dir string) map[string]string {
 	t.Helper()
 	hashes := make(map[string]string)
@@ -68,6 +76,9 @@ func hashTree(t *testing.T, dir string) map[string]string {
 			return err
 		}
 		if d.IsDir() {
+			return nil
+		}
+		if isGodotGeneratedSidecar(d.Name()) {
 			return nil
 		}
 		rel, err := filepath.Rel(dir, path)
@@ -86,4 +97,16 @@ func hashTree(t *testing.T, dir string) map[string]string {
 		t.Fatalf("walk %s: %v", dir, err)
 	}
 	return hashes
+}
+
+// isGodotGeneratedSidecar reports whether name is a Godot-generated import
+// artifact rather than checked-in addon source. .uid files are written by
+// Godot 4.4+ on project import; .import files accompany imported resources.
+func isGodotGeneratedSidecar(name string) bool {
+	switch filepath.Ext(name) {
+	case ".uid", ".import":
+		return true
+	default:
+		return false
+	}
 }
