@@ -30,7 +30,7 @@ TEST_PROJECT="${PROJECT_DIR}/testdata/test_project"
 # supported version (4.3, see README.md's Godot version compatibility
 # section) so a regression *or* an unexpected fix shows up in the matrix
 # instead of going unnoticed.
-DEFAULT_VERSIONS=("4.2" "4.3" "4.4" "4.5" "4.6.2")
+DEFAULT_VERSIONS=("4.2" "4.3" "4.4" "4.5" "4.6.2" "4.7.1")
 if [[ $# -gt 0 ]]; then
     VERSIONS=("$@")
 else

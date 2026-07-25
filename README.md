@@ -235,7 +235,7 @@ setups need no new arguments — leave `STAGEHAND_MULTI` unset.
 ## Godot version compatibility
 
 **Minimum supported version: Godot 4.3.** Development happens against 4.6.x
-locally; 4.3-4.6 are all tested and supported.
+locally; 4.3-4.7 are all tested and supported.
 
 | Godot version | Status | Notes |
 |----------------|--------|-------|
@@ -244,6 +244,7 @@ locally; 4.3-4.6 are all tested and supported.
 | 4.4 | Supported | |
 | 4.5 | Supported | |
 | 4.6 | Supported (local dev baseline) | |
+| 4.7 | Supported | |
 
 Verified by running the full connect-and-drive protocol (parse → activate →
 authenticated ping → `get_tree`/`find_nodes`/`click`/`screenshot`) against a
