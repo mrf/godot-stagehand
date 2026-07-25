@@ -11,8 +11,6 @@ extends Window
 ## inside the editor. It does NOT run in game/headless launches (the EditorPlugin
 ## never loads there), so it must never touch the runtime autoload server.
 
-const StagehandReleaseAssets := preload("res://addons/stagehand/editor/release_assets.gd")
-
 const DEFAULT_PORT: int = 26700
 const CONNECT_TIMEOUT_MS: int = 3000
 
@@ -38,20 +36,20 @@ func _init() -> void:
 	title = "Stagehand Setup"
 	size = Vector2i(640, 560)
 	# Hide instead of destroying when the user closes the window.
-	close_requested.connect(hide)
+	var _close_connect_err: int = close_requested.connect(hide)
 	_build_ui()
 
 
 func _ready() -> void:
 	_http = HTTPRequest.new()
-	_http.request_completed.connect(_on_download_completed)
+	var _http_connect_err: int = _http.request_completed.connect(_on_download_completed)
 	add_child(_http)
 
 	_file_dialog = FileDialog.new()
 	_file_dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
 	_file_dialog.access = FileDialog.ACCESS_FILESYSTEM
 	_file_dialog.use_native_dialog = true
-	_file_dialog.file_selected.connect(_on_save_path_selected)
+	var _file_dialog_connect_err: int = _file_dialog.file_selected.connect(_on_save_path_selected)
 	add_child(_file_dialog)
 
 	_path_edit.text = _default_binary_path()
@@ -98,16 +96,16 @@ func _build_ui() -> void:
 	_path_edit = LineEdit.new()
 	_path_edit.placeholder_text = "Destination path for the server binary"
 	_path_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_path_edit.text_changed.connect(_on_path_changed)
+	var _path_edit_connect_err: int = _path_edit.text_changed.connect(_on_path_changed)
 	path_row.add_child(_path_edit)
 	var browse: Button = Button.new()
 	browse.text = "Browse…"
-	browse.pressed.connect(_on_browse_pressed)
+	var _browse_connect_err: int = browse.pressed.connect(_on_browse_pressed)
 	path_row.add_child(browse)
 
 	_download_button = Button.new()
 	_download_button.text = "Download server binary"
-	_download_button.pressed.connect(_on_download_pressed)
+	var _download_connect_err: int = _download_button.pressed.connect(_on_download_pressed)
 	root.add_child(_download_button)
 
 	root.add_child(_make_section_label("2. MCP client config"))
@@ -119,7 +117,7 @@ func _build_ui() -> void:
 
 	_copy_button = Button.new()
 	_copy_button.text = "Copy config to clipboard"
-	_copy_button.pressed.connect(_on_copy_pressed)
+	var _copy_connect_err: int = _copy_button.pressed.connect(_on_copy_pressed)
 	root.add_child(_copy_button)
 
 	root.add_child(_make_section_label("3. Connection test"))
@@ -133,11 +131,11 @@ func _build_ui() -> void:
 	_port_spin.min_value = 1
 	_port_spin.max_value = 65535
 	_port_spin.value = DEFAULT_PORT
-	_port_spin.value_changed.connect(_on_port_changed)
+	var _port_connect_err: int = _port_spin.value_changed.connect(_on_port_changed)
 	port_row.add_child(_port_spin)
 	_test_button = Button.new()
 	_test_button.text = "Test connection"
-	_test_button.pressed.connect(_on_test_pressed)
+	var _test_connect_err: int = _test_button.pressed.connect(_on_test_pressed)
 	port_row.add_child(_test_button)
 
 	_log_label = RichTextLabel.new()
