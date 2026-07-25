@@ -323,3 +323,43 @@ func test_rank_demotes_ignore_filter_control() -> void:
 func test_rank_empty_input_returns_empty() -> void:
 	var nodes: Array[Node] = []
 	assert_int(SelectorEngine.rank_for_interaction(nodes).size()).is_equal(0)
+
+
+# ── role: (godot-stagehand-phase3-vrj.4) ─────────────────────────────────
+# Roles are derived from the Control hierarchy by StagehandAccessibilityTree —
+# Godot's real AccessKit tree is write-only and unreadable from GDScript.
+
+func test_parse_role() -> void:
+	var parsed: Dictionary = SelectorEngine.parse("role:button")
+	assert_int(parsed["type"]).is_equal(SelectorEngine.SelectorType.ROLE)
+	assert_str(parsed["value"]).is_equal("button")
+
+
+func test_parse_role_empty_value_is_rejected() -> void:
+	assert_dict(SelectorEngine.parse("role:")).is_empty()
+
+
+func test_query_role_button_matches_button_not_label() -> void:
+	var results: Array[Node] = _query("role:button")
+	assert_array(results).contains([_button])
+	assert_array(results).not_contains([_label])
+
+
+func test_query_role_static_text_matches_label() -> void:
+	var results: Array[Node] = _query("role:static_text")
+	assert_array(results).contains([_label])
+	assert_array(results).not_contains([_button])
+
+
+func test_query_role_is_case_insensitive() -> void:
+	assert_array(_query("role:BUTTON")).contains([_button])
+
+
+func test_query_role_unknown_role_returns_empty() -> void:
+	assert_int(_query("role:not_a_real_role").size()).is_equal(0)
+
+
+func test_query_role_chained_scopes_to_parent() -> void:
+	var results: Array[Node] = _query("name:%sPanel >> role:button" % FIXTURE_TAG)
+	assert_array(results).contains([_button])
+	assert_array(results).not_contains([_label])

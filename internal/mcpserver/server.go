@@ -24,6 +24,31 @@ var instanceIDOpt = mcp.WithString("instance_id",
 	mcp.DefaultString("default"),
 )
 
+// rootPathOpt and maxDepthOpt are the subtree-walking arguments shared by the
+// tree tools (godot_get_tree, godot_get_accessibility_tree). Declared once so
+// their defaults and bounds cannot drift apart between tools.
+var rootPathOpt = mcp.WithString("root_path",
+	mcp.Description("Subtree root path"),
+	mcp.DefaultString("/root"),
+)
+
+var maxDepthOpt = mcp.WithNumber("max_depth",
+	mcp.Description("Maximum recursion depth"),
+	mcp.DefaultNumber(10),
+	mcp.Min(1),
+	mcp.Max(50),
+)
+
+// subtreeParams builds the {root_path, max_depth} GWP params those tools send.
+// Defaults are resolved here rather than in the addon so the wire message is
+// always fully specified.
+func subtreeParams(req mcp.CallToolRequest) map[string]any {
+	return map[string]any{
+		"root_path": req.GetString("root_path", "/root"),
+		"max_depth": req.GetInt("max_depth", 10),
+	}
+}
+
 // defaultGodotCallTimeout bounds ordinary Godot RPCs so a silent peer cannot
 // occupy an MCP stdio worker forever. Handlers with deliberate longer-running
 // semantics, such as wait tools, override it by supplying a context deadline.
@@ -244,6 +269,7 @@ func (s *Server) registerTools() {
 	s.mcp.AddTool(getGameStateTool, s.handleGetGameState)
 	s.mcp.AddTool(getTreeTool, s.handleGetTree)
 	s.mcp.AddTool(findNodesTool, s.handleFindNodes)
+	s.mcp.AddTool(getAccessibilityTreeTool, s.handleGetAccessibilityTree)
 	s.mcp.AddTool(getPropertyTool, s.handleGetProperty)
 	s.mcp.AddTool(setPropertyTool, s.handleSetProperty)
 	s.mcp.AddTool(clickTool, s.handleClick)

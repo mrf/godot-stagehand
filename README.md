@@ -63,6 +63,7 @@ Running the binary with **no arguments** serves MCP over stdio — that is what 
 | `godot_disconnect` | Disconnect and remove a named instance |
 | `godot_get_tree` | Snapshot the scene tree |
 | `godot_find_nodes` | Find nodes by selector |
+| `godot_get_accessibility_tree` | Semantic UI view: roles, accessible names, states (Godot 4.5+) |
 | `godot_get_property` / `godot_set_property` | Read/write node properties |
 | `godot_call_method` | Call methods on nodes |
 | `godot_evaluate` | Evaluate GDScript expressions |
@@ -131,6 +132,7 @@ Target nodes using familiar patterns:
 | Group | `group:interactive` | All nodes in group |
 | Text | `text:Start` | Nodes containing text |
 | Meta | `meta:id=player` | Nodes with metadata |
+| Role | `role:button` | Nodes with an accessibility role (Godot 4.5+) |
 | Chain | `class:Panel >> name:*Btn*` | Scoped search (find within) |
 
 ## Security boundary

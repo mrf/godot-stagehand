@@ -36,6 +36,23 @@ type stubGodot struct {
 
 	mu    sync.Mutex
 	calls []stubCall
+
+	// accessibilityUnsupported makes get_accessibility_tree answer the way the
+	// addon does on Godot < 4.5, where DisplayServer.AccessibilityRole does not
+	// exist. Lets the E2E suite cover the fallback path without a second binary.
+	accessibilityUnsupported bool
+}
+
+func (s *stubGodot) setAccessibilityUnsupported(v bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.accessibilityUnsupported = v
+}
+
+func (s *stubGodot) isAccessibilityUnsupported() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.accessibilityUnsupported
 }
 
 func newStubGodot(t *testing.T) *stubGodot {
@@ -104,6 +121,15 @@ func (s *stubGodot) handleReq(req godotconn.Request) godotconn.Response {
 		resp.Result = rawJSON(`{"name":"root","class":"Node","path":"/root","children":[{"name":"UI","class":"CanvasLayer","path":"/root/UI","children":[{"name":"StartButton","class":"Button","path":"/root/UI/StartButton"}]}],"count":3}`)
 	case "query_nodes":
 		resp.Result = rawJSON(`{"nodes":[{"name":"StartButton","class":"Button","path":"/root/UI/StartButton"}],"count":1}`)
+	case "get_accessibility_tree":
+		if s.isAccessibilityUnsupported() {
+			resp.Error = &godotconn.RPCError{
+				Code:    godotconn.CodeInvalidRequest,
+				Message: "accessibility roles require Godot 4.5 or newer (running 4.4.1)",
+			}
+			break
+		}
+		resp.Result = rawJSON(`{"source":"derived","godot_version":"4.6.2","nodes":[{"role":"container","name":"UI","value":"","path":"/root/UI","state":{"focused":false,"hidden":false},"children":[{"role":"button","name":"StartButton","value":"Start Game","path":"/root/UI/StartButton","state":{"focused":false,"hidden":false,"disabled":false,"pressed":false},"children":[]}]}],"count":2}`)
 	case "get_property":
 		// Return different value after a click to simulate state change.
 		if s.callCount("input_mouse") > 0 {

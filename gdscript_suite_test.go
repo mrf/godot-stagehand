@@ -19,6 +19,7 @@ import (
 // represented, so deleting or renaming a suite fails this test rather than
 // silently shrinking GDScript coverage.
 var requiredSuites = []string{
+	"test_accessibility_tree",
 	"test_command_router",
 	"test_expression_evaluator",
 	"test_input_recorder",

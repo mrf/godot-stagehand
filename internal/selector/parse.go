@@ -19,6 +19,7 @@ const (
 	Meta      // meta: for metadata attribute matching (Phase 2)
 	Unique    // unique: for unique UI element identification (Phase 2)
 	TextExact // text= for exact (whitespace-trimmed, case-sensitive) label text matching
+	Role      // role: for accessibility-role matching, e.g. role:button (Phase 3)
 )
 
 func (t Type) String() string {
@@ -39,6 +40,8 @@ func (t Type) String() string {
 		return "unique"
 	case TextExact:
 		return "text_exact"
+	case Role:
+		return "role"
 	}
 	return fmt.Sprintf("SelectorType(%d)", int(t))
 }
@@ -105,6 +108,7 @@ func parseSingleSelectorAllTypes(s string) (*Selector, error) {
 		{"text:", Text},
 		{"meta:", Meta},
 		{"unique:", Unique},
+		{"role:", Role},
 	} {
 		if strings.HasPrefix(s, prefix.str) {
 			v := strings.TrimPrefix(s, prefix.str)

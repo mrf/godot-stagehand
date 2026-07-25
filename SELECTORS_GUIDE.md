@@ -87,6 +87,33 @@ Examples:
 - `unique:header-logo` - finds the site logo in header
 - `unique:navigation-menu` - identifies the main navigation
 
+## Phase 3 Selector
+
+### Role: `"role:button"`
+
+Matches nodes by **accessibility role** rather than by concrete Godot class, so
+one selector covers a family of widgets and survives a `Button` → `TextureButton`
+refactor.
+
+- `role:button` — any BaseButton-family control
+- `role:check_box` / `role:check_button` — toggles
+- `role:text_field` (LineEdit) / `role:multiline_text_field` (TextEdit, CodeEdit)
+- `role:static_text` — Label, RichTextLabel
+- `role:slider`, `role:spin_button`, `role:progress_indicator`, `role:tree`,
+  `role:list`, `role:tab_bar`, `role:menu`, `role:dialog`, `role:image`, ...
+
+Role names are the engine's own `DisplayServer.ROLE_*` constants, lowercased and
+without the prefix. Matching is case-insensitive. Requires Godot 4.5+.
+
+> **How roles are determined.** Godot's AccessKit integration is a *write-only*
+> push API — the engine pushes roles into the platform screen reader and exposes
+> no way to read them back from GDScript, and the accessibility element does not
+> even exist unless a screen reader is attached. Stagehand therefore *derives*
+> the role from the Control class hierarchy, mirroring what the engine does
+> internally, and reports it in the engine's canonical vocabulary. Responses
+> from `godot_get_accessibility_tree` carry `"source": "derived"` to make this
+> explicit.
+
 ## Chained Selectors: `"selector >> selector >> ..."`
 
 The `>>` operator allows chaining selectors to narrow down the search scope. Each subsequent selector applies only to elements found by the previous selector.
@@ -110,6 +137,8 @@ Example chain breakdown:
 - Finally match elements with names that contain "Submit"
 
 `"text:Profile >> unique:avatar-container"`
+
+`"name:SettingsDialog >> role:button"` - every button inside the settings dialog
 - Find elements displaying text "Profile" 
 - Then within their child trees, locate the unique avatar container
 

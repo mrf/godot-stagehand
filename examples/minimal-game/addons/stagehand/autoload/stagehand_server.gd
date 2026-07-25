@@ -45,6 +45,7 @@ const HANDSHAKE_TIMEOUT_MS: int = 10000
 # SCREAMING_SNAKE_CASE names satisfy both: they always resolve (case 1) and do
 # not collide with the PascalCase global class_names (case 2). This mirrors the
 # SELECTOR_ENGINE convention already used in core/waiter.gd.
+const ACCESSIBILITY_TREE := preload("res://addons/stagehand/core/accessibility_tree.gd")
 const COMMAND_ROUTER := preload("res://addons/stagehand/core/command_router.gd")
 const INPUT_RECORDER := preload("res://addons/stagehand/core/input_recorder.gd")
 const INPUT_SIMULATOR := preload("res://addons/stagehand/core/input_simulator.gd")
@@ -386,6 +387,7 @@ func _register_builtin_handlers() -> void:
 	_router.register("ping", _handle_ping)
 	_router.register("get_tree", _handle_get_tree)
 	_router.register("query_nodes", _handle_query_nodes)
+	_router.register("get_accessibility_tree", _handle_get_accessibility_tree)
 	_router.register("get_property", _handle_get_property)
 	_router.register("set_property", _handle_set_property)
 	_router.register("get_game_state", _handle_get_game_state)
@@ -492,6 +494,22 @@ func _handle_query_nodes(params: Variant) -> Dictionary:
 			properties.append(str(item))
 	var limit: int = p.get("limit", 50)
 	return TREE_SERIALIZER.query_nodes(get_tree(), selector, properties, limit)
+
+
+## Derived semantic/role view of the UI. Godot's real AccessKit tree is a
+## write-only push API with no GDScript read path, so this reports roles derived
+## from the Control hierarchy in the engine's own vocabulary, tagged
+## source="derived". Errors on engines older than 4.5.
+func _handle_get_accessibility_tree(params: Variant) -> Dictionary:
+	var p: Dictionary = _params(params)
+	var root_path: String = p.get("root_path", "/root")
+	var max_depth: int = p.get("max_depth", 10)
+
+	var root: Node = get_tree().root.get_node_or_null(NodePath(root_path))
+	if root == null:
+		return {"error": "Root node not found: %s" % root_path}
+
+	return ACCESSIBILITY_TREE.build_response(root, max_depth)
 
 
 func _handle_get_property(params: Variant) -> Dictionary:

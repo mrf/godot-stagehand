@@ -5,6 +5,7 @@
 ##   "name:*Button*"      — recursive find_children() with glob matching
 ##   "class:Button"       — tree walk + is_class()
 ##   "group:interactive"  — get_nodes_in_group()
+##   "role:button"        — derived accessibility role (Godot 4.5+)
 ##
 ## Phase 2 adds text:, meta:, unique:, and >> chaining.
 class_name SelectorEngine
@@ -19,7 +20,9 @@ enum SelectorType {
 	META,
 	UNIQUE,
 	TEXT_EXACT,
+	ROLE,
 }
+
 
 
 static func query(tree: SceneTree, selector: String) -> Array[Node]:
@@ -99,6 +102,12 @@ static func parse(selector: String) -> Dictionary:
 			return {}
 		return {type = SelectorType.META, value = meta_data}
 
+	if trimmed.begins_with("role:"):
+		var role_name: String = trimmed.substr(5)
+		if role_name.is_empty():
+			return {}
+		return {type = SelectorType.ROLE, value = role_name}
+
 	if trimmed.begins_with("unique:"):
 		var unique_id: String = trimmed.substr(7)
 		if unique_id.is_empty():
@@ -130,6 +139,8 @@ static func _resolve(tree: SceneTree, parsed: Dictionary) -> Array[Node]:
 			return _resolve_meta(tree, value)
 		SelectorType.UNIQUE:
 			return _resolve_unique(tree, value)
+		SelectorType.ROLE:
+			return _resolve_role(tree, value)
 
 	return [] as Array[Node]
 
@@ -155,6 +166,8 @@ static func _resolve_scoped(parent_node: Node, parsed: Dictionary) -> Array[Node
 			return _resolve_meta_from_parent(parent_node, value)
 		SelectorType.UNIQUE:
 			return _resolve_unique_from_parent(parent_node, value)
+		SelectorType.ROLE:
+			return _resolve_role_from_parent(parent_node, value)
 
 	return [] as Array[Node]
 
@@ -238,6 +251,31 @@ static func _resolve_unique(tree: SceneTree, unique_identifier: String) -> Array
 	var results: Array[Node] = []
 	_walk(root, func(node: Node) -> void:
 		if _check_unique_match(node, unique_identifier):
+			results.append(node)
+	)
+	return results
+
+
+## Match nodes whose derived accessibility role equals [param role_name]
+## (case-insensitive), e.g. "role:button".
+static func _resolve_role(tree: SceneTree, role_name: String) -> Array[Node]:
+	var root: Window = tree.root
+	if root == null:
+		return [] as Array[Node]
+	var wanted: String = role_name.strip_edges().to_lower()
+	var results: Array[Node] = []
+	_walk(root, func(node: Node) -> void:
+		if StagehandAccessibilityTree.role_for(node) == wanted:
+			results.append(node)
+	)
+	return results
+
+
+static func _resolve_role_from_parent(parent: Node, role_name: String) -> Array[Node]:
+	var wanted: String = role_name.strip_edges().to_lower()
+	var results: Array[Node] = []
+	_walk(parent, func(node: Node) -> void:
+		if node != parent and StagehandAccessibilityTree.role_for(node) == wanted:
 			results.append(node)
 	)
 	return results
