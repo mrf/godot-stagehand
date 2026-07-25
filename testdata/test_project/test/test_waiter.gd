@@ -155,13 +155,18 @@ func test_exists_operator() -> void:
 
 
 func test_contains_operator_on_string() -> void:
-	# Uses a script-declared String property: Node.name is a StringName, which
-	# the "contains" branch does not recognize as a string.
 	var holder: Node = auto_free(Node.new())
 	holder.set_script(preload("res://scripts/property_target.gd"))
 	add_child(holder)
 	assert_bool(
 		_waiter.evaluate_property_condition(holder, "text_prop", "contains", "init")
+	).is_true()
+
+
+func test_contains_operator_on_stringname_property() -> void:
+	# Node.name is a StringName, not a String; "contains" must still match it.
+	assert_bool(
+		_waiter.evaluate_property_condition(_probe, "name", "contains", "Probe")
 	).is_true()
 
 
