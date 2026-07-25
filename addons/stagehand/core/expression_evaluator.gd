@@ -36,6 +36,7 @@
 class_name StagehandExpressionEvaluator
 extends RefCounted
 
+const ERRORS := preload("res://addons/stagehand/core/errors.gd")
 const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
 const TREE_SERIALIZER := preload("res://addons/stagehand/core/tree_serializer.gd")
 
@@ -71,7 +72,7 @@ static func _ensure_singletons() -> void:
 static func evaluate(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var expression_str: String = params.get("expression", "")
 	if expression_str.is_empty():
-		return {"error": "Missing expression"}
+		return ERRORS.missing_param("expression")
 
 	var context_node: String = params.get("context_node", "")
 
@@ -83,7 +84,14 @@ static func evaluate(tree: SceneTree, params: Dictionary) -> Dictionary:
 	else:
 		var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, context_node)
 		if nodes.is_empty():
-			return {"error": "Node not found for context_node: %s" % context_node}
+			return ERRORS.make(
+				ERRORS.NODE_NOT_FOUND,
+				"Node not found for context_node: %s" % context_node,
+				{
+					"selector": context_node,
+					"next_action": "Omit context_node to evaluate against /root, or use a selector that matches a live node.",
+				}
+			)
 		base_node = nodes[0]
 
 	_ensure_singletons()
@@ -91,11 +99,27 @@ static func evaluate(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var expr: Expression = Expression.new()
 	var parse_err: Error = expr.parse(expression_str, _singleton_names)
 	if parse_err != OK:
-		return {"error": "Parse error: %s" % expr.get_error_text()}
+		return ERRORS.make(
+			ERRORS.EVALUATION_FAILED,
+			"Parse error: %s" % expr.get_error_text(),
+			{
+				"expression": expression_str,
+				"phase": "parse",
+				"next_action": "Fix the expression syntax; only GDScript Expression syntax is supported.",
+			}
+		)
 
 	var result: Variant = expr.execute(_singleton_objects, base_node)
 	if expr.has_execute_failed():
-		return {"error": "Execution error: %s" % expr.get_error_text()}
+		return ERRORS.make(
+			ERRORS.EVALUATION_FAILED,
+			"Execution error: %s" % expr.get_error_text(),
+			{
+				"expression": expression_str,
+				"phase": "execute",
+				"next_action": "Check that every identifier the expression references exists on the context node.",
+			}
+		)
 
 	return {
 		"value": TREE_SERIALIZER._to_json_safe(result),

@@ -41,6 +41,10 @@ type stubGodot struct {
 	// addon does on Godot < 4.5, where DisplayServer.AccessibilityRole does not
 	// exist. Lets the E2E suite cover the fallback path without a second binary.
 	accessibilityUnsupported bool
+
+	// errorReplies makes a method answer with a JSON-RPC error instead of its
+	// canned result, so tests can drive the addon's handler-failure paths.
+	errorReplies map[string]*godotconn.RPCError
 }
 
 func (s *stubGodot) setAccessibilityUnsupported(v bool) {
@@ -53,6 +57,22 @@ func (s *stubGodot) isAccessibilityUnsupported() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.accessibilityUnsupported
+}
+
+// replyError makes every subsequent call to method answer with rpcErr.
+func (s *stubGodot) replyError(method string, rpcErr *godotconn.RPCError) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.errorReplies == nil {
+		s.errorReplies = map[string]*godotconn.RPCError{}
+	}
+	s.errorReplies[method] = rpcErr
+}
+
+func (s *stubGodot) errorReplyFor(method string) *godotconn.RPCError {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.errorReplies[method]
 }
 
 func newStubGodot(t *testing.T) *stubGodot {
@@ -112,6 +132,10 @@ func (s *stubGodot) lastCallParams(method string) json.RawMessage {
 
 func (s *stubGodot) handleReq(req godotconn.Request) godotconn.Response {
 	resp := godotconn.Response{JSONRPC: "2.0", ID: req.ID}
+	if rpcErr := s.errorReplyFor(req.Method); rpcErr != nil {
+		resp.Error = rpcErr
+		return resp
+	}
 	switch req.Method {
 	case "authenticate":
 		resp.Result = rawJSON(`{"authenticated":true}`)
@@ -174,7 +198,15 @@ func (s *stubGodot) handleReq(req godotconn.Request) godotconn.Response {
 		var p map[string]any
 		json.Unmarshal(params, &p)
 		if p["signal_name"] == "nonexistent_signal" {
-			resp.Result = rawJSON(`{"received":false,"elapsed_ms":100,"reason":"timeout"}`)
+			// Mirrors what the addon sends: a wait that timed out is a failure,
+			// not a success carrying `received: false` (godot-stagehand-vv2.8).
+			resp.Error = &godotconn.RPCError{
+				Code:    godotconn.CodeTimeout,
+				Message: "Signal 'nonexistent_signal' was not emitted before timeout",
+				Data: rawJSON(`{"error_code":"timeout","method":"wait_signal",` +
+					`"selector":"/root/UI/StartButton",` +
+					`"details":{"next_action":"Raise timeout_ms, or drive the game state that emits this signal."}}`),
+			}
 		} else {
 			resp.Result = rawJSON(`{"received":true,"elapsed_ms":42,"args":[]}`)
 		}
@@ -643,13 +675,11 @@ func TestE2E_WaitForSignal(t *testing.T) {
 		if err != nil {
 			t.Fatalf("handleWaitForSignal timeout: %v", err)
 		}
-		if result.IsError {
-			t.Fatalf("wait_for_signal timeout error: %+v", result)
-		}
-		text := mustText(t, result)
-		if !strings.Contains(text, "timeout") {
-			t.Errorf("expected result to contain %q, got: %s", "timeout", text)
-		}
+		// A wait that timed out must reach the caller as an error result — a
+		// success here is indistinguishable from the signal actually firing.
+		assertContainsAll(t, errorText(t, result), []string{
+			"wait_signal failed", "was not emitted before timeout", "code=timeout",
+		})
 
 		// Verify correct params were sent.
 		params := stub.lastCallParams("wait_signal")

@@ -47,6 +47,7 @@ const HANDSHAKE_TIMEOUT_MS: int = 10000
 # SELECTOR_ENGINE convention already used in core/waiter.gd.
 const ACCESSIBILITY_TREE := preload("res://addons/stagehand/core/accessibility_tree.gd")
 const COMMAND_ROUTER := preload("res://addons/stagehand/core/command_router.gd")
+const ERRORS := preload("res://addons/stagehand/core/errors.gd")
 const INPUT_RECORDER := preload("res://addons/stagehand/core/input_recorder.gd")
 const INPUT_SIMULATOR := preload("res://addons/stagehand/core/input_simulator.gd")
 const JSON_RPC := preload("res://addons/stagehand/protocol/json_rpc.gd")
@@ -305,65 +306,57 @@ static func _is_unsafe_method(method: String) -> bool:
 
 
 func _dispatch_and_respond(peer_id: int, id: Variant, method: String, params: Variant) -> void:
-	# Await the handler Callable directly rather than going through dispatch():
-	# coroutine handlers (e.g. screenshot, input_text) suspend on `await`, and a
-	# synchronous dispatch() would return null instead of the real result. The
-	# method was confirmed registered in _handle_message before deferring here.
-	var handler: Callable = _router.get_handler(method)
-	var result: Variant = await handler.call(params)
+	# dispatch_checked awaits the handler Callable (coroutine handlers such as
+	# screenshot and input_text suspend on `await`, and the synchronous
+	# dispatch() would return null instead of the real result) and classifies
+	# what came back. The method was confirmed registered in _handle_message
+	# before deferring here, which is dispatch_checked's precondition.
+	var outcome: Dictionary = await _router.dispatch_checked(method, params)
 	# Notifications (no id) get no response per JSON-RPC 2.0 spec.
 	if id == null:
 		return
 
-	# GDScript has no try/catch, so an unhandled runtime error inside a handler
-	# (a bad evaluate/call_method/set_property, say) doesn't unwind as an
-	# exception the way it would in most languages. Confirmed by instrumented
-	# reproduction against this engine build (Godot 4.6.2): the error aborts
-	# only the erroring function, and the awaiter above resumes normally with
-	# that function's *declared-type default value* — every handler here
-	# declares `-> Dictionary`, so an abort resumes _dispatch_and_respond with
-	# an empty `{}`. Every handler's real success and defined-error paths
-	# always return a non-empty Dictionary (see _handler_aborted's doc
-	# comment), so an exactly-empty result is an unambiguous abort signal.
-	# Without this check that bogus `{}` would be forwarded as a *successful*
-	# JSON-RPC result, silently masking the failure from the client instead of
-	# surfacing it (docs/audits/2026-07-08-implementation-audit.md finding S8).
-	if _handler_aborted(result):
-		_send_rpc_error(
-			peer_id, id, JSON_RPC.INTERNAL_ERROR,
-			"Handler '%s' failed with an internal error" % method
-		)
+	# Any failure — a handler's own canonical error envelope or an aborted
+	# handler — becomes a JSON-RPC *error* response. Forwarding it as a
+	# successful `result` with an embedded "error" key made a failed call look
+	# indistinguishable from a successful one to every client
+	# (godot-stagehand-vv2.8; docs/audits/2026-07-08-implementation-audit.md
+	# finding S8).
+	if outcome["outcome"] == COMMAND_ROUTER.OUTCOME_ERROR:
+		var envelope: Dictionary = outcome["error"]
+		var _err_send: Error = _send_to_peer(peer_id, JSON_RPC.make_handler_error_response(
+			id, method, envelope, _selector_of(params)
+		))
 		return
 
-	var response_text: String = JSON_RPC.make_response(id, result)
+	var response_text: String = JSON_RPC.make_response(id, outcome["result"])
 	var send_error: Error = _send_to_peer(peer_id, response_text)
 	if send_error != OK:
-		var fallback_result: Dictionary = {
-			"error": "Failed to send Stagehand response to WebSocket peer: %s" % error_string(send_error),
-			"error_code": "send_buffer_failed",
-			"details": {
-				"payload_bytes": response_text.to_utf8_buffer().size(),
-				"next_action": "Reduce screenshot size/crop area or increase the WebSocket outbound buffer.",
-			},
-		}
-		var _fallback_send_error: Error = _send_to_peer(peer_id, JSON_RPC.make_response(id, fallback_result))
+		var _fallback_send_error: Error = _send_to_peer(peer_id, JSON_RPC.make_handler_error_response(
+			id,
+			method,
+			ERRORS.make(
+				ERRORS.IO_ERROR,
+				"Failed to send Stagehand response to WebSocket peer: %s" % error_string(send_error),
+				{
+					"payload_bytes": response_text.to_utf8_buffer().size(),
+					"next_action": "Reduce screenshot size/crop area or increase the WebSocket outbound buffer.",
+				}
+			),
+			_selector_of(params)
+		))
 
 
-## Whether a handler's returned result indicates that the handler Callable
-## aborted partway through execution (a GDScript runtime error) rather than
-## completing normally. Every handler registered in _register_builtin_handlers
-## declares `-> Dictionary` and always returns a non-empty Dictionary on both
-## its success path and its own defined `{"error": ...}` path — verified by
-## reading every handler function in this file and every core/*.gd module it
-## delegates to. An aborted call instead resumes with the return type's
-## default value: `{}` for a Dictionary-typed handler, or `null`/anything
-## else non-Dictionary if a future handler is declared with a looser return
-## type. Both are treated as an abort.
-static func _handler_aborted(result: Variant) -> bool:
-	if result is not Dictionary:
-		return true
-	var dict: Dictionary = result
-	return dict.is_empty()
+## The `selector` request parameter, if the call carried one. Echoed back in a
+## failure's `error.data` so a client can attribute the failure to a target
+## without re-parsing the request it sent.
+static func _selector_of(params: Variant) -> String:
+	var p: Dictionary = _params(params)
+	var raw: Variant = p.get("selector", "")
+	if raw is not String:
+		return ""
+	var selector: String = raw
+	return selector
 
 
 func _send_to_peer(peer_id: int, text: String) -> Error:
@@ -478,7 +471,10 @@ func _handle_get_tree(params: Variant) -> Dictionary:
 
 	var root: Node = get_tree().root.get_node_or_null(NodePath(root_path))
 	if root == null:
-		return {"error": "Root node not found: %s" % root_path}
+		return ERRORS.make(ERRORS.NODE_NOT_FOUND, "Root node not found: %s" % root_path, {
+			"root_path": root_path,
+			"next_action": "Call get_tree with the default root_path (/root) to see which nodes exist.",
+		})
 
 	return TREE_SERIALIZER.serialize_tree(root, max_depth, include_properties)
 
@@ -487,7 +483,7 @@ func _handle_query_nodes(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
 	var selector: String = p.get("selector", "")
 	if selector.is_empty():
-		return {"error": "Missing selector"}
+		return ERRORS.missing_param("selector")
 	var properties: Array[String] = []
 	if p.has("properties"):
 		for item: Variant in p["properties"]:
@@ -541,10 +537,10 @@ func _handle_wait_signal(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
 	var selector: String = p.get("selector", "")
 	if selector.is_empty():
-		return {"error": "Missing selector"}
+		return ERRORS.missing_param("selector")
 	var signal_name: String = p.get("signal_name", "")
 	if signal_name.is_empty():
-		return {"error": "Missing signal_name"}
+		return ERRORS.missing_param("signal_name")
 	var timeout_ms: int = p.get("timeout_ms", 5000)
 	var waiter: WAITER = WAITER.new()
 	add_child(waiter)
@@ -609,15 +605,18 @@ func _handle_assert_performance(params: Variant) -> Dictionary:
 	var op: String = p.get("op", "lte")
 
 	if monitor.is_empty():
-		return {"error": "Missing monitor"}
+		return ERRORS.missing_param("monitor")
 
 	var perf: Dictionary = _handle_get_performance({"monitors": [monitor]})
-	if perf.has("error"):
+	if ERRORS.is_error(perf):
 		return perf
 
 	var metrics: Dictionary = perf.get("metrics", {})
 	if not metrics.has(monitor) or metrics[monitor] == null:
-		return {"error": "Unknown monitor: %s" % monitor}
+		return ERRORS.make(ERRORS.INVALID_PARAMS, "Unknown monitor: %s" % monitor, {
+			"monitor": monitor,
+			"known_monitors": _PERFORMANCE_MONITORS.keys(),
+		})
 
 	var value: float = _to_float(metrics[monitor])
 	var passed: bool = false
@@ -633,7 +632,10 @@ func _handle_assert_performance(params: Variant) -> Dictionary:
 		"eq":
 			passed = value == threshold
 		_:
-			return {"error": "Unknown operator: %s" % op}
+			return ERRORS.make(ERRORS.INVALID_PARAMS, "Unknown operator: %s" % op, {
+				"operator": op,
+				"known_operators": ["lt", "lte", "gt", "gte", "eq"],
+			})
 
 	var result: Dictionary = {
 		"passed": passed,
@@ -667,7 +669,7 @@ func _handle_wait_for_node(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
 	var selector: String = p.get("selector", "")
 	if selector.is_empty():
-		return {"error": "Missing selector"}
+		return ERRORS.missing_param("selector")
 	var state: String = p.get("state", "exists")
 	var timeout_ms: int = p.get("timeout_ms", 10000)
 	var poll_interval_ms: int = p.get("poll_interval_ms", 100)
@@ -683,13 +685,13 @@ func _handle_wait_for_property(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
 	var selector: String = p.get("selector", "")
 	if selector.is_empty():
-		return {"error": "Missing selector"}
+		return ERRORS.missing_param("selector")
 	var property: String = p.get("property", "")
 	if property.is_empty():
-		return {"error": "Missing property"}
+		return ERRORS.missing_param("property")
 	var operator: String = p.get("operator", "")
 	if operator.is_empty():
-		return {"error": "Missing operator"}
+		return ERRORS.missing_param("operator")
 	var timeout_ms: int = p.get("timeout_ms", 10000)
 	var poll_interval_ms: int = p.get("poll_interval_ms", 100)
 	var expected_value: Variant = p.get("expected_value")
@@ -724,7 +726,7 @@ func _handle_replay(params: Variant) -> Dictionary:
 	if recording_path.is_empty():
 		recording_path = p.get("input_path", "")
 	if recording_path.is_empty():
-		return {"error": "Missing recording_path"}
+		return ERRORS.missing_param("recording_path")
 	# JSON has a single number type, so a speed of 1.0 arrives as an int;
 	# _to_float widens it rather than letting the typed assignment drop it.
 	var speed: float = RECORDER_SPEED_DEFAULT

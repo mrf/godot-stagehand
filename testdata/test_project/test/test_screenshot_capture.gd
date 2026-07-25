@@ -11,7 +11,7 @@ func test_crop_rect_outside_viewport_returns_structured_error() -> void:
 		Vector2i(640, 480)
 	)
 
-	assert_that(result.get("error_code")).is_equal("crop_outside_viewport")
+	assert_that(result.get("error_code")).is_equal("invalid_params")
 	assert_bool(result.has("details")).is_true()
 	var details: Dictionary = result["details"]
 	assert_that(details.get("viewport_width")).is_equal(640)

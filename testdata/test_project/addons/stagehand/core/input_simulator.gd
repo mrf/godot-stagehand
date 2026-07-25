@@ -2,6 +2,7 @@
 class_name StagehandInputSimulator
 extends RefCounted
 
+const ERRORS := preload("res://addons/stagehand/core/errors.gd")
 const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
 
 const BUTTON_MAP: Dictionary = {
@@ -19,6 +20,25 @@ class ClickTarget extends RefCounted:
 	var position: Vector2
 
 
+## Canonical failure for a node that exists but cannot take part in the
+## requested interaction. Shared by every selector-driven input path so the same
+## condition always reports the same kind and the same context.
+static func _not_supported(
+	selector: String, node: Node, operation: String, next_action: String
+) -> Dictionary:
+	return ERRORS.make(
+		ERRORS.NOT_SUPPORTED,
+		"Node type does not support %s: %s is a %s" % [operation, node.get_path(), node.get_class()],
+		{
+			"selector": selector,
+			"node_path": str(node.get_path()),
+			"node_class": node.get_class(),
+			"operation": operation,
+			"next_action": next_action,
+		}
+	)
+
+
 ## Simulate a mouse click at [param position] (canvas coordinates).
 ## [param button] is "left", "right", or "middle".
 ## [param double_click] triggers a double-click event.
@@ -27,7 +47,9 @@ static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var has_position: bool = params.has("position")
 
 	if not has_selector and not has_position:
-		return {"error": "Missing selector or position"}
+		return ERRORS.make(ERRORS.INVALID_PARAMS, "Missing selector or position", {
+			"next_action": "Supply either a selector to click, or an explicit {x, y} position.",
+		})
 
 	var target: ClickTarget
 	var matched_count: int = 0
@@ -35,7 +57,7 @@ static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if has_selector:
 		var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, str(params["selector"]))
 		if nodes.is_empty():
-			return {"error": "Node not found for selector"}
+			return ERRORS.node_not_found(str(params["selector"]))
 		matched_count = nodes.size()
 		# When a selector resolves to several nodes (e.g. a descriptive Label and
 		# the actual Button both containing the word), prefer the interactive one
@@ -46,7 +68,10 @@ static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
 			var ci: CanvasItem = clicked_node
 			target = _resolve_click_target(ci)
 		else:
-			return {"error": "Node type does not support clicking"}
+			return _not_supported(
+				str(params["selector"]), clicked_node, "clicking",
+				"Target a CanvasItem (Control or Node2D); non-visual nodes cannot receive pointer events."
+			)
 	else:
 		var p: Dictionary = params["position"]
 		target = ClickTarget.new()
@@ -63,12 +88,18 @@ static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
 	# _gui_delivery_confirmed for why this check can't be made for raw
 	# position-only clicks.
 	if has_selector and not _gui_delivery_confirmed(target, clicked_node):
-		return {
-			"error": "Click target did not receive the event: %s is not the topmost Control at (%.1f, %.1f)" % [
+		return ERRORS.make(
+			ERRORS.NOT_SUPPORTED,
+			"Click target did not receive the event: %s is not the topmost Control at (%.1f, %.1f)" % [
 				clicked_node.get_path(), target.position.x, target.position.y,
 			],
-			"clicked_at": {"x": target.position.x, "y": target.position.y},
-		}
+			{
+				"selector": str(params["selector"]),
+				"node_path": str(clicked_node.get_path()),
+				"clicked_at": {"x": target.position.x, "y": target.position.y},
+				"next_action": "Something is covering the target — dismiss the overlay, or click the topmost Control directly.",
+			}
+		)
 
 	_push_mouse_button(target.viewport, target.position, btn, true, double_click)
 	var hold_ms: int = _v_int(params.get("hold_ms", 100))
@@ -92,7 +123,7 @@ static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
 static func input_action(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var action: String = params.get("action", "")
 	if action.is_empty():
-		return {"error": "Missing action"}
+		return ERRORS.missing_param("action")
 	var strength: float = _v_float(params.get("strength", 1.0))
 	var hold_ms: int = _v_int(params.get("hold_ms", 100))
 
@@ -106,11 +137,14 @@ static func input_action(tree: SceneTree, params: Dictionary) -> Dictionary:
 static func input_key(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var key_str: String = params.get("key", "")
 	if key_str.is_empty():
-		return {"error": "Missing key"}
+		return ERRORS.missing_param("key")
 
 	var keycode: int = OS.find_keycode_from_string(key_str)
 	if keycode == KEY_NONE:
-		return {"error": "Unknown key: %s" % key_str}
+		return ERRORS.make(ERRORS.INVALID_PARAMS, "Unknown key: %s" % key_str, {
+			"key": key_str,
+			"next_action": "Use a Godot key name such as \"escape\", \"enter\", \"a\", or \"f1\".",
+		})
 
 	var modifiers: Array = params.get("modifiers", [])
 	var mod_mask: int = _parse_modifiers(modifiers)
@@ -286,18 +320,21 @@ static func _parse_modifiers(modifiers: Array) -> int:
 static func input_text(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var text: String = params.get("text", "")
 	if text.is_empty():
-		return {"error": "Missing text"}
+		return ERRORS.missing_param("text")
 
 	var delay_ms: int = _v_int(params.get("delay_ms", 50))
 	# Optional selector to click first to gain focus
 	if params.has("selector"):
 		var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, str(params["selector"]))
 		if nodes.is_empty():
-			return {"error": "Node not found for selector"}
+			return ERRORS.node_not_found(str(params["selector"]))
 		# Prefer an interactive control so we focus the input, not a nearby label.
 		var node: Node = SELECTOR_ENGINE.rank_for_interaction(nodes)[0]
 		if not (node is CanvasItem):
-			return {"error": "Node type does not support focusing"}
+			return _not_supported(
+				str(params["selector"]), node, "focusing",
+				"Target a focusable Control such as LineEdit or TextEdit."
+			)
 		var ci: CanvasItem = node
 		var target: ClickTarget = _resolve_click_target(ci)
 
@@ -330,7 +367,7 @@ static func input_text(tree: SceneTree, params: Dictionary) -> Dictionary:
 ## Simulate a touch screen event.
 static func input_touch(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if not params.has("position"):
-		return {"error": "Missing position"}
+		return ERRORS.missing_param("position")
 
 	var viewport: Viewport = tree.root
 	var p: Dictionary = params["position"]
@@ -360,7 +397,10 @@ static func input_touch(tree: SceneTree, params: Dictionary) -> Dictionary:
 			return {"success": true, "position": {"x": pos.x, "y": pos.y}, "index": index, "action": "begin"}
 		"move":
 			if not params.has("drag_to"):
-				return {"error": "drag_to is required for action 'move'"}
+				return ERRORS.make(ERRORS.INVALID_PARAMS, "drag_to is required for action 'move'", {
+					"action": action,
+					"next_action": "Supply drag_to as {x, y}, or use action \"tap\"/\"begin\"/\"end\".",
+				})
 			var dt: Dictionary = params["drag_to"]
 			var drag_pos: Vector2 = Vector2(_v_float(dt.get("x", 0.0)), _v_float(dt.get("y", 0.0)))
 			_touch_drag(viewport, pos, drag_pos, index)
@@ -375,7 +415,10 @@ static func input_touch(tree: SceneTree, params: Dictionary) -> Dictionary:
 			_touch_release(viewport, pos, index)
 			return {"success": true, "position": {"x": pos.x, "y": pos.y}, "index": index, "action": "end"}
 		_:
-			return {"error": "Unknown action: %s" % action}
+			return ERRORS.make(ERRORS.INVALID_PARAMS, "Unknown action: %s" % action, {
+				"action": action,
+				"known_actions": ["tap", "begin", "move", "end"],
+			})
 
 
 static func _touch_press(viewport: Viewport, pos: Vector2, index: int) -> void:
@@ -416,11 +459,14 @@ static func input_mouse_move(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if params.has("selector"):
 		var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, str(params["selector"]))
 		if nodes.is_empty():
-			return {"error": "Node not found for selector"}
+			return ERRORS.node_not_found(str(params["selector"]))
 		# Prefer an interactive control when the selector is ambiguous.
 		var node: Node = SELECTOR_ENGINE.rank_for_interaction(nodes)[0]
 		if not (node is CanvasItem):
-			return {"error": "Node type does not support mouse positioning"}
+			return _not_supported(
+				str(params["selector"]), node, "mouse positioning",
+				"Target a CanvasItem (Control or Node2D) that has an on-screen rect."
+			)
 		var ci: CanvasItem = node
 		target = _resolve_click_target(ci)
 	elif params.has("coordinates"):
@@ -429,7 +475,11 @@ static func input_mouse_move(tree: SceneTree, params: Dictionary) -> Dictionary:
 		target.viewport = tree.root
 		target.position = Vector2(_v_float(coords.get("x", 0)), _v_float(coords.get("y", 0)))
 	else:
-		return {"error": "Either selector or coordinates is required"}
+		return ERRORS.make(
+			ERRORS.INVALID_PARAMS, "Either selector or coordinates is required", {
+				"next_action": "Supply a selector to move onto, or explicit {x, y} coordinates.",
+			}
+		)
 
 	_push_mouse_motion(target.viewport, target.position)
 

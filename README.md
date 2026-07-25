@@ -332,6 +332,11 @@ session, or its configured `STAGEHAND_AUTH_TOKEN`, as
 
 **Addon not in plugin list** — Run `godot-stagehand setup /path/to/project` again; it idempotently enables the plugin and autoload.
 
+**Reading a failure** — Every failed call comes back as an error, never as a
+successful-looking result, and its text names the method, the selector, a stable
+machine-readable kind, and what to try next. The kinds and their JSON-RPC codes
+are listed in the [error model](docs/error-model.md).
+
 ## Development
 
 ```bash
@@ -346,9 +351,10 @@ GODOT_BIN=/path/to/godot ./scripts/run-gdscript-tests.sh
 ```
 
 See the [GDScript testing guide](docs/gdscript-testing.md) for the suite layout
-and the strict-mode rules test files must follow, and the
+and the strict-mode rules test files must follow, the
 [addon sync contract](docs/addon-sync-contract.md) before editing any copy of
-the addon.
+the addon, and the [error model](docs/error-model.md) before adding a handler
+that can fail.
 
 ## License
 

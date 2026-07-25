@@ -175,29 +175,31 @@ func toolResultToError(result *mcp.CallToolResult, fallback string) error {
 	return fmt.Errorf("%s", fallback)
 }
 
+// godotErrorResult renders a JSON-RPC error object from Godot as an isError
+// tool result. The addon reports handler failures as JSON-RPC errors carrying
+// the method, the selector, the machine kind, and an actionable next step (see
+// docs/error-model.md), all of which belong in the text an agent reads.
+//
+// method is the method this server called, used when the addon did not name one
+// itself — an addon predating the canonical error model, or a protocol-level
+// fault such as a parse error.
+func godotErrorResult(method string, rpcErr *godotconn.RPCError) *mcp.CallToolResult {
+	return mcp.NewToolResultError(rpcErr.Failure(method).Describe())
+}
+
 // checkGodotResult inspects a raw JSON result for a top-level "error" key.
+//
+// Current addons promote handler failures to JSON-RPC *error* responses, which
+// never reach here. This path remains for an addon vendored into a host project
+// before that change: it reported failures as an `{"error", "error_code",
+// "details"}` triple inside an otherwise successful result, which would
+// otherwise be handed to the caller as a success.
 func checkGodotResult(raw json.RawMessage) *mcp.CallToolResult {
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return nil
-	}
-	errVal, ok := m["error"]
+	failure, ok := gwp.LegacyFailure(raw)
 	if !ok {
 		return nil
 	}
-	var payload struct {
-		Error     string         `json:"error"`
-		ErrorCode string         `json:"error_code"`
-		Details   map[string]any `json:"details"`
-	}
-	if err := json.Unmarshal(raw, &payload); err != nil || payload.Error == "" {
-		var errMsg string
-		if err := json.Unmarshal(errVal, &errMsg); err == nil {
-			return mcp.NewToolResultError(errMsg)
-		}
-		return mcp.NewToolResultError("godot handler error (unparseable)")
-	}
-	return mcp.NewToolResultError(gwp.FormatError(payload.Error, payload.ErrorCode, payload.Details))
+	return mcp.NewToolResultError(failure.Describe())
 }
 
 // callGodotInstance sends a JSON-RPC method to the named Godot instance.
@@ -217,12 +219,29 @@ func (s *Server) callGodotInstance(ctx context.Context, instanceID, method strin
 
 	resp, err := conn.Call(callCtx, method, params)
 	if err != nil {
-		if appliedTimeout > 0 && errors.Is(err, context.DeadlineExceeded) {
-			return nil, mcp.NewToolResultError(
-				fmt.Sprintf("Godot call %q timed out after %s", method, appliedTimeout),
-			)
+		var rpcErr *godotconn.RPCError
+		if errors.As(err, &rpcErr) {
+			return nil, godotErrorResult(method, rpcErr)
 		}
-		return nil, mcp.NewToolResultError(fmt.Sprintf("Godot error: %v", err))
+		if errors.Is(err, context.DeadlineExceeded) {
+			// A deadline means Godot never answered at all, which is a different
+			// diagnosis from a handler that ran and reported a failure — say so,
+			// and name the deadline that elapsed when this server set it. Wait
+			// tools supply their own deadline (derived from the caller's
+			// timeout_ms), in which case appliedTimeout is zero.
+			after := "its deadline"
+			if appliedTimeout > 0 {
+				after = appliedTimeout.String()
+			}
+			return nil, mcp.NewToolResultError(fmt.Sprintf(
+				"Godot call %q timed out after %s — the game did not answer. "+
+					"Check that it is still running (godot_status), then retry. "+
+					"Raise timeout_ms for a wait tool, or STAGEHAND_CALL_TIMEOUT_MS "+
+					"for a genuinely slow call.",
+				method, after,
+			))
+		}
+		return nil, mcp.NewToolResultError(fmt.Sprintf("Godot call %q failed: %v", method, err))
 	}
 	if errResult := checkGodotResult(resp.Result); errResult != nil {
 		return nil, errResult

@@ -108,4 +108,56 @@ func test_notification_with_no_id_sends_nothing_even_on_abort() -> void:
 	assert_int(_server.sent_frames.size()).is_equal(0)
 
 
+func test_handler_error_envelope_becomes_a_json_rpc_error_not_a_success() -> void:
+	# The core of godot-stagehand-vv2.8: before this, a handler failure was
+	# forwarded inside a JSON-RPC *success* response with an "error" key, which
+	# an MCP client could not distinguish from a successful call.
+	_server._router.register("lookup", func(_p: Variant) -> Dictionary:
+		return StagehandErrors.node_not_found("name:Ghost")
+	)
+
+	await _server._dispatch_and_respond(1, 9, "lookup", {"selector": "name:Ghost"})
+
+	assert_int(_server.sent_frames.size()).is_equal(1)
+	var sent_text: String = _server.sent_frames[0]["text"]
+	var envelope: Dictionary = _decode(sent_text)
+	assert_bool(envelope.has("result")).is_false()
+
+	var error_obj: Dictionary = envelope.get("error", {})
+	var error_code: float = error_obj.get("code", 0)
+	assert_int(int(error_code)).is_equal(StagehandErrors.RPC_TARGET_NOT_FOUND)
+	var data: Dictionary = error_obj.get("data", {})
+	assert_that(data.get("error_code")).is_equal("node_not_found")
+	assert_that(data.get("method")).is_equal("lookup")
+	# The selector is echoed from the request params so a client can attribute
+	# the failure to a target without re-parsing what it sent.
+	assert_that(data.get("selector")).is_equal("name:Ghost")
+
+
+func test_handler_error_without_a_selector_param_omits_it() -> void:
+	_server._router.register("capture", func(_p: Variant) -> Dictionary:
+		return StagehandErrors.make(StagehandErrors.TIMEOUT, "Gave up")
+	)
+
+	await _server._dispatch_and_respond(1, 11, "capture", {})
+
+	var sent_text: String = _server.sent_frames[0]["text"]
+	var envelope: Dictionary = _decode(sent_text)
+	var error_obj: Dictionary = envelope.get("error", {})
+	var error_code: float = error_obj.get("code", 0)
+	assert_int(int(error_code)).is_equal(StagehandErrors.RPC_TIMEOUT)
+	var data: Dictionary = error_obj.get("data", {})
+	assert_bool(data.has("selector")).is_false()
+
+
+func test_notification_with_no_id_sends_nothing_on_a_handler_error() -> void:
+	_server._router.register("lookup", func(_p: Variant) -> Dictionary:
+		return StagehandErrors.node_not_found("name:Ghost")
+	)
+
+	await _server._dispatch_and_respond(1, null, "lookup", {"selector": "name:Ghost"})
+
+	assert_int(_server.sent_frames.size()).is_equal(0)
+
+
 @warning_ignore_restore("return_value_discarded")

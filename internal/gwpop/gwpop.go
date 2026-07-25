@@ -266,6 +266,10 @@ func Execute(ctx context.Context, c Caller, op Op) (json.RawMessage, error) {
 	}
 	resp, err := c.Call(callCtx, spec.Method, wireParams)
 	if err != nil {
+		var rpcErr *godotconn.RPCError
+		if errors.As(err, &rpcErr) {
+			return nil, rpcError(op.Action, spec.Method, rpcErr)
+		}
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, newError(KindTimeout, op.Action, "timed out waiting for Godot to answer %q", spec.Method)
 		}
@@ -344,30 +348,35 @@ func (s Spec) resolveTimeoutMs(params map[string]any) (int, error) {
 	return ms, nil
 }
 
-// checkAddonError surfaces the `{"error", "error_code", "details"}` triple the
-// addon embeds in an otherwise successful JSON-RPC result.
-func checkAddonError(action string, raw json.RawMessage) error {
-	var probe map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &probe); err != nil {
-		return nil // not an object; nothing to inspect
+// rpcError classifies a JSON-RPC error object from the addon. A JSON-RPC error
+// is a *reply*, so it is never a transport failure — reporting it as one gave
+// the CLI and scenario runner the wrong exit code for every handler failure
+// once the addon began promoting those to JSON-RPC errors (godot-stagehand-vv2.8).
+// The numeric code carries the classification; the addon's fine-grained kind and
+// its remediation hint ride along in the rendered message.
+func rpcError(action, method string, rpcErr *godotconn.RPCError) *Error {
+	kind := KindRemote
+	switch rpcErr.Code {
+	case godotconn.CodeInvalidParams, godotconn.CodeInvalidRequest, godotconn.CodeMethodNotFound:
+		// The addon rejected the request itself: a caller mistake, not a fault
+		// in the running game.
+		kind = KindUsage
+	case godotconn.CodeTimeout:
+		kind = KindTimeout
 	}
-	rawErr, ok := probe["error"]
+	return newError(kind, action, "%s", rpcErr.Failure(method).Describe())
+}
+
+// checkAddonError surfaces the `{"error", "error_code", "details"}` triple an
+// addon predating the canonical error model embeds in an otherwise successful
+// JSON-RPC result. Current addons promote those failures to JSON-RPC errors,
+// which rpcError handles instead.
+func checkAddonError(action string, raw json.RawMessage) error {
+	failure, ok := gwp.LegacyFailure(raw)
 	if !ok {
 		return nil
 	}
-	var payload struct {
-		Error     string         `json:"error"`
-		ErrorCode string         `json:"error_code"`
-		Details   map[string]any `json:"details"`
-	}
-	if err := json.Unmarshal(raw, &payload); err != nil || payload.Error == "" {
-		var message string
-		if err := json.Unmarshal(rawErr, &message); err == nil {
-			return newError(KindRemote, action, "%s", message)
-		}
-		return newError(KindRemote, action, "godot handler error (unparseable)")
-	}
-	return newError(KindRemote, action, "%s", gwp.FormatError(payload.Error, payload.ErrorCode, payload.Details))
+	return newError(KindRemote, action, "%s", failure.Describe())
 }
 
 // AcceptedParams lists the optional parameters an action takes, deduplicated

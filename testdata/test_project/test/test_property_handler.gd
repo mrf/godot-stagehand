@@ -83,14 +83,14 @@ func test_get_missing_selector_returns_error() -> void:
 	var result: Dictionary = StagehandPropertyHandler.get_property(
 		get_tree(), {"property": "name"}
 	)
-	assert_str(str(result.get("error", ""))).contains("Missing selector")
+	assert_str(str(result.get("error", ""))).contains("Missing required parameter: selector")
 
 
 func test_get_missing_property_returns_error() -> void:
 	var result: Dictionary = StagehandPropertyHandler.get_property(
 		get_tree(), {"selector": "group:%s" % GROUP}
 	)
-	assert_str(str(result.get("error", ""))).contains("Missing selector")
+	assert_str(str(result.get("error", ""))).contains("Missing required parameter: property")
 
 
 func test_get_unmatched_selector_returns_node_not_found() -> void:
@@ -158,7 +158,7 @@ func test_set_missing_selector_returns_error() -> void:
 	var result: Dictionary = StagehandPropertyHandler.set_property(
 		get_tree(), {"property": "name", "value": "x"}
 	)
-	assert_str(str(result.get("error", ""))).contains("Missing selector")
+	assert_str(str(result.get("error", ""))).contains("Missing required parameter: selector")
 
 
 func test_set_unmatched_selector_returns_node_not_found() -> void:
