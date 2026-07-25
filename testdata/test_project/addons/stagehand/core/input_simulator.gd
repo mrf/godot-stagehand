@@ -16,8 +16,16 @@ const BUTTON_MAP: Dictionary = {
 ## canvas-space (i.e. [Control]/[Node2D] local coordinate space, not window
 ## pixels) position within that viewport. See [method _resolve_click_target].
 class ClickTarget extends RefCounted:
+	## The viewport the event is pushed into. For a node inside an embedded
+	## subwindow this is the outermost non-embedded [Window], not the node's own
+	## viewport — the embedder owns hit-testing for its subwindows.
 	var viewport: Viewport
+	## [member viewport]-space position of the click.
 	var position: Vector2
+	## The viewport that actually hit-tests the event and whose GUI state
+	## records the result — the node's own viewport. Equal to [member viewport]
+	## except when the node lives inside an embedded subwindow.
+	var hit_viewport: Viewport
 
 
 ## Canonical failure for a node that exists but cannot take part in the
@@ -76,7 +84,15 @@ static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
 		var p: Dictionary = params["position"]
 		target = ClickTarget.new()
 		target.viewport = tree.root
+		target.hit_viewport = tree.root
 		target.position = Vector2(_v_float(p.get("x", 0)), _v_float(p.get("y", 0)))
+
+	# Checked before anything is pushed. Refusing after the fact is not good
+	# enough: the swallowed button event also costs the modal its window focus,
+	# which breaks every subsequent key event (see _blocking_modal).
+	var blocker: Window = _blocking_modal(target.viewport, target.position)
+	if blocker != null:
+		return _modal_blocked(blocker, target.position, "this click")
 
 	var btn_str: String = params.get("button", "left")
 	var btn: int = _v_int(BUTTON_MAP.get(btn_str, MOUSE_BUTTON_LEFT))
@@ -147,6 +163,20 @@ static func input_key(tree: SceneTree, params: Dictionary) -> Dictionary:
 			"key": key_str,
 			"next_action": "Use a Godot key name such as \"escape\", \"enter\", \"a\", or \"f1\".",
 		})
+
+	var unfocused: Window = _unfocused_modal(tree.root)
+	if unfocused != null:
+		return ERRORS.make(
+			ERRORS.NOT_SUPPORTED,
+			"Key input cannot reach modal dialog %s: it is visible but does not have window focus" % [
+				unfocused.get_path(),
+			],
+			{
+				"key": key_str,
+				"blocking_window": str(unfocused.get_path()),
+				"next_action": "Click a Control inside the dialog to focus it, then send the key.",
+			}
+		)
 
 	var modifiers: Array = params.get("modifiers", [])
 	var mod_mask: int = _parse_modifiers(modifiers)
@@ -243,9 +273,12 @@ static func _push_mouse_button(viewport: Viewport, pos: Vector2, btn: int, press
 ## documented limit of what's detectable here — see the AC discussion in
 ## godot-stagehand-nry.
 static func _gui_delivery_confirmed(target: ClickTarget, expected_node: Node) -> bool:
-	if expected_node == null or target.viewport == null:
+	if expected_node == null or target.hit_viewport == null:
 		return true
-	var hovered: Control = target.viewport.gui_get_hovered_control()
+	# The lookup goes to the viewport that hit-tests the node, which is the
+	# subwindow itself when the target lives inside one — the embedder the event
+	# was pushed into records no hover for its subwindows' contents.
+	var hovered: Control = target.hit_viewport.gui_get_hovered_control()
 	if hovered == null:
 		return false
 	if hovered == expected_node:
@@ -338,6 +371,9 @@ static func input_text(tree: SceneTree, params: Dictionary) -> Dictionary:
 			)
 		var ci: CanvasItem = node
 		var target: ClickTarget = _resolve_click_target(ci)
+		var blocker: Window = _blocking_modal(target.viewport, target.position)
+		if blocker != null:
+			return _modal_blocked(blocker, target.position, "the focus click")
 
 		# Click the node to give it focus before typing.
 		_push_mouse_button(target.viewport, target.position, MOUSE_BUTTON_LEFT, true, false)
@@ -376,6 +412,10 @@ static func input_touch(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var index: int = _v_int(params.get("index", 0))
 	var action: String = params.get("action", "tap")
 	var duration_ms: int = _v_int(params.get("duration_ms", 100))
+
+	var blocker: Window = _blocking_modal(viewport, pos)
+	if blocker != null:
+		return _modal_blocked(blocker, pos, "this touch")
 
 	match action:
 		"tap":
@@ -474,6 +514,7 @@ static func input_mouse_move(tree: SceneTree, params: Dictionary) -> Dictionary:
 		var coords: Dictionary = params["coordinates"]
 		target = ClickTarget.new()
 		target.viewport = tree.root
+		target.hit_viewport = tree.root
 		target.position = Vector2(_v_float(coords.get("x", 0)), _v_float(coords.get("y", 0)))
 	else:
 		return ERRORS.make(
@@ -497,16 +538,144 @@ static func input_mouse_move(tree: SceneTree, params: Dictionary) -> Dictionary:
 ## [method CanvasItem.get_global_transform_with_canvas] resolves the node's
 ## on-canvas position, honoring CanvasLayer and Camera2D transforms; for a
 ## [Control] the target is its center, for a [Node2D] its origin.
+##
+## When the node lives inside an embedded subwindow — any modal dialog:
+## [AcceptDialog], [ConfirmationDialog], [FileDialog] — that canvas point is in
+## the subwindow's own space, and pushing it into the subwindow's own
+## [method Viewport.push_input] does nothing at all: an embedded [Window] is
+## hit-tested by its embedder, not by itself. Confirmed against Godot 4.6.2:
+## pushing a motion event at the in-subwindow point into the subwindow leaves
+## [method Viewport.gui_get_hovered_control] null, while the same event
+## translated into the embedder and pushed there reports the target [Control]
+## and makes a click actually fire [signal BaseButton.pressed]
+## (godot-stagehand-growth-distribution-87s.21). So walk out of every embedded
+## [Window] in the chain, mapping the point through each one's own
+## canvas-to-pixel transform and offsetting by its position — which, for input
+## routing, the engine treats as being in the embedder's canvas space, the same
+## space [method Viewport.push_input] with in_local_coords=true expects.
+##
+## A node in the main window is untouched by the loop (the root [Window] is not
+## embedded), so it keeps clicking at its plain canvas point, preserving the
+## content-scale-stretch behaviour established by
+## godot-stagehand-phase3-vrj.19. A [SubViewport] is likewise left alone: it is
+## not a [Window], and it hit-tests its own input.
 static func _resolve_click_target(node: CanvasItem) -> ClickTarget:
 	var local_target: Vector2 = Vector2.ZERO
 	if node is Control:
 		var ctrl: Control = node
 		local_target = ctrl.size / 2.0
-	var canvas_point: Vector2 = node.get_global_transform_with_canvas() * local_target
+	var point: Vector2 = node.get_global_transform_with_canvas() * local_target
+	var viewport: Viewport = node.get_viewport()
+
 	var target: ClickTarget = ClickTarget.new()
-	target.position = canvas_point
-	target.viewport = node.get_viewport()
+	target.hit_viewport = viewport
+	while viewport is Window:
+		var window: Window = viewport
+		if not window.is_embedded():
+			break
+		var embedder: Viewport = _embedder_of(window)
+		if embedder == null:
+			break
+		point = window.get_final_transform() * point + Vector2(window.position)
+		viewport = embedder
+
+	target.position = point
+	target.viewport = viewport
 	return target
+
+
+## The [Viewport] that hosts [param window] as an embedded subwindow, or null
+## when it has no parent. [Node.get_viewport] on a [Viewport] returns that
+## viewport itself, so the lookup has to start from the parent.
+static func _embedder_of(window: Window) -> Viewport:
+	var parent: Node = window.get_parent()
+	if parent == null:
+		return null
+	return parent.get_viewport()
+
+
+## The visible exclusive (modal) embedded subwindow of [param viewport] that
+## would swallow a pointer event at [param point], or null when nothing blocks
+## it. [param point] is in [param viewport]'s canvas space.
+##
+## A modal subwindow makes the engine discard pointer events landing outside
+## its own rect. Confirmed against Godot 4.6.2 with a node recording raw
+## [method Node._input] on the main window, clicking/touching at the same point
+## with an [AcceptDialog] hidden and then popped up
+## (godot-stagehand-growth-distribution-87s.21):
+##
+## [codeblock]
+## modal HIDDEN -> root _input saw touches=2 buttons=2
+## modal SHOWN, touch outside -> touches=0 focus kept=true
+## modal SHOWN, click outside -> buttons=0 focus kept=false
+## [/codeblock]
+##
+## Both event kinds are swallowed outright, and a mouse button additionally
+## drops the dialog's window focus — after which every later key event is lost
+## too (see [method _unfocused_modal]). Reporting that click as a success is
+## what let a caller believe it had dismissed a first-run splash dialog when it
+## had in fact only broken its own keyboard path.
+static func _blocking_modal(viewport: Viewport, point: Vector2) -> Window:
+	if viewport == null:
+		return null
+	var subwindows: Array[Window] = viewport.get_embedded_subwindows()
+	# Topmost first: the engine hit-tests subwindows front to back, and only the
+	# frontmost modal can block.
+	for i: int in range(subwindows.size() - 1, -1, -1):
+		var window: Window = subwindows[i]
+		if not window.visible:
+			continue
+		if not window.exclusive:
+			# A non-exclusive popup dismisses itself on an outside click rather
+			# than eating it, which is legitimate behaviour to drive.
+			continue
+		if Rect2(Vector2(window.position), Vector2(window.size)).has_point(point):
+			return null
+		return window
+	return null
+
+
+## A visible exclusive (modal) embedded subwindow of [param viewport] that does
+## not hold window focus, or null when none does.
+##
+## Key events synthesized through [method Input.parse_input_event] are routed by
+## the engine to the focused window, so a modal that has lost focus receives
+## none of them. Confirmed against Godot 4.6.2: a freshly popped [AcceptDialog]
+## has focus and closes on a synthesized Escape, but once a pointer event has
+## landed outside it — see [method _blocking_modal] — [method Window.has_focus]
+## goes false and the identical Escape leaves the dialog open with no error
+## anywhere (godot-stagehand-growth-distribution-87s.21). Callers hitting this
+## used to get `{"success": true}` and an unchanged screen.
+static func _unfocused_modal(viewport: Viewport) -> Window:
+	if viewport == null:
+		return null
+	for window: Window in viewport.get_embedded_subwindows():
+		if not window.visible or not window.exclusive:
+			continue
+		if not window.has_focus():
+			return window
+	return null
+
+
+## Canonical refusal for a pointer event a modal subwindow would swallow.
+static func _modal_blocked(window: Window, point: Vector2, operation: String) -> Dictionary:
+	return ERRORS.make(
+		ERRORS.NOT_SUPPORTED,
+		"Modal dialog %s blocks %s at (%.1f, %.1f): the event would be discarded" % [
+			window.get_path(), operation, point.x, point.y,
+		],
+		{
+			"blocking_window": str(window.get_path()),
+			"blocking_window_rect": {
+				"x": float(window.position.x),
+				"y": float(window.position.y),
+				"width": float(window.size.x),
+				"height": float(window.size.y),
+			},
+			"attempted_at": {"x": point.x, "y": point.y},
+			"next_action": "Interact with the modal dialog first — target a Control inside it, or dismiss it.",
+		}
+	)
 
 
 static func _v_int(v: Variant) -> int:
