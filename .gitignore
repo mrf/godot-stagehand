@@ -63,3 +63,6 @@ testdata/test_project/reports/
 /_site/
 __pycache__/
 *.pyc
+
+# Cross-compiled release binaries produced by build-release.sh
+/build/
