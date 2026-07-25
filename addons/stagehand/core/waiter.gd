@@ -43,8 +43,8 @@ func evaluate_property_condition(node: Node, property_name: String, operator: St
 		"exists":
 			return actual_value != null
 		"contains":
-			if actual_value is String:
-				if expected_value is String:
+			if actual_value is String or actual_value is StringName:
+				if expected_value is String or expected_value is StringName:
 					var s: String = actual_value
 					var e: String = expected_value
 					return s.contains(e)
