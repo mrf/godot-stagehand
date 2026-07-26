@@ -124,23 +124,54 @@ func reportStep(out io.Writer, doneMsg, alreadyMsg string, wasPresent bool) {
 
 // CopyAddon copies the addon source tree (addonFS) into destDir. When destDir
 // already exists and force is false, the copy is skipped (CopySkippedExists).
-// With force, the existing directory is removed first so stale files do not
-// linger. The addon source is expected to be rooted at its top level.
+// With force, the new tree is staged into a sibling directory and only
+// swapped into place once fully written, so a failure partway through (disk
+// full, permission change, killed process) leaves the existing installation
+// at destDir untouched instead of half-deleted. The addon source is expected
+// to be rooted at its top level.
 func CopyAddon(addonFS fs.FS, destDir string, force bool) (CopyStatus, error) {
-	if info, err := os.Stat(destDir); err == nil && info.IsDir() {
-		if !force {
+	if info, err := os.Stat(destDir); err == nil {
+		if info.IsDir() && !force {
 			return CopySkippedExists, nil
 		}
-		if err := os.RemoveAll(destDir); err != nil {
-			return CopyDone, fmt.Errorf("remove existing addon: %w", err)
-		}
+	} else if !os.IsNotExist(err) {
+		return CopyDone, fmt.Errorf("stat existing addon: %w", err)
 	}
 
-	walkErr := fs.WalkDir(addonFS, ".", func(path string, d fs.DirEntry, err error) error {
+	parent := filepath.Dir(destDir)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return CopyDone, fmt.Errorf("create %s: %w", parent, err)
+	}
+
+	// Stage the new tree in a sibling directory (same filesystem as destDir,
+	// so the later rename is atomic) rather than writing into destDir
+	// directly. Clean up any leftover staging dir from a previous failed run.
+	stagingDir := destDir + ".staging"
+	if err := os.RemoveAll(stagingDir); err != nil {
+		return CopyDone, fmt.Errorf("clean staging dir: %w", err)
+	}
+
+	if err := copyAddonTree(addonFS, stagingDir); err != nil {
+		os.RemoveAll(stagingDir)
+		return CopyDone, fmt.Errorf("stage addon copy: %w", err)
+	}
+
+	if err := swapAddonIntoPlace(stagingDir, destDir); err != nil {
+		os.RemoveAll(stagingDir)
+		return CopyDone, fmt.Errorf("swap addon into place: %w", err)
+	}
+
+	return CopyDone, nil
+}
+
+// copyAddonTree writes every file in addonFS into dest, creating directories
+// as needed.
+func copyAddonTree(addonFS fs.FS, dest string) error {
+	return fs.WalkDir(addonFS, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		target := filepath.Join(destDir, filepath.FromSlash(path))
+		target := filepath.Join(dest, filepath.FromSlash(path))
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
 		}
@@ -153,10 +184,35 @@ func CopyAddon(addonFS fs.FS, destDir string, force bool) (CopyStatus, error) {
 		}
 		return os.WriteFile(target, data, 0o644)
 	})
-	if walkErr != nil {
-		return CopyDone, walkErr
+}
+
+// swapAddonIntoPlace atomically replaces destDir with the fully-staged
+// stagingDir. If destDir already exists, it is moved aside as a backup first
+// and restored if the final rename fails, so a failure here never leaves
+// destDir missing or partially written.
+func swapAddonIntoPlace(stagingDir, destDir string) error {
+	backupDir := destDir + ".bak"
+	os.RemoveAll(backupDir) // best-effort cleanup of a leftover from a prior crash
+
+	existed := false
+	if _, err := os.Stat(destDir); err == nil {
+		existed = true
+		if err := os.Rename(destDir, backupDir); err != nil {
+			return fmt.Errorf("back up existing addon: %w", err)
+		}
 	}
-	return CopyDone, nil
+
+	if err := os.Rename(stagingDir, destDir); err != nil {
+		if existed {
+			os.Rename(backupDir, destDir) // best-effort rollback
+		}
+		return err
+	}
+
+	if existed {
+		os.RemoveAll(backupDir)
+	}
+	return nil
 }
 
 func containsPlugin(content string) bool {

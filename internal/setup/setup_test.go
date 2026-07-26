@@ -2,6 +2,7 @@ package setup
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,6 +82,57 @@ func TestCopyAddon_ForceOverwrites(t *testing.T) {
 	}
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
 		t.Errorf("stale file survived forced re-copy")
+	}
+}
+
+// failingFS wraps a MapFS but returns an error reading one specific file,
+// simulating a mid-copy failure (disk full, permission change, killed
+// process) partway through staging the addon tree.
+type failingFS struct {
+	fstest.MapFS
+	failPath string
+}
+
+func (f failingFS) ReadFile(name string) ([]byte, error) {
+	if name == f.failPath {
+		return nil, fmt.Errorf("simulated disk error reading %s", name)
+	}
+	return f.MapFS.ReadFile(name)
+}
+
+func TestCopyAddon_ForceFailureLeavesExistingAddonIntact(t *testing.T) {
+	dest := filepath.Join(t.TempDir(), "addons", "stagehand")
+	if _, err := CopyAddon(fakeAddon(), dest, false); err != nil {
+		t.Fatal(err)
+	}
+	original, err := os.ReadFile(filepath.Join(dest, "plugin.cfg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	failing := failingFS{MapFS: fakeAddon(), failPath: "core/command_router.gd"}
+	if _, err := CopyAddon(failing, dest, true); err == nil {
+		t.Fatal("expected error from simulated mid-copy failure")
+	}
+
+	// The pre-existing addon must survive intact — untouched by the failed copy.
+	got, err := os.ReadFile(filepath.Join(dest, "plugin.cfg"))
+	if err != nil {
+		t.Fatalf("existing addon missing after failed force copy: %v", err)
+	}
+	if !bytes.Equal(got, original) {
+		t.Errorf("existing addon corrupted after failed force copy: got %q, want %q", got, original)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "autoload", "stagehand_server.gd")); err != nil {
+		t.Errorf("existing nested file missing after failed force copy: %v", err)
+	}
+
+	// No staging or backup directory should be left behind.
+	if _, err := os.Stat(dest + ".staging"); !os.IsNotExist(err) {
+		t.Errorf("staging dir was not cleaned up after failure")
+	}
+	if _, err := os.Stat(dest + ".bak"); !os.IsNotExist(err) {
+		t.Errorf("backup dir was not cleaned up after failure")
 	}
 }
 
