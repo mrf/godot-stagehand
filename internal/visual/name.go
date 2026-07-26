@@ -56,8 +56,9 @@ func ValidateName(name string) error {
 	if strings.Contains(name, "..") {
 		return reject("must not contain a '..' sequence")
 	}
-	if windowsReservedNames[strings.ToLower(name)] {
-		return reject("is a reserved device name on Windows")
+	stem, _, _ := strings.Cut(name, ".")
+	if device := strings.ToLower(stem); windowsReservedNames[device] {
+		return reject(fmt.Sprintf("%q is a reserved device name on Windows", device))
 	}
 	return nil
 }
