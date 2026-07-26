@@ -848,7 +848,7 @@ automation, not for exposure to untrusted networks or processes:
 4. **Port conflict with multiple instances:**
    - By default, Godot Stagehand uses port 26700
    - Use environment variable `STAGEHAND_PORT=XXXX` to specify different port
-   - Or use command line: `godot --stagehand --stagehand-port=XXXX`
+   - Or use command line, with the flag after the `--` separator: `godot ... -- --stagehand --stagehand-port=XXXX`
 
 5. **No response when using automation commands:**
    - Ensure scene is loaded before attempting automation

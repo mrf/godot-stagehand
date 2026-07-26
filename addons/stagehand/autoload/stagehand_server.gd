@@ -849,15 +849,46 @@ static func _params(params: Variant) -> Dictionary:
 
 
 static func _get_port() -> int:
-	var env_port: String = OS.get_environment("STAGEHAND_PORT")
+	return _resolve_port(
+		OS.get_environment("STAGEHAND_PORT"), OS.get_cmdline_user_args(), OS.get_cmdline_args()
+	)
+
+
+## STAGEHAND_PORT env var wins, then --stagehand-port= after the `--`
+## separator (the documented position), then the same flag before `--` —
+## accepted so a hand-rolled launch missing the separator doesn't silently
+## fall back to DEFAULT_PORT, but flagged with a warning since Godot's own
+## engine argument parser is not guaranteed to leave unrecognized
+## pre-separator flags alone in every configuration.
+static func _resolve_port(
+	env_port: String, user_args: PackedStringArray, engine_args: PackedStringArray
+) -> int:
 	if env_port != "" and env_port.is_valid_int():
 		return env_port.to_int()
-	for arg: String in OS.get_cmdline_user_args():
+	var user_port: int = _parse_port_flag(user_args)
+	if user_port > 0:
+		return user_port
+	var engine_port: int = _parse_port_flag(engine_args)
+	if engine_port > 0:
+		push_warning(
+			(
+				"Stagehand: --stagehand-port= was passed before the -- separator; "
+				+ "move it after -- (e.g. `-- --stagehand --stagehand-port=%d`) or use "
+				+ "STAGEHAND_PORT=%d instead so it isn't silently dropped by engines "
+				+ "that don't forward pre-separator flags."
+			) % [engine_port, engine_port]
+		)
+		return engine_port
+	return DEFAULT_PORT
+
+
+static func _parse_port_flag(args: PackedStringArray) -> int:
+	for arg: String in args:
 		if arg.begins_with("--stagehand-port="):
 			var port_str: String = arg.substr("--stagehand-port=".length())
 			if port_str.is_valid_int():
 				return port_str.to_int()
-	return DEFAULT_PORT
+	return 0
 
 
 static func _get_bind_address() -> String:

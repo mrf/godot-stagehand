@@ -91,4 +91,4 @@ For screenshot, baseline, or diff workflows, launch a visible Godot window:
 
 **Screenshots are empty, black, or grey** — Use a visible, non-minimized Godot window with `headless=false`. Headless mode is not a supported visual-smoke path.
 
-**Port conflict** — Another instance on 26700. Set `STAGEHAND_PORT=26701` or pass `--stagehand-port=26701`.
+**Port conflict** — Another instance on 26700. Set `STAGEHAND_PORT=26701`, or pass `--stagehand-port=26701` after the `--` separator (e.g. `godot ... -- --stagehand --stagehand-port=26701`).

@@ -165,7 +165,10 @@ token printed by the currently running Godot session, not one from an earlier ru
 2. Is Stagehand enabled? Look for `Server listening on port 26700` in Godot's output.
 3. Are you on Windows with Claude in WSL? See [Windows / WSL Setup](windows-setup.md).
 4. Port conflict? Run another instance on a different port:
-   - Start Godot with `--stagehand-port=26701` (or set `STAGEHAND_PORT=26701`)
+   - Start Godot with `--stagehand-port=26701` after the `--` separator
+     (e.g. `godot ... -- --stagehand-port=26701`), or set `STAGEHAND_PORT=26701`
+     for a position-independent alternative — the flag before `--` still
+     works too, but logs a warning
    - In Claude: "Connect to my game on port 26701"
 
 ### "Plugin not found" or Stagehand doesn't appear in Project Settings
