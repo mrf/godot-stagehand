@@ -29,7 +29,7 @@ instead.
 
 ## Setup Instructions
 
-1. Open this project in Godot Engine (tested with Godot 4.2+)
+1. Open this project in Godot Engine (tested with Godot 4.3+)
 2. Navigate to `Project → Project Settings → Plugins`  
 3. Find the "Stagehand" plugin and enable it
 4. The Stagehand addon enables external automation via WebSocket connections
