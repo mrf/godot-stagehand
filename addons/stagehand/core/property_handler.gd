@@ -118,8 +118,20 @@ static func _coerce_json_value(value: Variant, target_type: int) -> Dictionary:
 	if value == null or typeof(value) == target_type:
 		return {"success": true, "value": value}
 
+	# A client whose schema left `value` untyped sends the argument as raw JSON
+	# text, so "50" and '{"x": 1.5, "y": 2}' arrive as Strings rather than as a
+	# number and a Dictionary (godot-stagehand-set-property-value-stringified-e7er).
+	# Parsing is target-aware and never applies to a String or Variant target,
+	# so a String property asked to hold "50" still holds the two characters.
+	var parsed: Variant = _parse_stringified_json(value, target_type)
+
 	match target_type:
 		TYPE_BOOL:
+			if parsed is bool:
+				var parsed_bool: bool = parsed
+				return {"success": true, "value": parsed_bool}
+			# Belt-and-braces for text that JSON cannot parse as a bool at all
+			# ("True", " false "); this predates the stringified-value fix.
 			if value is String:
 				var bool_text: String = value
 				match bool_text.strip_edges().to_lower():
@@ -129,19 +141,40 @@ static func _coerce_json_value(value: Variant, target_type: int) -> Dictionary:
 						return {"success": true, "value": false}
 			return _conversion_failure(target_type)
 		TYPE_FLOAT:
-			return _coerce_float(value)
+			return _coerce_float(parsed)
 		TYPE_INT:
-			return _coerce_int(value)
+			return _coerce_int(parsed)
 		TYPE_VECTOR2:
-			return _coerce_vector2(value)
+			return _coerce_vector2(parsed)
 		TYPE_VECTOR2I:
-			return _coerce_vector2i(value)
+			return _coerce_vector2i(parsed)
 		TYPE_VECTOR3:
-			return _coerce_vector3(value)
+			return _coerce_vector3(parsed)
 		TYPE_COLOR:
-			return _coerce_color(value)
+			return _coerce_color(parsed)
 
 	return {"success": true, "value": value}
+
+
+## JSON-decode a stringified `value` when the target type cannot be a String.
+## Returns the value untouched when it is not a String, when the target would
+## legitimately hold text, or when the text is not valid JSON — a numeric target
+## given "not a number" must still fail its conversion rather than land as 0.
+## JSON.new().parse() is used over JSON.parse_string() because the latter pushes
+## an engine error on every non-JSON string, which would spam the host game's
+## log for what is an ordinary rejected set.
+static func _parse_stringified_json(value: Variant, target_type: int) -> Variant:
+	if not (value is String):
+		return value
+	if target_type == TYPE_NIL or target_type == TYPE_STRING or target_type == TYPE_STRING_NAME:
+		return value
+	var text: String = value
+	var json: JSON = JSON.new()
+	if json.parse(text) != OK:
+		return value
+	if json.data == null:
+		return value
+	return json.data
 
 
 static func _coerce_vector2(value: Variant) -> Dictionary:

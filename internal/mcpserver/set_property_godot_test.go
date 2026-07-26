@@ -136,6 +136,129 @@ func TestMCPSetPropertyPreservesJSONTypes(t *testing.T) {
 	}
 }
 
+// TestMCPSetPropertyAcceptsStringifiedClientValues is the end-to-end
+// regression test for godot-stagehand-set-property-value-stringified-e7er.
+//
+// TestMCPSetPropertyPreservesJSONTypes above sends native Go values, which
+// marshal to native JSON — that is the path a client takes when "value" has a
+// declared schema type. The reported failure is the other path: because
+// mcp.WithAny left "value" typeless, the reporter's client sent the argument as
+// raw JSON *text* ("50", "{\"x\": 11.7, ...}"), which reached GDScript as a
+// String. bool and String targets survived that (the addon string-parses bools,
+// and a String target takes the text verbatim); every int, float, Vector and
+// Color target hard-failed the conversion gate with invalid_value.
+//
+// Each case here therefore sends a JSON string and asserts the type GDScript
+// actually ended up holding — a value-only assertion would pass on a String
+// property that merely stored the text.
+func TestMCPSetPropertyAcceptsStringifiedClientValues(t *testing.T) {
+	srv := startMCPServerWithGodot(t)
+
+	tests := []struct {
+		name     string
+		property string
+		value    string
+		want     any
+		wantType string
+	}{
+		{name: "bool_false", property: "flag_prop", value: "false", want: false, wantType: "bool"},
+		{name: "bool_true", property: "string_bool_prop", value: "true", want: true, wantType: "bool"},
+		{name: "int_zero", property: "count_prop", value: "0", want: float64(0), wantType: "int"},
+		{name: "int_nonzero", property: "count_prop", value: "5", want: float64(5), wantType: "int"},
+		{name: "int_negative", property: "count_prop", value: "-12", want: float64(-12), wantType: "int"},
+		{name: "float", property: "ratio_prop", value: "50", want: float64(50), wantType: "float"},
+		{name: "float_fractional", property: "ratio_prop", value: "7.25", want: 7.25, wantType: "float"},
+		{
+			name:     "string_stays_verbatim",
+			property: "text_prop",
+			value:    "50",
+			want:     "50",
+			wantType: "String",
+		},
+		{
+			name:     "string_json_object_stays_verbatim",
+			property: "text_prop",
+			value:    `{"x": 1}`,
+			want:     `{"x": 1}`,
+			wantType: "String",
+		},
+		{
+			name:     "vector2_object",
+			property: "vector2_prop",
+			value:    `{"x": 11.5, "y": -2.25}`,
+			want:     map[string]any{"x": 11.5, "y": -2.25},
+			wantType: "Vector2",
+		},
+		{
+			name:     "vector3_object",
+			property: "vector3_prop",
+			value:    `{"x": 11.7, "y": 7.55, "z": 19.7}`,
+			want:     map[string]any{"x": 11.7, "y": 7.55, "z": 19.7},
+			wantType: "Vector3",
+		},
+		{
+			name:     "vector3_array",
+			property: "vector3_prop",
+			value:    `[-4.5, 6.25, 9.75]`,
+			want:     map[string]any{"x": -4.5, "y": 6.25, "z": 9.75},
+			wantType: "Vector3",
+		},
+		{
+			name:     "vector2i_object",
+			property: "vector2i_prop",
+			value:    `{"x": 8, "y": -3}`,
+			want:     map[string]any{"x": 8, "y": -3},
+			wantType: "Vector2i",
+		},
+		{
+			name:     "color_object",
+			property: "color_prop",
+			value:    `{"r": 0.1, "g": 0.2, "b": 0.3, "a": 0.4}`,
+			want:     map[string]any{"r": 0.1, "g": 0.2, "b": 0.3, "a": 0.4},
+			wantType: "Color",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setText := callToolThroughMCP(t, srv, "godot_set_property", map[string]any{
+				"selector": "/root/TestScene/PropertyTarget",
+				"property": tt.property,
+				"value":    tt.value,
+			})
+			var setResult struct {
+				Success bool `json:"success"`
+			}
+			if err := json.Unmarshal([]byte(setText), &setResult); err != nil {
+				t.Fatalf("decode set_property result %q: %v", setText, err)
+			}
+			if !setResult.Success {
+				t.Fatalf("set_property returned success=false: %s", setText)
+			}
+
+			getText := callToolThroughMCP(t, srv, "godot_get_property", map[string]any{
+				"selector": "/root/TestScene/PropertyTarget",
+				"property": tt.property,
+			})
+			var getResult struct {
+				Value any    `json:"value"`
+				Type  string `json:"type"`
+			}
+			if err := json.Unmarshal([]byte(getText), &getResult); err != nil {
+				t.Fatalf("decode get_property result %q: %v", getText, err)
+			}
+
+			if getResult.Type != tt.wantType {
+				t.Fatalf("read-back type = %q, want %q (value %#v)", getResult.Type, tt.wantType, getResult.Value)
+			}
+			want := normalizeJSONValue(t, tt.want)
+			if !equalJSONValue(getResult.Value, want) {
+				t.Fatalf("read-back value = %#v, want %#v", getResult.Value, want)
+			}
+		})
+	}
+}
+
 func equalJSONValue(got any, want any) bool {
 	switch wantValue := want.(type) {
 	case float64:

@@ -58,10 +58,27 @@ var setPropertyTool = mcp.NewTool("godot_set_property",
 	),
 	mcp.WithAny("value",
 		mcp.Required(),
-		mcp.Description("New property value"),
+		mcp.Description("New property value. Send the property's native JSON type — number, boolean, string, or an object/array for Vector and Color properties (for example {\"x\": 1.5, \"y\": 2}). A JSON string holding any of those is also accepted and parsed against the property's declared type."),
+		withJSONTypeUnion("boolean", "integer", "number", "string", "object", "array", "null"),
 	),
 	instanceIDOpt,
 )
+
+// withJSONTypeUnion declares an explicit JSON Schema type union on a property.
+//
+// mcp.WithAny on its own emits a schema with no "type" key at all, which leaves
+// a client nothing to marshal the argument against — the reporter's client sent
+// set_property's value as raw JSON *text* rather than a native JSON value, and
+// every int/float/Vector/Color target then failed the addon's conversion gate
+// (godot-stagehand-set-property-value-stringified-e7er). Listing every JSON
+// type keeps the argument polymorphic while giving clients something concrete
+// to serialize against. The addon still parses a stringified value defensively,
+// since no schema can bind a client that ignores it.
+func withJSONTypeUnion(types ...string) mcp.PropertyOption {
+	return func(schema map[string]any) {
+		schema["type"] = types
+	}
+}
 
 func (s *Server) handleSetProperty(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	instanceID := req.GetString("instance_id", "default")

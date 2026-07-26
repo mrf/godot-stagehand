@@ -7,6 +7,7 @@ extends Node
 var flag_prop: bool = true
 var string_bool_prop: bool = true
 var count_prop: int = 5
+var ratio_prop: float = 0.5
 var text_prop: String = "initial"
 var variant_prop: Variant = "not_null"
 var variant_bool_prop: Variant = true

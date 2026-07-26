@@ -144,6 +144,81 @@ func test_set_color_property_from_json_object() -> void:
 	assert_bool(result.get("success", false)).is_true()
 
 
+## godot-stagehand-set-property-value-stringified-e7er: an MCP client with no
+## declared schema type for `value` sends the argument as raw JSON *text*, so
+## every non-String target must accept the stringified form of what it wants.
+func test_set_int_property_from_stringified_json() -> void:
+	assert_bool(_set_on_target("count_prop", "0").get("success", false)).is_true()
+	assert_int(_target.get("count_prop")).is_equal(0)
+	assert_bool(_set_on_target("count_prop", "-12").get("success", false)).is_true()
+	assert_int(_target.get("count_prop")).is_equal(-12)
+
+
+func test_set_float_property_from_stringified_json() -> void:
+	assert_bool(_set_on_target("ratio_prop", "50").get("success", false)).is_true()
+	assert_float(_target.get("ratio_prop")).is_equal_approx(50.0, 0.001)
+	assert_bool(_set_on_target("ratio_prop", "7.25").get("success", false)).is_true()
+	assert_float(_target.get("ratio_prop")).is_equal_approx(7.25, 0.001)
+
+
+func test_set_vector3_property_from_stringified_json() -> void:
+	var object_result: Dictionary = _set_on_target(
+		"vector3_prop", '{"x": 11.7, "y": 7.55, "z": 19.7}'
+	)
+	assert_bool(object_result.get("success", false)).is_true()
+	assert_vector(_target.get("vector3_prop")).is_equal_approx(
+		Vector3(11.7, 7.55, 19.7), Vector3.ONE * 0.001
+	)
+
+	var array_result: Dictionary = _set_on_target("vector3_prop", "[-4.5, 6.25, 9.75]")
+	assert_bool(array_result.get("success", false)).is_true()
+	assert_vector(_target.get("vector3_prop")).is_equal_approx(
+		Vector3(-4.5, 6.25, 9.75), Vector3.ONE * 0.001
+	)
+
+
+func test_set_vector2i_property_from_stringified_json() -> void:
+	var result: Dictionary = _set_on_target("vector2i_prop", '{"x": 8, "y": -3}')
+	assert_bool(result.get("success", false)).is_true()
+	assert_vector(_target.get("vector2i_prop")).is_equal(Vector2i(8, -3))
+
+
+func test_set_color_property_from_stringified_json() -> void:
+	var result: Dictionary = _set_on_target(
+		"color_prop", '{"r": 0.0, "g": 0.5, "b": 1.0, "a": 1.0}'
+	)
+	assert_bool(result.get("success", false)).is_true()
+	assert_object(_target.get("color_prop")).is_equal(Color(0.0, 0.5, 1.0, 1.0))
+
+
+## The stringified-JSON path is target-aware: a String property must keep the
+## text verbatim even when that text happens to be parseable JSON, otherwise
+## every String set of "50" or "{...}" would silently change type.
+func test_set_string_property_keeps_json_looking_text_verbatim() -> void:
+	assert_bool(_set_on_target("text_prop", "50").get("success", false)).is_true()
+	assert_str(str(_target.get("text_prop"))).is_equal("50")
+	assert_bool(_set_on_target("text_prop", '{"x": 1}').get("success", false)).is_true()
+	assert_str(str(_target.get("text_prop"))).is_equal('{"x": 1}')
+
+
+## A Variant-typed property has no declared type to coerce toward, so text
+## stays text there too rather than being guessed at.
+func test_set_variant_property_keeps_json_looking_text_verbatim() -> void:
+	assert_bool(_set_on_target("variant_prop", "50").get("success", false)).is_true()
+	assert_str(str(_target.get("variant_prop"))).is_equal("50")
+
+
+## Text that is not JSON at all must still be rejected by a numeric target
+## rather than silently landing as 0.
+func test_set_int_from_non_json_text_returns_error() -> void:
+	# A rejected conversion returns an error Dictionary with no "success" key
+	# at all, so the property is left untouched rather than reset.
+	var result: Dictionary = _set_on_target("count_prop", "not a number")
+	assert_bool(result.has("success")).is_false()
+	assert_str(str(result.get("error", ""))).contains("count_prop")
+	assert_int(_target.get("count_prop")).is_equal(5)
+
+
 func test_set_property_dot_notation() -> void:
 	var result: Dictionary = _set_prop("group:%s" % GROUP, "position.x", 99.0)
 	assert_bool(result.get("success", false)).is_true()
