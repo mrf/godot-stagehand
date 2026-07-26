@@ -10,6 +10,20 @@ env:
   GODOT_CACHE_DIR: ~/.cache/godot-ci
 
 jobs:
+  # ── Shell script lint (shellcheck, default severity — no suppressions) ──
+  # ubuntu-latest runners ship shellcheck preinstalled, so no setup step is
+  # needed. Default severity (style and up) is the strictest shellcheck
+  # offers; per CLAUDE.md's strict-by-default policy this must stay
+  # suppression-free except for narrowly-scoped, commented inline disables.
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: shellcheck scripts/*.sh
+        run: shellcheck scripts/*.sh
+
   # ── Go quality checks (vet + test + linux build) ─────────────────────────
   go-quality:
     name: Go quality
