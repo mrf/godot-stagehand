@@ -19,7 +19,7 @@ traffic to a wall.
 
 ## Phase 0 — unblock install (do before any promotion)
 
-1. Bump version (`./scripts/set-version.sh 0.3.0`), tag, push. `.github/workflows/release.yml`
+1. Bump version (`./scripts/set-version.sh X.Y.Z`), tag, push. `.github/workflows/release.yml`
    already exists — the tag is what fires it. *Remote op: Mark's to run.*
 2. Verify the four platform assets land with the exact names the editor wizard
    resolves (`release_assets.gd`), and that the wizard's download path works

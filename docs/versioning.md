@@ -38,10 +38,10 @@ plus the built binary's `--version` output, and the release workflow runs it in
 ### Bumping the version
 
 ```bash
-./scripts/set-version.sh 0.3.0   # rewrites the constant and every mirror
+./scripts/set-version.sh X.Y.Z   # rewrites the constant and every mirror
 go test ./internal/version/       # confirms they agree
-git commit -am "release: 0.3.0"
-git tag v0.3.0
+git commit -am "release: X.Y.Z"
+git tag vX.Y.Z
 ```
 
 Do not hand-edit `plugin.cfg` or `stagehand_version.gd`; the script exists so a

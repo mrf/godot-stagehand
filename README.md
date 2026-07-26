@@ -25,7 +25,7 @@ External automation for running Godot games, exposed as an MCP server for AI age
 >
 > The two are complements, not competitors, and plenty of projects will want both.
 
-**Status: beta (v0.3.0), pre-1.0.** Prebuilt binaries are published for Linux,
+**Status: beta, pre-1.0.** Prebuilt binaries are published for Linux,
 macOS (Intel and Apple Silicon) and Windows — see [Setup](#setup).
 Tool schemas and the wire protocol may still change between minor versions.
 
