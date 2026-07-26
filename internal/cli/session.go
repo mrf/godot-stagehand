@@ -92,6 +92,9 @@ func (c *connectionFlags) open() (*session, error) {
 			"--port is required: the addon's default %d is shared and may belong to another agent's game; pass the port your instance printed at startup",
 			launch.DefaultPort))
 	}
+	if c.port < 1 || c.port > 65535 {
+		return nil, usagef(fmt.Errorf("--port %d is outside the valid TCP port range (1-65535)", c.port))
+	}
 	if c.timeout <= 0 {
 		return nil, usagef(fmt.Errorf("--timeout must be positive"))
 	}

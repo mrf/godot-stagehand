@@ -185,6 +185,24 @@ func TestMissingPortIsUsageErrorNotAConnectionAttempt(t *testing.T) {
 	}
 }
 
+func TestOutOfRangePortIsUsageErrorNotAConnectionAttempt(t *testing.T) {
+	withToken(t)
+	for _, port := range []string{"99999", "-1", "65536"} {
+		t.Run(port, func(t *testing.T) {
+			code, _, stderr := invoke(t, "find", "--port", port, "Node")
+			if code != ExitUsage {
+				t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitUsage, stderr)
+			}
+			if !strings.Contains(stderr, port) {
+				t.Errorf("stderr %q does not name the invalid port %q", stderr, port)
+			}
+			if strings.Contains(stderr, "dial") {
+				t.Errorf("stderr %q looks like a dial attempt was made", stderr)
+			}
+		})
+	}
+}
+
 func TestMisplacedPortFlagIsUnknownSubcommandNotMissingPort(t *testing.T) {
 	withToken(t)
 	for _, tt := range []struct {
