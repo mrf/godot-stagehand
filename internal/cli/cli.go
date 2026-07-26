@@ -166,7 +166,7 @@ func runWithFlags(
 	ctx, cancel := context.WithTimeout(ctx, e.conn.timeout)
 	defer cancel()
 
-	sess, err := e.conn.open(ctx)
+	sess, err := e.conn.open()
 	if err != nil {
 		return err
 	}

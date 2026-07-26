@@ -22,7 +22,13 @@ var cmdConnect = &command{
 	name: "connect", usage: "--port N [--token T]", connects: true,
 	summary: "Verify a connection to a running game and print its handshake",
 	run: func(ctx context.Context, e *env, cmd *command, args []string) error {
-		return runWithFlags(ctx, cmd, e, args, nil, func(_ context.Context, s *session, _ *flag.FlagSet) error {
+		return runWithFlags(ctx, cmd, e, args, nil, func(ctx context.Context, s *session, _ *flag.FlagSet) error {
+			// connect has no params to validate and issues no op of its own,
+			// so it must force the dial itself rather than relying on the
+			// lazy trigger inside gwpop.Execute.
+			if err := s.ensureConnected(ctx); err != nil {
+				return err
+			}
 			return emit(e.stdout, handshakeReport(s))
 		})
 	},

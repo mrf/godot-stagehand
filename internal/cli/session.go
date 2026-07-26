@@ -35,8 +35,15 @@ func (c *connectionFlags) bind(fset *flag.FlagSet) {
 	fset.DurationVar(&c.timeout, "timeout", 30*time.Second, "bound the whole command")
 }
 
-// session is a connected Godot game plus its negotiated handshake.
+// session is a Godot session that dials, authenticates and negotiates
+// lazily: nothing reaches Godot until the first RPC a command actually makes.
+// Every one-shot command validates its parameters (gwpop.Execute's
+// spec.Params, always run before the wire call) before it needs a live
+// connection, so a bad selector or param is a usage error even when no game
+// is listening; a valid one still dials for real and reports ExitConnection
+// if that fails.
 type session struct {
+	dial      func(ctx context.Context) (*godotconn.Connection, *gwp.Info, error)
 	conn      *godotconn.Connection
 	handshake *gwp.Info
 	host      string
@@ -49,12 +56,37 @@ func (s *session) Close() {
 	}
 }
 
-// Caller exposes the connection as a gwpop.Caller.
-func (s *session) Caller() gwpop.Caller { return s.conn }
+// ensureConnected dials on first use and memoizes the result.
+func (s *session) ensureConnected(ctx context.Context) error {
+	if s.conn != nil {
+		return nil
+	}
+	conn, handshake, err := s.dial(ctx)
+	if err != nil {
+		return &connectionError{err: err}
+	}
+	s.conn, s.handshake = conn, handshake
+	return nil
+}
 
-// open dials, authenticates and negotiates. Every failure here is a
-// connection failure, so callers get ExitConnection rather than a generic one.
-func (c *connectionFlags) open(ctx context.Context) (*session, error) {
+// Caller exposes the connection as a gwpop.Caller whose first Call triggers
+// the lazy dial.
+func (s *session) Caller() gwpop.Caller { return lazyCaller{s} }
+
+// lazyCaller defers the dial until the first actual RPC.
+type lazyCaller struct{ s *session }
+
+func (l lazyCaller) Call(ctx context.Context, method string, params any) (*godotconn.Response, error) {
+	if err := l.s.ensureConnected(ctx); err != nil {
+		return nil, err
+	}
+	return l.s.conn.Call(ctx, method, params)
+}
+
+// open validates connection flags and prepares a session, but does not dial:
+// the dial happens lazily on the session's first RPC (see ensureConnected),
+// after command params have been validated.
+func (c *connectionFlags) open() (*session, error) {
 	if c.port == 0 {
 		return nil, usagef(fmt.Errorf(
 			"--port is required: the addon's default %d is shared and may belong to another agent's game; pass the port your instance printed at startup",
@@ -75,12 +107,14 @@ func (c *connectionFlags) open(ctx context.Context) (*session, error) {
 	if strings.TrimSpace(host) == "" {
 		host = launch.DefaultHost
 	}
+	port := c.port
 
-	conn, handshake, err := gwpop.Connect(ctx, host, c.port, token)
-	if err != nil {
-		return nil, &connectionError{err: err}
-	}
-	return &session{conn: conn, handshake: handshake, host: host, port: c.port}, nil
+	return &session{
+		dial: func(ctx context.Context) (*godotconn.Connection, *gwp.Info, error) {
+			return gwpop.Connect(ctx, host, port, token)
+		},
+		host: host, port: port,
+	}, nil
 }
 
 // emit writes a JSON document, which is the CLI's only output format for
