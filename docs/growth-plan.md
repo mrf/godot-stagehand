@@ -10,8 +10,7 @@ Nothing here is a messaging problem. The funnel is broken at step 1: a Godot dev
 who finds the repo is told "build from source, requires Go 1.25+". Most Godot
 devs don't have a Go toolchain and won't install one to try a testing tool. The
 in-editor Setup wizard's "Download server binary" button hits
-`/releases/latest/download/...` and 404s today
-(`docs/asset-library-submission.md:29`). And the single largest discovery
+`/releases/latest/download/...` and 404s today. And the single largest discovery
 channel for Godot addons — the Asset Library — is explicitly blocked on a
 release existing.
 
@@ -34,9 +33,7 @@ traffic to a wall.
 
 ## Phase 1 — the two catalog listings (highest leverage, one-time)
 
-**Godot Asset Library.** Everything is pre-written in
-`docs/asset-library-submission.md` — field values, description copy, icon,
-category. It needs Mark's Godot account and a pinned post-release commit hash.
+**Godot Asset Library.** Submitted 2026-07-25 against v0.3.0.
 This is the highest-ROI single action available: it puts the addon in front of
 every Godot dev browsing Tools, from inside the editor.
 
@@ -131,8 +128,7 @@ beat 500 stars.
 ## Immediate next three actions
 
 1. Cut and push a real release so binaries exist. *(Mark — remote op)*
-2. Submit the Asset Library listing from `docs/asset-library-submission.md`.
-   *(Mark — needs Godot account)*
+2. Submit the Asset Library listing. *(Mark — needs Godot account)*
 3. Record the 60-second demo video.
 
 Everything in Phases 3–4 depends on 1 and 2 being done first.
