@@ -31,6 +31,11 @@ Tool schemas and the wire protocol may still change between minor versions.
 
 **New to Stagehand?** → [Quickstart guide](docs/quickstart.md) for a full walkthrough, no Go or JSON experience required.
 
+**Want to see it work before reading further?** → [`examples/minimal-game`](examples/minimal-game#watch-an-agent-play-it-one-command)
+is a one-command on-ramp: clone, run one command, watch an agent click a
+button in a real running Godot scene and assert the result. No demo video
+exists yet — this is the fastest way to see the loop in action until one does.
+
 ## Why
 
 Game testing is manual. You click through menus, eyeball the results, and hope
