@@ -417,6 +417,38 @@ func TestValidSelectorStillExitsConnectionWithNoServerRunning(t *testing.T) {
 	}
 }
 
+// TestDialTimeoutExitsConnectionNotTimeout is the regression test for the
+// 521c832 lazy-dial fallout: a dial to a blackholed host (192.0.2.1, the
+// reserved TEST-NET-1 address, never routes and so times out rather than
+// being refused) must still report ExitConnection with a connection-flavored
+// message, not ExitTimeout with a message blaming Godot for not answering an
+// RPC it was never reached for.
+func TestDialTimeoutExitsConnectionNotTimeout(t *testing.T) {
+	withToken(t)
+	code, _, stderr := invoke(t, "find", "--host=192.0.2.1", "--port=26700", "--timeout=1s", "class:Button")
+	if code != ExitConnection {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitConnection, stderr)
+	}
+	if !strings.Contains(stderr, "connect to Godot") {
+		t.Errorf("stderr %q does not carry a connection-flavored message", stderr)
+	}
+	if strings.Contains(stderr, "timed out waiting for Godot to answer") {
+		t.Errorf("stderr %q wrongly blames Godot for not answering an RPC it was never reached for", stderr)
+	}
+}
+
+// TestConnectCommandDialTimeoutExitsConnection pins that `connect` (which
+// dials directly via ensureConnected rather than through gwpop.Execute) keeps
+// the same classification for a dial timeout, so the exit-code contract stays
+// consistent across every RPC-issuing one-shot command.
+func TestConnectCommandDialTimeoutExitsConnection(t *testing.T) {
+	withToken(t)
+	code, _, stderr := invoke(t, "connect", "--host=192.0.2.1", "--port=26700", "--timeout=1s")
+	if code != ExitConnection {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitConnection, stderr)
+	}
+}
+
 func TestInvalidSelectorIsRejectedBeforeTheWire(t *testing.T) {
 	withToken(t)
 	stub := newStubGodot(t, nil)
