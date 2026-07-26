@@ -126,9 +126,30 @@ func (r *Report) WriteTrace(path string) error {
 }
 
 // Summary renders a one-screen human summary of the run.
+//
+// Teardown is cleanup, not an assertion, so it is tallied separately from the
+// step counts: a CI dashboard reading this line should see the same count as
+// report.json's Steps array, with teardown broken out on its own line.
 func (r *Report) Summary() string {
-	passed, failed, skipped := 0, 0, 0
-	for _, step := range append(append([]StepResult{}, r.Steps...), r.Teardown...) {
+	passed, failed, skipped := tallyStatuses(r.Steps)
+	summary := fmt.Sprintf(
+		"%s: %s (%d passed, %d failed, %d skipped) in %s across %d RPCs",
+		r.Name, r.Status, passed, failed, skipped,
+		time.Duration(r.DurationMs)*time.Millisecond, r.RPC.Count,
+	)
+	if len(r.Teardown) > 0 {
+		tPassed, tFailed, tSkipped := tallyStatuses(r.Teardown)
+		summary += fmt.Sprintf("\n  teardown: %d passed, %d failed, %d skipped", tPassed, tFailed, tSkipped)
+	}
+	if r.Failure != nil {
+		summary += fmt.Sprintf("\n  failed at %s (%s): %s",
+			r.Failure.Location(), r.Failure.Kind, r.Failure.Message)
+	}
+	return summary
+}
+
+func tallyStatuses(steps []StepResult) (passed, failed, skipped int) {
+	for _, step := range steps {
 		switch step.Status {
 		case StatusPassed:
 			passed++
@@ -138,16 +159,7 @@ func (r *Report) Summary() string {
 			skipped++
 		}
 	}
-	summary := fmt.Sprintf(
-		"%s: %s (%d passed, %d failed, %d skipped) in %s across %d RPCs",
-		r.Name, r.Status, passed, failed, skipped,
-		time.Duration(r.DurationMs)*time.Millisecond, r.RPC.Count,
-	)
-	if r.Failure != nil {
-		summary += fmt.Sprintf("\n  failed at %s (%s): %s",
-			r.Failure.Location(), r.Failure.Kind, r.Failure.Message)
-	}
-	return summary
+	return passed, failed, skipped
 }
 
 func writeArtifact(path string, data []byte) error {

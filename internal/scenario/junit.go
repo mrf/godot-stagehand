@@ -76,11 +76,13 @@ func (r *Report) WriteJUnit(path string) error {
 		},
 	}
 
+	// Teardown is cleanup, not an assertion: it is deliberately excluded from
+	// the testcase list so a CI dashboard's test count agrees with
+	// report.json's Steps array. A teardown failure is still visible via
+	// SystemOut below, which embeds Summary()'s teardown tally and failure
+	// detail.
 	for _, step := range r.Steps {
-		suite.Cases = append(suite.Cases, junitCaseFor(r.Name, "step", step))
-	}
-	for _, step := range r.Teardown {
-		suite.Cases = append(suite.Cases, junitCaseFor(r.Name, "teardown", step))
+		suite.Cases = append(suite.Cases, junitCaseFor(r.Name, step))
 	}
 
 	for _, c := range suite.Cases {
@@ -113,10 +115,10 @@ func (r *Report) WriteJUnit(path string) error {
 	return writeArtifact(path, append([]byte(xml.Header), append(body, '\n')...))
 }
 
-func junitCaseFor(scenarioName, phase string, step StepResult) junitCase {
+func junitCaseFor(scenarioName string, step StepResult) junitCase {
 	testCase := junitCase{
 		Name:      fmt.Sprintf("%02d %s", step.Index, step.Name),
-		ClassName: fmt.Sprintf("%s.%s.%s", scenarioName, phase, step.Action),
+		ClassName: fmt.Sprintf("%s.step.%s", scenarioName, step.Action),
 		Time:      seconds(step.DurationMs),
 	}
 	switch step.Status {
