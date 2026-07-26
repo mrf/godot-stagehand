@@ -1,8 +1,10 @@
 # Host-project compatibility suite
 
-**Status:** **approved as written by Mark, 2026-07-26** — implementation is
-unlocked, in the order set out in Amendment 1 (`n7ib` first, then the fixtures
-the 0.3.1 bugs imply, then this suite). Nothing here is implemented beyond the
+**Status:** **approved by Mark, 2026-07-26, with one change** — the suite must
+scale to another two or three hosts without per-project handwork, which is
+Amendment 7. Implementation is unlocked, in the order set out in Amendment 1
+(`n7ib` first, then the fixtures the 0.3.1 bugs imply, then this suite).
+Nothing here is implemented beyond the
 manifest (`testdata/hostcompat/manifest.json`) and its validator
 (`internal/hostcompat/`). No CI workflow and no checkout script exist yet.
 
@@ -465,6 +467,65 @@ the sources:
 - **`heavy-autoloads` is evidenced here** — 13 autoloads. Not reassigned, because
   moving it changes what the other candidates are needed for; that is a review
   decision.
+
+### 7. Scaling to N projects — onboarding must be cheap, or the set never grows
+
+Approved with one change requested: the design must absorb another two or three
+hosts without each one being a bespoke authoring job. The manifest is already
+N-shaped, but three things in the plan above are per-project handwork that gets
+expensive at six-plus and is the reason candidate sets like this stall at one.
+
+**a. Axis claims must be machine-produced, not hand-asserted.** Amendment 6
+found that `content-scale` is invisible in Pixelorama's `project.godot` and only
+observable at runtime. That is not a Pixelorama quirk — it is proof that
+hand-inspecting each project's files gives wrong answers, and it gets wronger
+the less familiar the project is. Replace the inspection step with a **capability
+probe**: one scenario, identical for every host, that connects and reports what
+the host actually is — `/root` `content_scale_factor` and stretch mode, autoload
+count, whether any embedded `Window` exists, whether the tree is paused at boot,
+node count, and time-to-first-frame. Its output populates the manifest's `claims`
+and `axes`.
+
+That turns onboarding a project into: add an entry, run the probe, commit what it
+found. It also makes axis claims re-verifiable — re-run the probe on a pin bump
+and a silently-changed host shows up as a diff rather than as a stale assertion
+nobody rechecks.
+
+**b. One shared scenario, per-project overrides only.** Epic step 3 as written is
+"write `testdata/hostcompat/<id>/scenario.json`" per project. At six projects
+that is six files drifting apart, each needing a re-read to know whether it still
+covers the same ground. Invert it: a **single template** expressing the six things
+this suite asserts (connect, enumerate, see a subwindow, deliver input, capture a
+frame, survive), plus a small per-project override file supplying only what is
+genuinely host-specific — the root node name, one selector known to be clickable,
+any extra launch args. A new host should be roughly ten lines, not a scenario.
+Where a host needs a step the template does not have, that is a signal the
+template is missing something every host would benefit from.
+
+**c. Cost: keep the per-PR gate at one project, permanently.** Nightly scales
+linearly and that is fine — it is a background job. The path-filtered canary must
+not grow with the set, or the thing people actually feel gets slower every time a
+host is added and they start ignoring it. One project on one engine version, for
+good. Pixelorama is the right permanent canary: it covers the most axes and has
+already produced three real bugs.
+
+**d. Selection criteria for the next two or three.** The current six are *all
+tool applications* — editors and utilities. That is a systematic blind spot, and
+Amendment 5 names the two axes it costs us. So the additions are not free choices:
+
+- **At least one must be an actual game.** `sprh` (a host that pauses its
+  SceneTree at boot never completes the WebSocket handshake) cannot reproduce on
+  any current candidate. Games pause at boot; editors do not. This is the axis
+  most likely to hit real users, since real users are shipping games.
+- **At least one must run warnings-as-errors** (`gdscript/warnings/*=2`,
+  `exclude_addons=false`). Pixelorama cannot cover this. Failing that, the CI job
+  overrides the host's warnings config to synthesise the axis — cheaper than
+  finding a project that happens to be strict, and it works on every host.
+
+Add both axes to `knownAxes` so `MissingAxes()` reports them as gaps rather than
+letting them stay invisible. A candidate that covers an axis already held by two
+others earns nothing; the axis list is the admission criterion, and it should be
+allowed to reject popular projects.
 
 ## Open questions for review
 
