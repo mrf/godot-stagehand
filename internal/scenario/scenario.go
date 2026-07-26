@@ -223,11 +223,21 @@ func SpecFor(action string) (gwpop.Spec, bool) {
 	return gwpop.Lookup(action)
 }
 
-// Actions lists every action a scenario step may use.
+// Actions lists every action a scenario step may use, each name exactly
+// once. A name registered in both localSpecs and gwpop (e.g. "screenshot")
+// is listed once, matching the single spec SpecFor actually resolves.
 func Actions() []string {
-	names := gwpop.Actions()
+	seen := make(map[string]bool, len(localSpecs))
+	names := make([]string, 0, len(localSpecs))
 	for name := range localSpecs {
+		seen[name] = true
 		names = append(names, name)
+	}
+	for _, name := range gwpop.Actions() {
+		if !seen[name] {
+			seen[name] = true
+			names = append(names, name)
+		}
 	}
 	sort.Strings(names)
 	return names

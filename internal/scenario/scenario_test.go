@@ -176,6 +176,22 @@ func TestActionsIncludeLocalAndProtocolActions(t *testing.T) {
 	}
 }
 
+// TestActionsHasNoDuplicates guards the whole merged action set (local +
+// GWP), not just screenshot: a future double-registration of any action name
+// must fail this test the same way screenshot's did.
+func TestActionsHasNoDuplicates(t *testing.T) {
+	actions := Actions()
+	seen := make(map[string]int, len(actions))
+	for _, action := range actions {
+		seen[action]++
+	}
+	for action, count := range seen {
+		if count > 1 {
+			t.Errorf("Actions() lists %q %d times, want 1", action, count)
+		}
+	}
+}
+
 func contains(values []string, want string) bool {
 	for _, v := range values {
 		if v == want {
