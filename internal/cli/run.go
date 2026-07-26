@@ -88,8 +88,8 @@ func (e *scenarioFailure) Error() string {
 	if e.report.Failure == nil {
 		return fmt.Sprintf("scenario %q failed", e.report.Name)
 	}
-	return fmt.Sprintf("scenario %q failed at %s step %d (%s): %s",
-		e.report.Name, e.report.Failure.Phase, e.report.Failure.StepIndex,
+	return fmt.Sprintf("scenario %q failed at %s (%s): %s",
+		e.report.Name, e.report.Failure.Location(),
 		e.report.Failure.Kind, e.report.Failure.Message)
 }
 

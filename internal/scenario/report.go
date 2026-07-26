@@ -92,6 +92,17 @@ type Failure struct {
 	Message   string `json:"message"`
 }
 
+// Location renders where the failure occurred, e.g. "step 1" or "teardown
+// step 0". Phase is "step" for the main phase, so it is elided rather than
+// doubled; every other phase (teardown, setup, connect, artifacts) prefixes
+// the step number as-is.
+func (f *Failure) Location() string {
+	if f.Phase == "step" {
+		return fmt.Sprintf("step %d", f.StepIndex)
+	}
+	return fmt.Sprintf("%s step %d", f.Phase, f.StepIndex)
+}
+
 // Passed reports whether every step succeeded.
 func (r *Report) Passed() bool { return r.Status == StatusPassed }
 
@@ -133,8 +144,8 @@ func (r *Report) Summary() string {
 		time.Duration(r.DurationMs)*time.Millisecond, r.RPC.Count,
 	)
 	if r.Failure != nil {
-		summary += fmt.Sprintf("\n  failed at %s step %d (%s): %s",
-			r.Failure.Phase, r.Failure.StepIndex, r.Failure.Kind, r.Failure.Message)
+		summary += fmt.Sprintf("\n  failed at %s (%s): %s",
+			r.Failure.Location(), r.Failure.Kind, r.Failure.Message)
 	}
 	return summary
 }
