@@ -24,8 +24,8 @@ External automation for running Godot games, exposed as an MCP server for AI age
 >
 > The two are complements, not competitors, and plenty of projects will want both.
 
-**Status: beta (v0.2.0), pre-1.0.** No binary releases are published yet; the
-supported install path today is building from source (see [Setup](#setup)).
+**Status: beta (v0.3.0), pre-1.0.** Prebuilt binaries are published for Linux,
+macOS (Intel and Apple Silicon) and Windows — see [Setup](#setup).
 Tool schemas and the wire protocol may still change between minor versions.
 
 **New to Stagehand?** → [Quickstart guide](docs/quickstart.md) for a full walkthrough, no Go or JSON experience required.
@@ -232,15 +232,8 @@ below without touching a terminal. Full walkthrough:
 
 ### 1. Get the server binary
 
-**Build from source** (works today; requires Go 1.25+ and Godot 4.3+):
-
-```bash
-go build -o godot-stagehand .
-```
-
-**Prebuilt binaries are planned but not published yet.** There is no
-GitHub release for this project at the time of writing. Once one ships, it
-will provide these platform binaries:
+**Download it** — no Go toolchain needed. Pick your platform from the
+[latest release](https://github.com/mrf/godot-stagehand/releases/latest):
 
 | Platform | File |
 |----------|------|
@@ -249,7 +242,24 @@ will provide these platform binaries:
 | macOS Intel | `godot-stagehand-darwin-amd64` |
 | Windows x86-64 | `godot-stagehand-windows-amd64.exe` |
 
-macOS/Linux: mark a downloaded binary executable with `chmod +x godot-stagehand-*`.
+Or straight from the terminal (macOS/Linux — substitute your platform's file):
+
+```bash
+curl -fsSLo godot-stagehand \
+  https://github.com/mrf/godot-stagehand/releases/latest/download/godot-stagehand-linux-amd64
+chmod +x godot-stagehand
+```
+
+<details>
+<summary><strong>Build from source</strong> (for contributors, or unsupported platforms)</summary>
+
+Requires Go 1.25+ and Godot 4.3+:
+
+```bash
+go build -o godot-stagehand .
+```
+
+</details>
 
 ### 2. Install into your Godot project (one command)
 
