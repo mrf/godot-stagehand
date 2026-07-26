@@ -133,6 +133,10 @@ Asset Library install count, issues opened by non-Mark accounts (the real signal
 that someone got far enough to hit a wall), and forks. Ten users who file bugs
 beat 500 stars.
 
+Definitions, sources, and what a good/bad trend looks like for each:
+[growth-metrics.md](growth-metrics.md). Take a monthly reading with
+`./scripts/growth-metrics.sh` and paste its row into that doc's readings table.
+
 ## Immediate next three actions
 
 1. Cut and push a real release so binaries exist. *(Mark — remote op)*
