@@ -65,7 +65,11 @@ func Run(out io.Writer, opts Options) error {
 	case CopyDone:
 		fmt.Fprintf(out, "✓ Copied addon to %s%c\n", destDir, filepath.Separator)
 	case CopySkippedExists:
-		fmt.Fprintf(out, "• Addon already present at %s%c (use --force to overwrite)\n", destDir, filepath.Separator)
+		if installed, embedded, stale := compareAddonVersions(opts.AddonFS, destDir); stale {
+			fmt.Fprintf(out, "⚠ Installed addon at %s%c is stale (version %s, this binary embeds %s) — re-run with --force to update\n", destDir, filepath.Separator, installed, embedded)
+		} else {
+			fmt.Fprintf(out, "• Addon already present at %s%c (use --force to overwrite)\n", destDir, filepath.Separator)
+		}
 	}
 
 	// 2. Configure project.godot (idempotent).
