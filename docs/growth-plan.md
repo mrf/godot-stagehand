@@ -135,3 +135,103 @@ beat 500 stars.
 3. Record the 60-second demo video.
 
 Everything in Phases 3–4 depends on 1 and 2 being done first.
+
+## Competitor deep-dive: godot-mcp-enhanced (2026-07-26)
+
+The 87s.5 Asset Library survey read 12 listings' blurbs, flagged
+`godot-mcp-enhanced` as the name most implying broader scope, and said the
+runtime-vs-editor claim needed a source-level check before it goes further
+into public copy (submission kit, 87s.6). Cloned
+`github.com/wgt19861219/godot-mcp-enhanced` at depth 1 and read source
+directly — not the README — against six questions.
+
+**1. Running game or editor-only?** Both, deliberately. It ships a documented
+"three-tier architecture": Headless CLI, Editor WebSocket, and a **Game
+Bridge — "TCP to running game": E2E testing, runtime debugging, input
+simulation, state verification** (`README.en.md:57-65`; Chinese original
+`README.md:76-84`). This is not aspirational copy — the runtime bridge is a
+real, separate GDScript autoload (`src/scripts/mcp_bridge.gd:1-14`, 1524
+lines) distinct from the editor plugin (`addons/godot_mcp_server/`,
+`plugin.cfg:4`: "AI Model Context Protocol bridge for **Godot Editor**").
+
+**2. Transport/protocol.** The editor layer is a WebSocket server inside the
+editor plugin (`addons/godot_mcp_server/websocket_server.gd`). The runtime
+layer is a **TCP server with an NDJSON protocol**, default port 9081, run as
+a project autoload (`mcp_bridge.gd:4-8`) — installed by copying the script
+into the project and registering it under `[autoload]` in `project.godot`
+(`src/tools/game-bridge.ts:545-586`, `game_bridge_install` action). Same
+concept as Stagehand's addon-as-autoload install, different wire format
+(NDJSON/TCP vs. our JSON-RPC 2.0/WebSocket).
+
+**3. Tool surface overlap.** The merged `game` tool
+(`src/tools/game-bridge.ts:370-402`) exposes `game_query` (`ping`,
+`get_tree`, `find_nodes`, `get_node_properties`, `get_performance`,
+`get_viewport_info`, `take_screenshot`), `game_write` (`set_node_property`,
+`call_method`), `game_input` (`send_key`, `send_mouse_click`,
+`send_mouse_move`, `send_text`, `send_touch`, `send_drag`), `game_wait`
+(`wait_for_node`, `wait_for_property`), plus `monitor_*`/`watch_*` property
+and signal timelines and `find_ui_elements`/`click_button`
+(`game-bridge.ts:384-388,704-751`). Direct overlap with our
+`find_nodes`/`click`/`get_tree`/`wait_for_node`/`wait_for_property`. No
+`wait_for_signal` equivalent found in the tool surface (only `watch_start`
+polling, not a blocking wait); no `evaluate`-equivalent arbitrary-expression
+runtime eval on the *game* bridge (arbitrary GDScript execution,
+`execute_gdscript`, is headless-only per the README's closed-loop diagram).
+
+**4. Input simulation / screenshots / visual diffing.** Input simulation is
+real and comparable to ours (mouse click/move, key, touch, drag, text —
+`game-bridge.ts:429-430`). Screenshots are real but narrower: the `screenshot`
+tool only does `capture` (headless, explicitly documented as experimental
+with a blank-frame warning) and `analyze` (hands the PNG to the *client's*
+vision capability as base64 — no built-in image comparison at all)
+(`src/tools/screenshot.ts:17-48,94-121`). Their "frame-verify" system
+archives captured frames to a `proof/<runId>/` bundle for review
+(`src/tools/frame-verify/proof-bundle.ts:1-13`) — grepped that whole
+directory for diff/baseline/compare logic and found none. **No automated
+pixel-diff or baseline-comparison feature exists anywhere in the source.**
+Our `screenshot_diff`/`screenshot_save_baseline` is a genuine, confirmed
+differentiator against this competitor.
+
+**5. CLI/CI story.** `package.json:16-19` exposes two binaries: the MCP
+server itself and a `godot-mcp-dashboard` TUI — no third, standalone
+scenario-runner binary. `src/cli/router.ts:8` lists exactly four subcommands:
+`setup`, `doctor`, `init`, `dashboard` — none of them "run a test scenario
+file and emit JUnit/exit code." A repo-wide grep for `junit`/`JUnit` returned
+nothing. There is a `verify_delivery`/`dev_loop` closed-loop concept
+(README) and an npm-side `score:gate` code-quality gate for *their own*
+CI — but nothing resembling our scenario runner (declarative scenario file →
+JUnit + exit code, usable from any CI without an MCP client in the loop).
+This is a real, confirmed gap on their side.
+
+**6. Activity, license, version support, install.** Very active: created
+2026-03-21, pushed 2026-07-26 (today), 76 stars, weekly-ish tagged releases
+through v0.24.0 (2026-07-25), per `gh repo view`. `LICENSE` is MIT text with
+three copyright holders (own author, Coding-Solo/godot-mcp, AssetForge) —
+GitHub's own detector classifies it as "Other," likely confused by the
+multi-holder header, but the license body itself is standard MIT. Godot
+support: README claims a "4.5–4.7 compat matrix," `README.en.md:165` says
+"tested 4.6+." Install path for the runtime bridge is the
+`game_bridge_install` tool call described in point 2 above, not a manual
+Asset-Library-style addon drop.
+
+### Verdict: the claim does NOT survive contact with the source
+
+**"Drives your running game, not the Godot editor" is false as stated
+against this competitor.** `godot-mcp-enhanced` has a real, working runtime
+bridge (`mcp_bridge.gd`) with input simulation, node queries, and screenshot
+capture against the *running game*, documented plainly as one of its three
+tiers (`README.en.md:65`). The accurate differentiators against this
+specific competitor are narrower than the blanket claim:
+
+- We have automated visual regression (`screenshot_diff` +
+  baselines); they only have raw capture + hand-off to client vision, no
+  diffing at all.
+- We have a standalone scenario runner with JUnit + exit codes usable from
+  any CI without an MCP client; they don't.
+- They cover far more ground *outside* runtime automation (33 tools / 199
+  actions: scenes, scripts, animation, physics, particles, navigation, audio,
+  3D asset generation, Blender modeling) — we are narrower and
+  runtime-focused by design, not by capability gap.
+
+A finding has been filed (see `.orchestrator-findings.jsonl`) to revise the
+public-copy sites that carry the blanket claim.
