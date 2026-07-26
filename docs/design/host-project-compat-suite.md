@@ -1,8 +1,14 @@
 # Host-project compatibility suite
 
-**Status:** design, awaiting review. Nothing here is implemented beyond the
+**Status:** **approved as written by Mark, 2026-07-26** — implementation is
+unlocked, in the order set out in Amendment 1 (`n7ib` first, then the fixtures
+the 0.3.1 bugs imply, then this suite). Nothing here is implemented beyond the
 manifest (`testdata/hostcompat/manifest.json`) and its validator
 (`internal/hostcompat/`). No CI workflow and no checkout script exist yet.
+
+Approval does not settle the two decisions recorded in Amendment 6 — the pin is
+not on a tag, and `content-scale` cannot be verified declaratively. Both gate
+*enabling* the Pixelorama manifest entry (epic step 3), not the earlier steps.
 
 **Read "Amendments — 2026-07-26 review pass" before the body.** Pixelorama has
 since been cloned and inspected at `93c0bef7`, and the 0.3.1 release reframed
