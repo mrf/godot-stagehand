@@ -9,21 +9,18 @@ External automation for running Godot games, exposed as an MCP server for AI age
 
 > ### Stagehand drives your *running game*, not the Godot editor.
 >
-> This is the thing to be clear about before you read any further, because most
-> Godot MCP servers do the opposite job. They are **authoring** tools: they open
-> the editor, create scenes and nodes, write scripts, wire up resources. An
-> agent building your game for you.
+> It has no editor integration, cannot create a scene, and never touches your
+> project files. It attaches to a game that is **already running and
+> playing** — clicking real buttons, reading real node state at runtime,
+> taking real screenshots of real frames.
 >
-> Stagehand does none of that. It has no editor integration, cannot create a
-> scene, and never touches your project files. It attaches to a game that is
-> **already running and playing**, clicking real buttons, reading real node
-> state at runtime, taking real screenshots of real frames, catching real
-> regressions.
+> What sets it apart from other runtime-capable tools: **automated visual
+> regression** (`screenshot_diff` against saved baselines, not just raw
+> capture) and a **standalone CI scenario runner** — JUnit output and exit
+> codes, usable in any pipeline without an MCP client.
 >
-> **Want an agent to _build_ your game? Use an editor MCP server.
-> Want one to _play and test_ it? That's this.**
->
-> The two are complements, not competitors, and plenty of projects will want both.
+> Editor-automation tools and Stagehand are complements, not competitors —
+> plenty of projects will want both.
 
 **Status: beta, pre-1.0.** Prebuilt binaries are published for Linux,
 macOS (Intel and Apple Silicon) and Windows — see [Setup](#setup).

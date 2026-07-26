@@ -10,18 +10,21 @@ couldn't be verified is labelled below rather than assumed.
 `releases/latest/download/...` links used below resolve correctly (checked via
 `curl -I`, confirmed 302 to `releases/download/v0.3.1/...`).
 
-**The positioning line every blurb below carries**: Stagehand drives your
-*running* game, not the Godot editor — this is deliberate (see growth plan
-"Positioning notes"), since the Godot MCP category is otherwise entirely
-editor/authoring tools.
+**The positioning line every blurb below carries**: Stagehand automates a
+*running* Godot game via MCP — its concrete edge over other runtime-capable
+Godot tools is automated visual regression (screenshot diffing against saved
+baselines, not just raw capture) and a standalone CI scenario runner (JUnit
+output, exit codes, no MCP client required). See growth plan "Competitor
+deep-dive: godot-mcp-enhanced" for the source-verified comparison this is
+based on.
 
 Standard one-line pitch (used verbatim or lightly trimmed to fit each
 target's format):
 
-> Godot Stagehand — MCP server and CLI that drives your *running* Godot game
-> (not the editor): click buttons, read node state, take screenshots, and
-> assert performance over a live WebSocket connection. Playwright, but for
-> game engines.
+> Godot Stagehand — MCP server and CLI for a *running* Godot game: click
+> buttons, read node state, take screenshots, diff them against saved
+> baselines, and run scenarios in CI with JUnit output and exit codes — no
+> MCP client required. Playwright, but for game engines.
 
 ---
 
@@ -73,7 +76,7 @@ the `io.github.<username>/` prefix). Draft `server.json` for when that's ready:
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.mrf/godot-stagehand",
   "title": "Godot Stagehand",
-  "description": "Drives your running Godot game (not the editor): click buttons, read node state, screenshots, performance assertions. Not an authoring/editor tool.",
+  "description": "Automates a running Godot game via MCP: click, read node state, screenshot + diff against baselines, performance asserts, plus a standalone CI scenario runner (JUnit, no MCP client needed).",
   "version": "0.3.1",
   "packages": [
     {
@@ -115,7 +118,7 @@ policy directly.
   let that block a correct alphabetical insert):
 
   ```markdown
-  - [mrf/godot-stagehand](https://github.com/mrf/godot-stagehand) 🏎️ 🏠 🍎 🪟 🐧 - Drives your *running* Godot game, not the editor: click buttons, read node state, take screenshots, assert performance over a live WebSocket connection. Playwright, but for game engines. MIT.
+  - [mrf/godot-stagehand](https://github.com/mrf/godot-stagehand) 🏎️ 🏠 🍎 🪟 🐧 - Automates a *running* Godot game via MCP: click, read node state, screenshots diffed against baselines, performance asserts, plus a standalone CI scenario runner (JUnit + exit codes, no MCP client needed). Playwright, but for game engines. MIT.
   ```
 
 - **PR title**: `Add Godot Stagehand to Gaming 🤖🤖🤖` (the agent-PR emoji
@@ -125,8 +128,10 @@ policy directly.
 - **PR body**:
   > Adds Godot Stagehand, an MCP server + CLI that automates a *running*
   > Godot game (clicking, node inspection, screenshots, performance
-  > assertions) rather than the editor — the existing Godot entries in this
-  > list are all editor/authoring tools. MIT licensed, cross-platform
+  > assertions). Its edge over other runtime-capable Godot tools: automated
+  > visual regression (screenshot diffing against baselines, not just raw
+  > capture) and a standalone CI scenario runner with JUnit output and exit
+  > codes, usable without an MCP client. MIT licensed, cross-platform
   > binaries, no Go toolchain required to use it.
   > Repo: https://github.com/mrf/godot-stagehand
 
@@ -148,16 +153,16 @@ policy directly.
   the top of the Gaming list):
 
   ```markdown
-  - <img src="https://cdn.simpleicons.org/godotengine/478CBF" height="14"/> [Godot Stagehand](https://github.com/mrf/godot-stagehand) - Drives your *running* Godot game, not the editor: click, read node state, screenshot, assert performance over a live connection.
+  - <img src="https://cdn.simpleicons.org/godotengine/478CBF" height="14"/> [Godot Stagehand](https://github.com/mrf/godot-stagehand) - Automates a *running* Godot game via MCP: click, read node state, screenshot + diff against baselines, assert performance, plus a standalone CI scenario runner (JUnit, no MCP client needed).
   ```
 
 - **PR title**: `Add Godot Stagehand to Gaming`
 - **PR body**:
-  > Godot Stagehand automates a *running* Godot game (not the editor) via MCP
-  > — clicking, node/property inspection, screenshots, performance
-  > assertions, input record/replay. Complements editor-automation tools;
-  > doesn't compete with them. MIT, prebuilt binaries for
-  > Linux/macOS/Windows.
+  > Godot Stagehand automates a *running* Godot game via MCP — clicking,
+  > node/property inspection, screenshots diffed against baselines,
+  > performance assertions, input record/replay, plus a standalone CI
+  > scenario runner (JUnit output, exit codes, no MCP client needed). MIT,
+  > prebuilt binaries for Linux/macOS/Windows.
 
 ### 2c. `wong2/awesome-mcp-servers` (4.2k★) — **not a PR target**
 
@@ -256,7 +261,7 @@ by search.
   style — name link, en-dash-free single sentence, period):
 
   ```markdown
-  - [Godot Stagehand](https://github.com/mrf/godot-stagehand) - External automation for a *running* Godot game — click buttons, read node state, take screenshots, assert performance — from outside the engine. Not an editor/authoring tool.
+  - [Godot Stagehand](https://github.com/mrf/godot-stagehand) - External automation for a *running* Godot game — click buttons, read node state, take screenshots and diff them against baselines, assert performance — plus a standalone CI scenario runner with JUnit output, usable without an MCP client.
   ```
 
 - **PR title**: `Add Godot Stagehand to Plugins and scripts`
