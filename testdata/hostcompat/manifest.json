@@ -6,29 +6,30 @@
       "name": "Pixelorama",
       "repo": "https://github.com/Orama-Interactive/Pixelorama",
       "ref": "main",
-      "godot_version": "4.6.3",
+      "commit": "93c0bef7b02dddc6cd720732c27c20c6119b4af0",
+      "godot_version": "4.6",
       "license": "MIT",
       "axes": ["own-cli-parser", "embedded-subwindows", "content-scale", "large-project"],
       "enabled": false,
       "claims": {
         "language": {
           "status": "verified",
-          "source": "br godot-stagehand-growth-distribution-87s.18 — Stagehand was installed into and run against a real Pixelorama checkout from this repo"
+          "source": "br godot-stagehand-growth-distribution-87s.18 — GDScript, no .csproj; Stagehand was installed into and run against a real Pixelorama checkout at 93c0bef7"
         },
         "godot_version": {
           "status": "verified",
-          "source": "br godot-stagehand-growth-distribution-87s.18 — 4.6.3, observed first-hand during that session"
+          "source": "project.godot at 93c0bef7 declares config/features=PackedStringArray(\"4.6\") — minor only, no patch. The earlier 4.6.3 claim was wrong; 87s.20 and 87s.21 both repro'd on Godot 4.6.2, so 4.6.x is what has actually been exercised"
         },
         "license": {
-          "status": "unverified",
-          "source": "WebSearch snippets say MIT; settle by reading LICENSE at the pinned SHA"
+          "status": "verified",
+          "source": "LICENSE at 93c0bef7 reads 'MIT License / Copyright (c) 2019-present Orama Interactive and contributors'"
         },
         "axes": {
           "status": "unverified",
-          "source": "own-cli-parser is strongly evidenced (pixelorama.org/user_manual/cli/ documents 'Pixelorama.x86_64 [SYSTEM OPTIONS] -- [USER OPTIONS] [FILES]' and br 87s.20 recorded the host rejecting --stagehand). content-scale is evidenced by 87s.18 observing /root content_scale_factor = 1.5. embedded-subwindows is evidenced by 87s.21 (synthesized input never reached embedded Window subwindows). Settle the remainder by reading project.godot at the pinned SHA"
+          "source": "own-cli-parser VERIFIED (br 87s.20 — host rejected --stagehand). embedded-subwindows VERIFIED (br 87s.21 — modal AcceptDialog splash at /root/Control/SplashDialog). content-scale VERIFIED BY OBSERVATION ONLY (87s.18 saw /root content_scale_factor = 1.5 at runtime) but NOT declarable from project.godot — 93c0bef7 has no stretch/content_scale keys at all, so Pixelorama sets it programmatically as a UI-scale preference. large-project is DOUBTFUL: 21 MB and 1362 tracked files at 93c0bef7 is not large, and the axis needs re-measuring by actual import time rather than repo size. Unassigned but evidenced: heavy-autoloads — project.godot declares 13 autoloads"
         }
       },
-      "notes": "Candidate #1; already earned its place — 87s.20, 87s.21 and the content_scale_factor finding all came from driving this project. UNVERIFIED: the ref/SHA to pin (search snippets suggested a v1.1.x line but named no confirmed tag), whether project.godot is at the repo root, and a report that the repo uses git submodules (which would need --recurse-submodules in the checkout step)."
+      "notes": "Candidate #1; already earned its place — 87s.20, 87s.21 and the content_scale_factor finding all came from driving this project. SETTLED at 93c0bef7 from a local checkout (br 87s.18): project.godot IS at the repo root (no project_subdir needed); there are NO git submodules (the earlier report was wrong — the checkout step needs no --recurse-submodules); LICENSE is MIT; 13 autoloads. STILL OPEN: (1) the pin is not on a tag — git describe gives v1.1.10-156-g93c0bef7, i.e. 156 commits past the last tag, committed 2026-07-23, so enabling this entry requires either pinning back to a real tag or amending the doc's no-branch-shaped-ref rule to 'SHA is authority, ref is prose'; (2) whether to reassign axes — heavy-autoloads is now evidenced here and large-project is not, which would change what the other candidates are needed for, so it is left alone pending review. NOT AN AXIS THIS PROJECT COVERS: warnings-as-errors. Pixelorama's project.godot only DISABLES two warnings (gdscript/warnings/return_value_discarded=false, narrowing_conversion=false) and sets no gdscript/warnings/*=2, so it cannot reproduce the host-strict-warnings failure that broke plugin.gd and editor/setup_panel.gd during Asset Library prep."
     },
     {
       "id": "material-maker",

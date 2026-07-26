@@ -2,8 +2,12 @@
 
 **Status:** design, awaiting review. Nothing here is implemented beyond the
 manifest (`testdata/hostcompat/manifest.json`) and its validator
-(`internal/hostcompat/`). No CI workflow exists yet; no third-party repository
-has been cloned.
+(`internal/hostcompat/`). No CI workflow and no checkout script exist yet.
+
+**Read "Amendments — 2026-07-26 review pass" before the body.** Pixelorama has
+since been cloned and inspected at `93c0bef7`, and the 0.3.1 release reframed
+what this suite is for; the amendments correct several facts and one priority
+call stated below, and they take precedence.
 
 **Issue:** `godot-stagehand-host-project-compat-suite-9py8`
 
@@ -228,7 +232,7 @@ is uncovered.
 
 | Project | Godot | Axes | Verification |
 | --- | --- | --- | --- |
-| Pixelorama | 4.6.3 | own-cli-parser, embedded-subwindows, content-scale, large-project | language + version **verified** (`87s.18`, first-hand); licence and pin unverified |
+| Pixelorama | 4.6 | own-cli-parser, embedded-subwindows, content-scale, large-project | language, version, licence and pin all **verified** at `93c0bef7` — see Amendment 6, which corrects the version and the `large-project` assignment |
 | Material Maker | 4.3 | own-cli-parser, embedded-subwindows | all unverified |
 | GodSVG | 4.5 | embedded-subwindows, content-scale | all unverified |
 | Tanks of Freedom II | 4.2 | heavy-autoloads | all unverified; only candidate with an independently confirmed release tag (`1.0.7`) |
@@ -314,6 +318,147 @@ children only become independent after (2).
 6. **Fill the 4.0/4.1 gap.** Deliberately last: it may turn out to be
    unfillable with a qualifying project, and that answer is worth writing down
    rather than blocking on.
+
+## Amendments — 2026-07-26 review pass
+
+Everything above this section is the original design. This section records what
+changed after (a) a real Pixelorama checkout was inspected at
+`93c0bef7b02dddc6cd720732c27c20c6119b4af0` and (b) the 0.3.1 release produced
+five hand-found bugs, which reframed what this suite is for. Where the two
+conflict, this section wins.
+
+### 1. This suite is not the release gate. Build it second.
+
+The motivating goal is *"one well-built Godot app always works, so a release
+needs no manual validation pass."* This suite does not deliver that, and it is
+important to say so before it is funded as if it did.
+
+0.3.1 shipped and immediately produced five bugs against two real games —
+`sprh`, `60sz`, `e9p9`, `0bdy`, `mt3i`. Checked one by one against a
+hypothetical Pixelorama host-compat job:
+
+| Bug | Caught here? | Why |
+| --- | --- | --- |
+| `sprh` paused tree → handshake never completes | **No** | needs a host that pauses its SceneTree at boot. Pixelorama is a tool app; it does not |
+| `60sz` `wait_for_property` stringified expected | **No** | lives in `internal/mcpserver/tools_wait.go`; scenarios run the CLI/`gwpop` path, which per `CLAUDE.md` deliberately does not route through `mcpserver` |
+| `e9p9` WSL → Windows GUI launch | **No** | hosted runners are Linux. Not automatable there at all |
+| `0bdy` port flag before `--` | No | catchable by a launch-arg test against our own fixture |
+| `mt3i` quit-on-disconnect, never-connected | No | catchable by a timing test against our own fixture |
+
+**A Pixelorama suite would have caught none of the five.** The release gate is a
+different, cheaper piece of work — `godot-stagehand-ci-godot-tagged-suite-unwired-n7ib`:
+CI currently runs 2 of the repo's 28 real-Godot test functions, because
+`ci.yml:209` is `go test -tags=godot -run '^TestScenarioRunner' … .` — root
+package only, two test names. Ten files and 26 tests under `internal/`,
+including the whole MVP tool smoke set and the auth boundary, have never gated a
+PR.
+
+This does not devalue the host suite. It corrects its claim: **host-compat is
+the realism axis** — it catches the `87s.20` / `87s.21` / content-scale class,
+which is invisible to fixtures we write ourselves because we share our own
+assumptions. It is not the thing that stops a repeat of the 0.3.1 afternoon.
+Sequence accordingly: `n7ib` first, then the fixtures the five bugs imply, then
+this.
+
+### 2. No fork is needed — the pin already does that work
+
+The question came up as "can we exercise the full tool surface without
+maintaining a Pixelorama fork?" Yes, and forking was never the mechanism. The
+checkout script clones a public repo at an immutable SHA on the runner; if the
+suite ever needs the host modified, that is a checked-in **overlay directory
+copied in post-checkout**, versioned next to the pin, with no fork lifecycle,
+no drift, and no loss of the "drives an unmodified third-party app" claim that
+the growth epic (`87s.7`) depends on.
+
+### 3. The narrow-surface rationale is partly self-defeating
+
+"Assertion surface — deliberately narrow" rejects `assert_property` because *"reads
+host state; their refactor turns us red."* That reason does not survive this
+document's own pinning rule: under an immutable SHA, upstream cannot turn us red.
+Only a pin bump can.
+
+So the honest cost of a wider surface is **pin-bump cost** — every property
+assertion re-derived and every baseline re-shot when the pin moves — not build
+instability. That is a much weaker argument for the closed allowlist, and it
+means the delivery-vs-effect line (open question 2) should be re-decided on
+maintenance grounds rather than on the red-build grounds currently stated. The
+allowlist stays as-is for now; the *reasoning* behind it needs replacing.
+
+### 4. `setup` is the first assertion, not plumbing
+
+The doc already says the install path is under test. Carried through to the job's
+structure, that means the first useful CI job needs no scenario, no xvfb, and no
+live GUI:
+
+```
+clone @ pinned SHA  →  godot-stagehand setup <checkout>  →  headless parse/import
+```
+
+and that a red build must be legible about *which* stage failed:
+
+| Stage fails | Reading |
+| --- | --- |
+| checkout / SHA mismatch | infrastructure — retry, never a compat failure |
+| `setup` | **our bug** |
+| parse / import | **our bug** |
+| launch / connect | **our bug** |
+| scenario assertions | **our bug** |
+
+Only the first row is ever noise. This also makes the first increment
+autonomously landable: the blocker that kept `87s.18` `needs-human` was that
+cloning is a remote git op reserved to Mark and driving a GUI is not a worker
+task. Neither applies to a CI runner cloning a public repo, and the
+setup+parse half never opens a window.
+
+Verified against the real checkout, `setup` behaves: it made exactly two
+additive edits to `project.godot`, preserving the four existing plugin entries
+alongside seven pre-existing addons. One open question — it inserts
+`StagehandServer` *ahead* of Pixelorama's own 13 autoloads rather than
+appending. Autoload declaration order is initialisation order, so this changes
+host init order. Deliberate, or incidental to how `setup` writes the section?
+
+### 5. Two axes are missing from the enum
+
+Both are real failure classes with prior form, and neither is in `knownAxes`:
+
+- **host-strict-warnings.** A host running `gdscript/warnings/*=2` with
+  `exclude_addons=false` previously failed to load `plugin.gd` and
+  `editor/setup_panel.gd` (found during Asset Library prep). **Pixelorama cannot
+  cover this** — it sets no warnings to error and merely disables two. This axis
+  needs a different host, or a CI-side override of the host's warnings config.
+- **paused-tree.** `sprh`: a host that pauses its SceneTree at boot accepts the
+  TCP connection but never completes the WebSocket handshake. Common in real
+  games, absent from every tool-app candidate in the set.
+
+### 6. Corrections to facts stated above
+
+Settled from the local checkout at `93c0bef7`; the manifest entry now carries
+the sources:
+
+- **`godot_version` was wrong.** `project.godot` declares
+  `config/features=PackedStringArray("4.6")` — minor only. The 4.6.3 in the
+  candidate table is not from the project; both bug repros ran on 4.6.2.
+- **Licence verified** — MIT, read from `LICENSE`.
+- **No submodules.** The manifest's report was wrong; the checkout step needs no
+  `--recurse-submodules`.
+- **`project.godot` is at the repo root** — no `project_subdir`.
+- **The pin is not on a tag.** `git describe` → `v1.1.10-156-g93c0bef7`, 156
+  commits past the last tag, committed 2026-07-23. The enable gate forbids an
+  enabled project having a branch-shaped `ref`, so enabling Pixelorama needs
+  either a pin back to a real tag or an amendment to that rule reading "the SHA
+  is the authority, `ref` is prose". **Decision needed.**
+- **"Known gaps" is wrong about how to verify `content-scale`.** It says to
+  confirm the axis by reading `project.godot` early. Reading it does *not*
+  confirm it: `93c0bef7` has no stretch or content-scale keys at all, yet
+  `87s.18` observed `content_scale_factor = 1.5` live. Pixelorama sets it
+  programmatically as a UI-scale preference. **A declarative check would have
+  produced a false negative and dropped a real axis.** Verify this axis at
+  runtime, not from `project.godot`.
+- **`large-project` is doubtful for Pixelorama** — 21 MB, 1362 tracked files.
+  Re-measure the axis by import time, not repo size.
+- **`heavy-autoloads` is evidenced here** — 13 autoloads. Not reassigned, because
+  moving it changes what the other candidates are needed for; that is a review
+  decision.
 
 ## Open questions for review
 
