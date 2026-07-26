@@ -417,6 +417,62 @@ func TestValidSelectorStillExitsConnectionWithNoServerRunning(t *testing.T) {
 	}
 }
 
+// TestEmptyRequiredStringExitsUsageWithNoServerRunning is the regression test
+// for godot-stagehand-xrpw: an empty scene_path/expression dialed Godot
+// before the slq3 fix reached them, reporting a connection failure (exit 3)
+// instead of the usage error (exit 2) that a bad param should always be.
+func TestEmptyRequiredStringExitsUsageWithNoServerRunning(t *testing.T) {
+	withToken(t)
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"scene", []string{"scene", "--port=1", "--timeout=3s", ""}, "scene_path"},
+		{"eval", []string{"eval", "--port=1", "--timeout=3s", ""}, "expression"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			code, _, stderr := invoke(t, tc.args...)
+			if code != ExitUsage {
+				t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitUsage, stderr)
+			}
+			if !strings.Contains(stderr, tc.want) {
+				t.Errorf("stderr %q does not name %q", stderr, tc.want)
+			}
+		})
+	}
+}
+
+// TestNegativeMaxDepthExitsUsageWithNoServerRunning is the regression test for
+// godot-stagehand-xrpw's second repro: a negative --max-depth must be caught
+// client-side before the dial, not reach Godot first.
+func TestNegativeMaxDepthExitsUsageWithNoServerRunning(t *testing.T) {
+	withToken(t)
+	code, _, stderr := invoke(t, "tree", "--port=1", "--timeout=3s", "--max-depth=-5")
+	if code != ExitUsage {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitUsage, stderr)
+	}
+	if !strings.Contains(stderr, "max_depth") {
+		t.Errorf("stderr %q does not name max_depth", stderr)
+	}
+}
+
+// TestUnknownPerformanceOpExitsUsageWithNoServerRunning is the regression test
+// for godot-stagehand-xrpw's third repro: an unrecognized --op must be caught
+// client-side before the dial.
+func TestUnknownPerformanceOpExitsUsageWithNoServerRunning(t *testing.T) {
+	withToken(t)
+	code, _, stderr := invoke(t, "performance", "--port=1", "--timeout=3s",
+		"--assert=TIME_FPS", "--threshold=1", "--op=bogus")
+	if code != ExitUsage {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitUsage, stderr)
+	}
+	if !strings.Contains(stderr, "op") {
+		t.Errorf("stderr %q does not name op", stderr)
+	}
+}
+
 // TestDialTimeoutExitsConnectionNotTimeout is the regression test for the
 // 521c832 lazy-dial fallout: a dial to a blackholed host (192.0.2.1, the
 // reserved TEST-NET-1 address, never routes and so times out rather than

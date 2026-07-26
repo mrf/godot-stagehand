@@ -16,6 +16,14 @@ import (
 // addon's wait_for_property handler.
 var Operators = []string{"equals", "not_equals", "contains", "exists", "greater_than", "less_than"}
 
+// PerformanceOps is assert_performance's comparison vocabulary, mirroring
+// addons/stagehand/core/performance_sampler.gd's OPERATORS constant.
+var PerformanceOps = []string{"lt", "lte", "gt", "gte", "eq"}
+
+// PerformanceStatistics is assert_performance's sampling-statistic vocabulary,
+// mirroring addons/stagehand/core/performance_sampler.gd's STATISTICS constant.
+var PerformanceStatistics = []string{"min", "max", "mean", "median", "p95"}
+
 // Compare evaluates `actual <operator> expected`. It is deliberately strict:
 // an ordering comparison on non-numbers is a scenario authoring bug, not a
 // silent false, because a silently-false assertion reads as a real regression.

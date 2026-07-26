@@ -272,6 +272,158 @@ func TestFocusWindowSelectorIsValidated(t *testing.T) {
 	}
 }
 
+// TestExecuteRejectsEmptyRequiredStringParams is the regression test for
+// godot-stagehand-xrpw: 521c832 made a bad param a usage error even with
+// nothing listening, but spec.Params only checked presence, not emptiness,
+// for plain string params — so an empty scene_path/expression/etc. dialed
+// first and reported a connection failure instead of a usage error.
+func TestExecuteRejectsEmptyRequiredStringParams(t *testing.T) {
+	cases := []struct {
+		action string
+		params map[string]any
+		want   string
+	}{
+		{"change_scene", map[string]any{"scene_path": ""}, "scene_path"},
+		{"evaluate", map[string]any{"expression": ""}, "expression"},
+		{"call_method", map[string]any{"selector": "name:X", "method": ""}, "method"},
+		{"get_property", map[string]any{"selector": "name:X", "property": ""}, "property"},
+		{"set_property", map[string]any{"selector": "name:X", "property": "", "value": 1}, "property"},
+		{"press_key", map[string]any{"key": ""}, "key"},
+		{"press_action", map[string]any{"action": ""}, "action"},
+		{"wait_for_signal", map[string]any{"selector": "name:X", "signal_name": ""}, "signal_name"},
+		{"wait_for_property", map[string]any{"selector": "name:X", "property": "", "operator": "exists"}, "property"},
+		{"assert_performance", map[string]any{"monitor": "", "threshold": 30.0}, "monitor"},
+		{"record_start", map[string]any{"output_path": ""}, "output_path"},
+		{"replay", map[string]any{"input_path": ""}, "input_path"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.action, func(t *testing.T) {
+			caller := &recordingCaller{}
+			_, err := Execute(context.Background(), caller, Op{Action: tc.action, Params: tc.params})
+			if err == nil {
+				t.Fatalf("Execute accepted an empty %q", tc.want)
+			}
+			if KindOf(err) != KindUsage {
+				t.Errorf("KindOf = %v, want KindUsage", KindOf(err))
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error %q does not name the empty parameter %q", err, tc.want)
+			}
+			if caller.calls != 0 {
+				t.Errorf("an empty required %q must not reach the wire", tc.want)
+			}
+		})
+	}
+}
+
+// set_property's "value" is a data payload, not an identifier — an empty
+// string is a legitimate value to write, so it must not be rejected the way
+// an empty "property" name is.
+func TestSetPropertyAllowsEmptyStringValue(t *testing.T) {
+	caller := &recordingCaller{}
+	_, err := Execute(context.Background(), caller, Op{
+		Action: "set_property",
+		Params: map[string]any{"selector": "name:X", "property": "text", "value": ""},
+	})
+	if err != nil {
+		t.Fatalf("Execute rejected an empty string value: %v", err)
+	}
+	if caller.calls != 1 {
+		t.Error("a legitimate empty string value must reach the wire")
+	}
+}
+
+func TestExecuteRejectsNegativeMaxDepth(t *testing.T) {
+	caller := &recordingCaller{}
+	_, err := Execute(context.Background(), caller, Op{
+		Action: "tree",
+		Params: map[string]any{"max_depth": -5},
+	})
+	if err == nil {
+		t.Fatal("Execute accepted a negative max_depth")
+	}
+	if KindOf(err) != KindUsage {
+		t.Errorf("KindOf = %v, want KindUsage", KindOf(err))
+	}
+	if !strings.Contains(err.Error(), "max_depth") {
+		t.Errorf("error %q does not name max_depth", err)
+	}
+	if caller.calls != 0 {
+		t.Error("a negative max_depth must not reach the wire")
+	}
+}
+
+func TestExecuteRejectsNegativeFindLimit(t *testing.T) {
+	caller := &recordingCaller{}
+	_, err := Execute(context.Background(), caller, Op{
+		Action: "find",
+		Params: map[string]any{"selector": "class:Button", "limit": -1},
+	})
+	if err == nil {
+		t.Fatal("Execute accepted a negative limit")
+	}
+	if KindOf(err) != KindUsage {
+		t.Errorf("KindOf = %v, want KindUsage", KindOf(err))
+	}
+	if caller.calls != 0 {
+		t.Error("a negative limit must not reach the wire")
+	}
+}
+
+func TestExecuteRejectsUnknownPerformanceOp(t *testing.T) {
+	caller := &recordingCaller{}
+	_, err := Execute(context.Background(), caller, Op{
+		Action: "assert_performance",
+		Params: map[string]any{"monitor": "TIME_FPS", "threshold": 1.0, "op": "bogus"},
+	})
+	if err == nil {
+		t.Fatal("Execute accepted an unknown performance op")
+	}
+	if KindOf(err) != KindUsage {
+		t.Errorf("KindOf = %v, want KindUsage", KindOf(err))
+	}
+	if !strings.Contains(err.Error(), "op") {
+		t.Errorf("error %q does not name the op parameter", err)
+	}
+	if caller.calls != 0 {
+		t.Error("an unknown op must not reach the wire")
+	}
+}
+
+func TestExecuteRejectsUnknownPerformanceStatistic(t *testing.T) {
+	caller := &recordingCaller{}
+	_, err := Execute(context.Background(), caller, Op{
+		Action: "assert_performance",
+		Params: map[string]any{"monitor": "TIME_FPS", "threshold": 1.0, "statistic": "bogus"},
+	})
+	if err == nil {
+		t.Fatal("Execute accepted an unknown performance statistic")
+	}
+	if KindOf(err) != KindUsage {
+		t.Errorf("KindOf = %v, want KindUsage", KindOf(err))
+	}
+	if caller.calls != 0 {
+		t.Error("an unknown statistic must not reach the wire")
+	}
+}
+
+func TestExecuteRejectsUnknownWaitOperator(t *testing.T) {
+	caller := &recordingCaller{}
+	_, err := Execute(context.Background(), caller, Op{
+		Action: "wait_for_property",
+		Params: map[string]any{"selector": "name:X", "property": "visible", "operator": "approximately"},
+	})
+	if err == nil {
+		t.Fatal("Execute accepted an unknown wait operator")
+	}
+	if KindOf(err) != KindUsage {
+		t.Errorf("KindOf = %v, want KindUsage", KindOf(err))
+	}
+	if caller.calls != 0 {
+		t.Error("an unknown operator must not reach the wire")
+	}
+}
+
 func TestActionsAreSortedAndCoverThePublicSurface(t *testing.T) {
 	actions := Actions()
 	for _, want := range []string{

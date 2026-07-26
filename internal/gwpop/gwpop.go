@@ -124,8 +124,21 @@ type Spec struct {
 	Optional []string
 	// OneOf groups: at least one member of each group must be supplied.
 	OneOf [][]string
-	// Selectors names the parameters validated with selector.ParseChain.
+	// Selectors names the parameters validated with selector.ParseChain,
+	// whose own emptiness check ("selector is empty") already covers this
+	// class of bug for those params.
 	Selectors []string
+	// RequiredNonEmpty names Required string parameters that are identifiers
+	// (a path, name, or expression) rather than a data payload — an empty
+	// string is meaningless and a usage error, unlike e.g. set_property's
+	// "value", which may legitimately be "".
+	RequiredNonEmpty []string
+	// NonNegativeInts names integer parameters that must be >= 0 when
+	// supplied, e.g. tree's max_depth or find's limit.
+	NonNegativeInts []string
+	// Enums maps a parameter name to its closed vocabulary; a supplied value
+	// outside the list is a usage error caught before the dial.
+	Enums map[string][]string
 	// TimeoutParam, when set, names the millisecond parameter that bounds the
 	// remote operation. The Go-side deadline is that value plus DeadlineBuffer.
 	TimeoutParam string
@@ -153,59 +166,74 @@ func buildSpecs() map[string]Spec {
 			Summary: "Report the current scene, FPS, physics state and window size"},
 		{Action: "tree", Method: "get_tree", Capability: gwp.CapabilityCore,
 			Optional: []string{"root_path", "max_depth", "properties"}, Selectors: []string{"root_path"},
-			Summary: "Snapshot the scene tree"},
+			NonNegativeInts: []string{"max_depth"},
+			Summary:         "Snapshot the scene tree"},
 		{Action: "find", Method: "query_nodes", Capability: gwp.CapabilityCore,
 			Required: []string{"selector"}, Optional: []string{"properties", "limit"}, Selectors: []string{"selector"},
-			Summary: "Find nodes matching a selector"},
+			NonNegativeInts: []string{"limit"},
+			Summary:         "Find nodes matching a selector"},
 		{Action: "get_property", Method: "get_property", Capability: gwp.CapabilityCore,
 			Required: []string{"selector", "property"}, Selectors: []string{"selector"},
-			Summary: "Read a node property"},
+			RequiredNonEmpty: []string{"property"},
+			Summary:          "Read a node property"},
 		{Action: "set_property", Method: "set_property", Capability: gwp.CapabilityCore,
 			Required: []string{"selector", "property", "value"}, Selectors: []string{"selector"},
-			Summary: "Write a node property"},
+			RequiredNonEmpty: []string{"property"},
+			Summary:          "Write a node property"},
 		{Action: "call_method", Method: "call_method", Capability: gwp.CapabilityUnsafe,
 			Required: []string{"selector", "method"}, Optional: []string{"args", "allow_multiple"}, Selectors: []string{"selector"},
-			Summary: "Call a method on a node (destructive and private methods are blocked)"},
+			RequiredNonEmpty: []string{"method"},
+			Summary:          "Call a method on a node (destructive and private methods are blocked)"},
 		{Action: "evaluate", Method: "evaluate", Capability: gwp.CapabilityUnsafe,
 			Required: []string{"expression"}, Optional: []string{"context_node"}, Selectors: []string{"context_node"},
-			Summary: "Evaluate a GDScript expression"},
+			RequiredNonEmpty: []string{"expression"},
+			Summary:          "Evaluate a GDScript expression"},
 		{Action: "change_scene", Method: "change_scene", Capability: gwp.CapabilityCore,
-			Required: []string{"scene_path"},
-			Summary:  "Change to a different scene"},
+			Required:         []string{"scene_path"},
+			RequiredNonEmpty: []string{"scene_path"},
+			Summary:          "Change to a different scene"},
 
 		{Action: "click", Method: "input_mouse", Capability: gwp.CapabilityInput,
 			OneOf: [][]string{{"selector", "position"}}, Optional: []string{"selector", "position", "button", "double_click"}, Selectors: []string{"selector"},
 			Summary: "Click a node or screen coordinates"},
 		{Action: "press_key", Method: "input_key", Capability: gwp.CapabilityInput,
 			Required: []string{"key"}, Optional: []string{"modifiers", "hold_ms"},
+			RequiredNonEmpty: []string{"key"}, NonNegativeInts: []string{"hold_ms"},
 			Summary: "Press a keyboard key"},
 		{Action: "focus_window", Method: "focus_window", Capability: gwp.CapabilityInput,
 			Optional: []string{"selector"}, Selectors: []string{"selector"},
 			Summary: "Give a Window focus so key input reaches it (defaults to the modal that lost focus)"},
 		{Action: "press_action", Method: "input_action", Capability: gwp.CapabilityInput,
 			Required: []string{"action"}, Optional: []string{"strength", "hold_ms"},
+			RequiredNonEmpty: []string{"action"}, NonNegativeInts: []string{"hold_ms"},
 			Summary: "Trigger a Godot input action"},
 		{Action: "type_text", Method: "input_text", Capability: gwp.CapabilityInput,
 			Required: []string{"text"}, Optional: []string{"delay_ms", "selector"}, Selectors: []string{"selector"},
-			Summary: "Type text into the focused control"},
+			NonNegativeInts: []string{"delay_ms"},
+			Summary:         "Type text into the focused control"},
 		{Action: "mouse_move", Method: "input_mouse_move", Capability: gwp.CapabilityInput,
 			OneOf: [][]string{{"selector", "coordinates"}}, Optional: []string{"selector", "coordinates"}, Selectors: []string{"selector"},
 			Summary: "Move the mouse cursor without clicking"},
 		{Action: "touch", Method: "input_touch", Capability: gwp.CapabilityInput,
 			Required: []string{"position"}, Optional: []string{"index", "action", "drag_to", "duration_ms"},
-			Summary: "Simulate a touch or drag"},
+			NonNegativeInts: []string{"index", "duration_ms"},
+			Summary:         "Simulate a touch or drag"},
 
 		{Action: "wait_for_node", Method: "wait_for_node", Capability: gwp.CapabilityWait,
 			Required: []string{"selector"}, Optional: []string{"state", "timeout_ms", "poll_interval_ms"}, Selectors: []string{"selector"},
 			TimeoutParam: "timeout_ms", DefaultTimeoutMs: 10000,
-			Summary: "Wait for a node to exist, become visible, or be removed"},
+			NonNegativeInts: []string{"poll_interval_ms"},
+			Summary:         "Wait for a node to exist, become visible, or be removed"},
 		{Action: "wait_for_signal", Method: "wait_signal", Capability: gwp.CapabilityWait,
 			Required: []string{"selector", "signal_name"}, Optional: []string{"timeout_ms"}, Selectors: []string{"selector"},
 			TimeoutParam: "timeout_ms", DefaultTimeoutMs: 5000,
-			Summary: "Wait for a signal emission"},
+			RequiredNonEmpty: []string{"signal_name"},
+			Summary:          "Wait for a signal emission"},
 		{Action: "wait_for_property", Method: "wait_for_property", Capability: gwp.CapabilityWait,
 			Required: []string{"selector", "property", "operator"}, Optional: []string{"expected_value", "timeout_ms", "poll_interval_ms"}, Selectors: []string{"selector"},
 			TimeoutParam: "timeout_ms", DefaultTimeoutMs: 10000,
+			RequiredNonEmpty: []string{"property"}, NonNegativeInts: []string{"poll_interval_ms"},
+			Enums:   map[string][]string{"operator": Operators},
 			Summary: "Wait for a property to satisfy a condition"},
 
 		// "screenshot" is registered here only so Capture (which always calls
@@ -227,16 +255,21 @@ func buildSpecs() map[string]Spec {
 			Optional: []string{
 				"op", "statistic", "warmup_ms", "sample_interval_ms", "sample_count", "duration_ms",
 			},
-			Summary: "Assert a performance monitor against a threshold"},
+			RequiredNonEmpty: []string{"monitor"},
+			NonNegativeInts:  []string{"warmup_ms", "sample_interval_ms", "sample_count", "duration_ms"},
+			Enums:            map[string][]string{"op": PerformanceOps, "statistic": PerformanceStatistics},
+			Summary:          "Assert a performance monitor against a threshold"},
 
 		{Action: "record_start", Method: "record_start", Capability: gwp.CapabilityRecording,
-			Required: []string{"output_path"},
-			Summary:  "Start recording input"},
+			Required:         []string{"output_path"},
+			RequiredNonEmpty: []string{"output_path"},
+			Summary:          "Start recording input"},
 		{Action: "record_stop", Method: "record_stop", Capability: gwp.CapabilityRecording,
 			Summary: "Stop the active recording"},
 		{Action: "replay", Method: "replay", Capability: gwp.CapabilityRecording,
-			Required: []string{"input_path"},
-			Summary:  "Replay a recorded input session"},
+			Required:         []string{"input_path"},
+			RequiredNonEmpty: []string{"input_path"},
+			Summary:          "Replay a recorded input session"},
 	}
 	byName := make(map[string]Spec, len(list))
 	for _, spec := range list {
@@ -331,6 +364,37 @@ func (s Spec) Params(supplied map[string]any) (map[string]any, error) {
 	for _, name := range s.Required {
 		if _, ok := out[name]; !ok {
 			return nil, newError(KindUsage, s.Action, "missing required parameter %q", name)
+		}
+	}
+	for _, name := range s.RequiredNonEmpty {
+		if text, ok := out[name].(string); ok && text == "" {
+			return nil, newError(KindUsage, s.Action, "parameter %q must not be empty", name)
+		}
+	}
+	for _, name := range s.NonNegativeInts {
+		raw, ok := out[name]
+		if !ok {
+			continue
+		}
+		n, ok := asInt(raw)
+		if !ok {
+			return nil, newError(KindUsage, s.Action, "parameter %q must be an integer, got %v", name, raw)
+		}
+		if n < 0 {
+			return nil, newError(KindUsage, s.Action, "parameter %q must not be negative, got %d", name, n)
+		}
+	}
+	for name, allowed := range s.Enums {
+		raw, ok := out[name]
+		if !ok {
+			continue
+		}
+		text, ok := raw.(string)
+		if !ok {
+			return nil, newError(KindUsage, s.Action, "parameter %q must be a string", name)
+		}
+		if !slices.Contains(allowed, text) {
+			return nil, newError(KindUsage, s.Action, "parameter %q must be one of %s, got %q", name, strings.Join(allowed, ", "), text)
 		}
 	}
 	for _, group := range s.OneOf {
