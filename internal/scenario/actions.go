@@ -109,6 +109,19 @@ func validateStepSemantics(step Step) error {
 		if err := visual.ValidateName(name); err != nil {
 			return err
 		}
+		if step.Action == ActionScreenshotDiff {
+			// Mirrors the 0..1 range the MCP frontend already enforces via
+			// boundedNumber (internal/mcpserver/numeric.go), so the two
+			// frontends agree on the same contract instead of the scenario
+			// side silently accepting a threshold>1 (vacuously-passing diff)
+			// or a quoted string (collapses to 0.0 via asFloatOr).
+			if err := validateUnitRangeParam(step.With, "threshold"); err != nil {
+				return err
+			}
+			if err := validateUnitRangeParam(step.With, "pixel_sensitivity"); err != nil {
+				return err
+			}
+		}
 	case ActionAssertProperty, ActionAssertNodes:
 		return validateAssertion(step)
 	case "wait_for_property":
@@ -175,6 +188,25 @@ func asPositiveInt(v any) (int, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// validateUnitRangeParam checks an optional [0, 1] step parameter, if
+// present: it must be a JSON number (a quoted string decodes to Go's string
+// type, not float64, so asFloatOr's fallback would otherwise silently mask
+// it) and within range. Absence is valid; asFloatOr's fallback then applies.
+func validateUnitRangeParam(with map[string]any, key string) error {
+	v, present := with[key]
+	if !present {
+		return nil
+	}
+	n, ok := v.(float64)
+	if !ok {
+		return fmt.Errorf("%s must be a number, got %T", key, v)
+	}
+	if n < 0 || n > 1 {
+		return fmt.Errorf("%s %v is outside the valid range (0-1)", key, n)
+	}
+	return nil
 }
 
 func asFloatOr(v any, fallback float64) float64 {

@@ -254,6 +254,51 @@ func TestParseAcceptsSafeBaselineName(t *testing.T) {
 	}
 }
 
+// TestParseValidatesScreenshotDiffRange pins threshold/pixel_sensitivity to
+// the same 0..1 range and numeric-type check the MCP frontend already
+// enforces (internal/mcpserver/tools_visual.go), closing the gap where the
+// scenario loader accepted out-of-range or string values that silently broke
+// the visual assertion at run time instead of failing at load time.
+func TestParseValidatesScreenshotDiffRange(t *testing.T) {
+	tests := []struct {
+		name    string
+		with    string
+		wantErr bool
+	}{
+		{"threshold above range", `"threshold": 100`, true},
+		{"threshold below range", `"threshold": -5`, true},
+		{"threshold as string", `"threshold": "0.1"`, true},
+		{"threshold zero boundary", `"threshold": 0`, false},
+		{"threshold one boundary", `"threshold": 1`, false},
+		{"threshold omitted", "", false},
+		{"pixel_sensitivity above range", `"pixel_sensitivity": 100`, true},
+		{"pixel_sensitivity below range", `"pixel_sensitivity": -5`, true},
+		{"pixel_sensitivity as string", `"pixel_sensitivity": "0.1"`, true},
+		{"pixel_sensitivity zero boundary", `"pixel_sensitivity": 0`, false},
+		{"pixel_sensitivity one boundary", `"pixel_sensitivity": 1`, false},
+		{"pixel_sensitivity omitted", "", false},
+		{"both out of range", `"threshold": 100, "pixel_sensitivity": -5`, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			with := `"name": "menu.1080p"`
+			if tt.with != "" {
+				with += ", " + tt.with
+			}
+			_, err := Parse([]byte(`{
+				"target": {"mode": "launch", "project_path": "p", "headless": false},
+				"steps": [{"action": "screenshot_diff", "with": {` + with + `}}]
+			}`))
+			if tt.wantErr && err == nil {
+				t.Errorf("Parse accepted invalid screenshot_diff params (with: %s)", tt.with)
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("Parse rejected valid screenshot_diff params (with: %s): %v", tt.with, err)
+			}
+		})
+	}
+}
+
 func TestParseRejectsBlockedMethodCall(t *testing.T) {
 	_, err := Parse([]byte(`{
 		"target": {"mode": "launch", "project_path": "p"},
