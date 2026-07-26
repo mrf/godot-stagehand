@@ -37,9 +37,9 @@ func evaluate_property_condition(node: Node, property_name: String, operator: St
 
 	match operator:
 		"equals":
-			return actual_value == expected_value
+			return actual_value == _parse_stringified_expected(expected_value, actual_value)
 		"not_equals":
-			return actual_value != expected_value
+			return actual_value != _parse_stringified_expected(expected_value, actual_value)
 		"exists":
 			return actual_value != null
 		"contains":
@@ -56,15 +56,17 @@ func evaluate_property_condition(node: Node, property_name: String, operator: St
 				return d.has(expected_value)
 			return false
 		"greater_than":
+			var parsed_expected: Variant = _parse_stringified_expected(expected_value, actual_value)
 			var actual_f: float = _to_float(actual_value)
-			var expected_f: float = _to_float(expected_value)
-			if (actual_value is float or actual_value is int) and (expected_value is float or expected_value is int):
+			var expected_f: float = _to_float(parsed_expected)
+			if (actual_value is float or actual_value is int) and (parsed_expected is float or parsed_expected is int):
 				return actual_f > expected_f
 			return false
 		"less_than":
+			var parsed_expected: Variant = _parse_stringified_expected(expected_value, actual_value)
 			var actual_f: float = _to_float(actual_value)
-			var expected_f: float = _to_float(expected_value)
-			if (actual_value is float or actual_value is int) and (expected_value is float or expected_value is int):
+			var expected_f: float = _to_float(parsed_expected)
+			if (actual_value is float or actual_value is int) and (parsed_expected is float or parsed_expected is int):
 				return actual_f < expected_f
 			return false
 		_:
@@ -236,3 +238,25 @@ static func _to_float(v: Variant) -> float:
 		var i: int = v
 		return float(i)
 	return 0.0
+
+
+## JSON-decode a stringified `expected_value` when the actual property value's
+## type cannot hold text. Mirrors property_handler.gd's _parse_stringified_json
+## so a client that left expected_value untyped (godot-stagehand-wait-for-property-
+## stringified-expected-60sz) and sent it as raw JSON text still compares
+## correctly against a numeric or boolean property — but "equals"/"not_equals"
+## against a String property must keep comparing the string literally.
+## JSON.new().parse() is used over JSON.parse_string() because the latter
+## pushes an engine error into the host game's log on every non-JSON string.
+static func _parse_stringified_expected(expected_value: Variant, actual_value: Variant) -> Variant:
+	if not (expected_value is String):
+		return expected_value
+	if actual_value == null or actual_value is String or actual_value is StringName:
+		return expected_value
+	var text: String = expected_value
+	var json: JSON = JSON.new()
+	if json.parse(text) != OK:
+		return expected_value
+	if json.data == null:
+		return expected_value
+	return json.data

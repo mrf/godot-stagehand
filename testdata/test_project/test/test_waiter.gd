@@ -200,6 +200,74 @@ func test_numeric_operator_on_non_numeric_value_is_false() -> void:
 	).is_false()
 
 
+# ── stringified expected_value (godot-stagehand-wait-for-property-stringified-expected-60sz) ──
+
+func test_equals_matches_stringified_int() -> void:
+	var holder: Node = auto_free(Node.new())
+	holder.set_script(preload("res://scripts/property_target.gd"))
+	add_child(holder)
+	assert_bool(
+		_waiter.evaluate_property_condition(holder, "count_prop", "equals", "5")
+	).is_true()
+
+
+func test_equals_matches_stringified_float() -> void:
+	var holder: Node = auto_free(Node.new())
+	holder.set_script(preload("res://scripts/property_target.gd"))
+	add_child(holder)
+	assert_bool(
+		_waiter.evaluate_property_condition(holder, "ratio_prop", "equals", "0.5")
+	).is_true()
+
+
+func test_equals_matches_stringified_bool() -> void:
+	var holder: Node = auto_free(Node.new())
+	holder.set_script(preload("res://scripts/property_target.gd"))
+	add_child(holder)
+	assert_bool(
+		_waiter.evaluate_property_condition(holder, "flag_prop", "equals", "true")
+	).is_true()
+
+
+func test_not_equals_rejects_stringified_int_match() -> void:
+	var holder: Node = auto_free(Node.new())
+	holder.set_script(preload("res://scripts/property_target.gd"))
+	add_child(holder)
+	assert_bool(
+		_waiter.evaluate_property_condition(holder, "count_prop", "not_equals", "5")
+	).is_false()
+
+
+func test_equals_on_string_property_still_compares_stringified_expected_literally() -> void:
+	# Target-awareness: text_prop = "50" must stay two characters, so "equals"
+	# with a stringified expected_value of "50" must not be JSON-decoded away.
+	var holder: Node = auto_free(Node.new())
+	holder.set_script(preload("res://scripts/property_target.gd"))
+	holder.set("text_prop", "50")
+	add_child(holder)
+	assert_bool(
+		_waiter.evaluate_property_condition(holder, "text_prop", "equals", "50")
+	).is_true()
+
+
+func test_greater_than_matches_stringified_number() -> void:
+	var holder: Node = auto_free(Node.new())
+	holder.set_script(preload("res://scripts/property_target.gd"))
+	add_child(holder)
+	assert_bool(
+		_waiter.evaluate_property_condition(holder, "count_prop", "greater_than", "3")
+	).is_true()
+
+
+func test_less_than_matches_stringified_number() -> void:
+	var holder: Node = auto_free(Node.new())
+	holder.set_script(preload("res://scripts/property_target.gd"))
+	add_child(holder)
+	assert_bool(
+		_waiter.evaluate_property_condition(holder, "count_prop", "less_than", "10")
+	).is_true()
+
+
 func test_unknown_property_is_false() -> void:
 	assert_bool(
 		_waiter.evaluate_property_condition(_probe, "no_such_property", "exists", null)
