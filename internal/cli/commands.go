@@ -154,7 +154,7 @@ var cmdProperty = &command{
 
 var cmdCall = &command{
 	name: "call", usage: "--port N <selector> <method> [--args '[1,\"two\"]']", connects: true,
-	summary: "Call a method on a node",
+	summary: "Call a method on a node (needs a game launched with unsafe methods enabled)",
 	run: func(ctx context.Context, e *env, cmd *command, args []string) error {
 		var argsJSON string
 		var allowMultiple bool

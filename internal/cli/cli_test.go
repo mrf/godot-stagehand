@@ -164,6 +164,28 @@ func TestHelpExitsZeroAndListsCommands(t *testing.T) {
 	}
 }
 
+func TestCallHelpCarriesUnsafeCaveat(t *testing.T) {
+	code, stdout, _ := invoke(t, "help")
+	if code != ExitOK {
+		t.Fatalf("help exit = %d, want %d", code, ExitOK)
+	}
+	for _, line := range strings.Split(stdout, "\n") {
+		if strings.Contains(line, "call") && strings.HasPrefix(strings.TrimSpace(line), "call") {
+			if !strings.Contains(line, "unsafe methods enabled") {
+				t.Errorf("top-level help call summary missing unsafe caveat: %q", line)
+			}
+		}
+	}
+
+	code, _, stderr := invoke(t, "call", "--help")
+	if code != ExitOK {
+		t.Fatalf("call --help exit = %d, want %d", code, ExitOK)
+	}
+	if !strings.Contains(stderr, "unsafe methods enabled") {
+		t.Errorf("call --help missing unsafe caveat: %q", stderr)
+	}
+}
+
 func TestUnknownCommandIsUsageError(t *testing.T) {
 	code, _, stderr := invoke(t, "teleport")
 	if code != ExitUsage {
