@@ -42,11 +42,15 @@ var maxDepthOpt = mcp.WithNumber("max_depth",
 // subtreeParams builds the {root_path, max_depth} GWP params those tools send.
 // Defaults are resolved here rather than in the addon so the wire message is
 // always fully specified.
-func subtreeParams(req mcp.CallToolRequest) map[string]any {
+func subtreeParams(req mcp.CallToolRequest) (map[string]any, *mcp.CallToolResult) {
+	maxDepth, errResult := boundedInt(req, "max_depth", 10, 1, 50)
+	if errResult != nil {
+		return nil, errResult
+	}
 	return map[string]any{
 		"root_path": req.GetString("root_path", "/root"),
-		"max_depth": req.GetInt("max_depth", 10),
-	}
+		"max_depth": maxDepth,
+	}, nil
 }
 
 // defaultGodotCallTimeout bounds ordinary Godot RPCs so a silent peer cannot

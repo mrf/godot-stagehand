@@ -168,6 +168,15 @@ func (s *Server) handleScreenshotDiff(ctx context.Context, req mcp.CallToolReque
 		return mcp.NewToolResultError("Invalid 'name' parameter: " + err.Error()), nil
 	}
 
+	threshold, errResult := boundedNumber(req, "threshold", 0.0, 0, 1)
+	if errResult != nil {
+		return errResult, nil
+	}
+	pixelSensitivity, errResult := boundedNumber(req, "pixel_sensitivity", 0.0, 0, 1)
+	if errResult != nil {
+		return errResult, nil
+	}
+
 	shot, err := s.captureScreenshot(ctx, instanceID, req)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -178,8 +187,8 @@ func (s *Server) handleScreenshotDiff(ctx context.Context, req mcp.CallToolReque
 		ArtifactDir:      s.artifactDir,
 		Name:             name,
 		Selector:         req.GetString("selector", ""),
-		Threshold:        req.GetFloat("threshold", 0.0),
-		PixelSensitivity: req.GetFloat("pixel_sensitivity", 0.0),
+		Threshold:        threshold,
+		PixelSensitivity: pixelSensitivity,
 	}, shot)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil

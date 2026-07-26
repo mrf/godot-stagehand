@@ -31,7 +31,10 @@ var getAccessibilityTreeTool = mcp.NewTool("godot_get_accessibility_tree",
 
 func (s *Server) handleGetAccessibilityTree(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	instanceID := req.GetString("instance_id", "default")
-	params := subtreeParams(req)
+	params, errResult := subtreeParams(req)
+	if errResult != nil {
+		return errResult, nil
+	}
 
 	result, errResult := s.callGodotInstance(ctx, instanceID, "get_accessibility_tree", params)
 	if errResult != nil {

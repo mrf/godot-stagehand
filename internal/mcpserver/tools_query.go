@@ -20,7 +20,10 @@ var getTreeTool = mcp.NewTool("godot_get_tree",
 
 func (s *Server) handleGetTree(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	instanceID := req.GetString("instance_id", "default")
-	params := subtreeParams(req)
+	params, errResult := subtreeParams(req)
+	if errResult != nil {
+		return errResult, nil
+	}
 	if props := req.GetStringSlice("include_properties", nil); len(props) > 0 {
 		params["properties"] = props
 	}
@@ -63,9 +66,13 @@ func (s *Server) handleFindNodes(ctx context.Context, req mcp.CallToolRequest) (
 		return errResult, nil
 	}
 
+	limit, errResult := boundedInt(req, "limit", 50, 1, 500)
+	if errResult != nil {
+		return errResult, nil
+	}
 	params := map[string]any{
 		"selector": selector,
-		"limit":    req.GetInt("limit", 50),
+		"limit":    limit,
 	}
 	if props := req.GetStringSlice("properties", nil); len(props) > 0 {
 		params["properties"] = props

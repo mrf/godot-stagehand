@@ -81,7 +81,10 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 	allowUnsafe := req.GetBool("allow_unsafe", false)
 	shareUserData := req.GetBool("share_user_data", false)
 	extraArgs := req.GetStringSlice("extra_args", nil)
-	timeoutMs := req.GetInt("timeout_ms", 30000)
+	timeoutMs, errResult := boundedInt(req, "timeout_ms", 30000, 1000, maxUnboundedMs)
+	if errResult != nil {
+		return errResult, nil
+	}
 	instanceID := req.GetString("instance_id", "default")
 
 	if headless && expectScreenshots {

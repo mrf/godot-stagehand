@@ -102,9 +102,13 @@ func (s *Server) handlePressKey(ctx context.Context, req mcp.CallToolRequest) (*
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
+	holdMs, errResult := boundedInt(req, "hold_ms", 100, 0, maxUnboundedMs)
+	if errResult != nil {
+		return errResult, nil
+	}
 	params := map[string]any{
 		"key":     key,
-		"hold_ms": req.GetInt("hold_ms", 100),
+		"hold_ms": holdMs,
 	}
 	if mods := req.GetStringSlice("modifiers", nil); len(mods) > 0 {
 		params["modifiers"] = mods
@@ -174,10 +178,18 @@ func (s *Server) handlePressAction(ctx context.Context, req mcp.CallToolRequest)
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
+	strength, errResult := boundedNumber(req, "strength", 1.0, 0, 1)
+	if errResult != nil {
+		return errResult, nil
+	}
+	holdMs, errResult := boundedInt(req, "hold_ms", 100, 0, maxUnboundedMs)
+	if errResult != nil {
+		return errResult, nil
+	}
 	params := map[string]any{
 		"action":   action,
-		"strength": req.GetFloat("strength", 1.0),
-		"hold_ms":  req.GetInt("hold_ms", 100),
+		"strength": strength,
+		"hold_ms":  holdMs,
 	}
 
 	result, errResult := s.callGodotInstance(ctx, instanceID, "input_action", params)
@@ -211,9 +223,13 @@ func (s *Server) handleTypeText(ctx context.Context, req mcp.CallToolRequest) (*
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
+	delayMs, errResult := boundedInt(req, "delay_ms", 50, 0, maxUnboundedMs)
+	if errResult != nil {
+		return errResult, nil
+	}
 	params := map[string]any{
 		"text":     text,
-		"delay_ms": req.GetInt("delay_ms", 50),
+		"delay_ms": delayMs,
 	}
 
 	if errResult := setSelectorParam(params, req); errResult != nil {
@@ -286,11 +302,19 @@ func (s *Server) handleTouch(ctx context.Context, req mcp.CallToolRequest) (*mcp
 		return mcp.NewToolResultError("'position' is required"), nil
 	}
 
+	index, errResult := boundedInt(req, "index", 0, 0, 9)
+	if errResult != nil {
+		return errResult, nil
+	}
+	durationMs, errResult := boundedInt(req, "duration_ms", 100, 0, maxUnboundedMs)
+	if errResult != nil {
+		return errResult, nil
+	}
 	params := map[string]any{
 		"position":    position,
-		"index":       req.GetInt("index", 0),
+		"index":       index,
 		"action":      req.GetString("action", "tap"),
-		"duration_ms": req.GetInt("duration_ms", 100),
+		"duration_ms": durationMs,
 	}
 	if dragTo, hasDragTo := args["drag_to"]; hasDragTo {
 		params["drag_to"] = dragTo

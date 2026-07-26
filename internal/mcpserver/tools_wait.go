@@ -51,12 +51,19 @@ func (s *Server) handleWaitForNode(ctx context.Context, req mcp.CallToolRequest)
 		return errResult, nil
 	}
 
-	timeoutMs := req.GetInt("timeout_ms", 10000)
+	timeoutMs, errResult := boundedInt(req, "timeout_ms", 10000, 1, 60000)
+	if errResult != nil {
+		return errResult, nil
+	}
+	pollIntervalMs, errResult := boundedInt(req, "poll_interval_ms", 100, 10, 5000)
+	if errResult != nil {
+		return errResult, nil
+	}
 	params := map[string]any{
 		"selector":         selector,
 		"state":            req.GetString("state", "exists"),
 		"timeout_ms":       timeoutMs,
-		"poll_interval_ms": req.GetInt("poll_interval_ms", 100),
+		"poll_interval_ms": pollIntervalMs,
 	}
 
 	deadline := time.Duration(timeoutMs)*time.Millisecond + waitDeadlineBuffer
@@ -105,7 +112,10 @@ func (s *Server) handleWaitForSignal(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError("Invalid 'signal_name' parameter: " + err.Error()), nil
 	}
 
-	timeoutMs := req.GetInt("timeout_ms", 5000)
+	timeoutMs, errResult := boundedInt(req, "timeout_ms", 5000, 1, 60000)
+	if errResult != nil {
+		return errResult, nil
+	}
 	params := map[string]any{
 		"selector":    selector,
 		"signal_name": signalName,
@@ -178,13 +188,20 @@ func (s *Server) handleWaitForProperty(ctx context.Context, req mcp.CallToolRequ
 		return mcp.NewToolResultError("Invalid 'operator' parameter: " + err.Error()), nil
 	}
 
-	timeoutMs := req.GetInt("timeout_ms", 10000)
+	timeoutMs, errResult := boundedInt(req, "timeout_ms", 10000, 1, 60000)
+	if errResult != nil {
+		return errResult, nil
+	}
+	pollIntervalMs, errResult := boundedInt(req, "poll_interval_ms", 100, 10, 5000)
+	if errResult != nil {
+		return errResult, nil
+	}
 	params := map[string]any{
 		"selector":         selector,
 		"property":         property,
 		"operator":         operator,
 		"timeout_ms":       timeoutMs,
-		"poll_interval_ms": req.GetInt("poll_interval_ms", 100),
+		"poll_interval_ms": pollIntervalMs,
 	}
 
 	// Add expected_value if provided
