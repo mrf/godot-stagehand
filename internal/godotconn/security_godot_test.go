@@ -77,11 +77,13 @@ func TestStagehandAuthenticationBoundary(t *testing.T) {
 
 	_, err = conn.Call(ctx, "evaluate", map[string]any{"expression": "1 + 1"})
 	requireSecurityRPCCode(t, err, testCodeUnsafeCapability)
+	requireSecurityRPCMessageContains(t, err, "STAGEHAND_ALLOW_UNSAFE=1")
 	_, err = conn.Call(ctx, "call_method", map[string]any{
 		"selector": "/root/TestScene/PropertyTarget",
 		"method":   "get_instance_id",
 	})
 	requireSecurityRPCCode(t, err, testCodeUnsafeCapability)
+	requireSecurityRPCMessageContains(t, err, "STAGEHAND_ALLOW_UNSAFE=1")
 
 	secondConn, err := Dial(ctx, "127.0.0.1", securityConnectionPort(conn))
 	if err != nil {
@@ -275,6 +277,17 @@ func requireSecurityRPCCode(t *testing.T, err error, want int) {
 	}
 	if rpcError.Code != want {
 		t.Fatalf("RPC error code = %d, want %d (message: %s)", rpcError.Code, want, rpcError.Message)
+	}
+}
+
+func requireSecurityRPCMessageContains(t *testing.T, err error, want string) {
+	t.Helper()
+	var rpcError *RPCError
+	if !errors.As(err, &rpcError) {
+		t.Fatalf("expected RPCError, got %T: %v", err, err)
+	}
+	if !strings.Contains(rpcError.Message, want) {
+		t.Fatalf("RPC error message = %q, want substring %q", rpcError.Message, want)
 	}
 }
 
