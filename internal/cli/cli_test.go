@@ -397,6 +397,26 @@ func TestGodotReportedErrorExitsRemote(t *testing.T) {
 	}
 }
 
+func TestInvalidSelectorExitsUsageWithNoServerRunning(t *testing.T) {
+	withToken(t)
+	// Port 1 on loopback is reserved and never listening: nothing to dial.
+	code, _, stderr := invoke(t, "find", "--port=1", "--timeout=2s", "")
+	if code != ExitUsage {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitUsage, stderr)
+	}
+	if !strings.Contains(stderr, "selector is empty") {
+		t.Errorf("stderr %q does not carry the validation message", stderr)
+	}
+}
+
+func TestValidSelectorStillExitsConnectionWithNoServerRunning(t *testing.T) {
+	withToken(t)
+	code, _, stderr := invoke(t, "find", "--port=1", "--timeout=2s", "class:Button")
+	if code != ExitConnection {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitConnection, stderr)
+	}
+}
+
 func TestInvalidSelectorIsRejectedBeforeTheWire(t *testing.T) {
 	withToken(t)
 	stub := newStubGodot(t, nil)
