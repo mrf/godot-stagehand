@@ -390,6 +390,26 @@ func TestExecuteRejectsUnknownPerformanceOp(t *testing.T) {
 	}
 }
 
+func TestExecuteRejectsUnknownPerformanceMonitor(t *testing.T) {
+	caller := &recordingCaller{}
+	_, err := Execute(context.Background(), caller, Op{
+		Action: "assert_performance",
+		Params: map[string]any{"monitor": "NOPE", "threshold": 1.0},
+	})
+	if err == nil {
+		t.Fatal("Execute accepted an unknown performance monitor")
+	}
+	if KindOf(err) != KindUsage {
+		t.Errorf("KindOf = %v, want KindUsage", KindOf(err))
+	}
+	if !strings.Contains(err.Error(), "monitor") {
+		t.Errorf("error %q does not name the monitor parameter", err)
+	}
+	if caller.calls != 0 {
+		t.Error("an unknown monitor must not reach the wire")
+	}
+}
+
 func TestExecuteRejectsUnknownPerformanceStatistic(t *testing.T) {
 	caller := &recordingCaller{}
 	_, err := Execute(context.Background(), caller, Op{

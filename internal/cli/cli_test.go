@@ -539,6 +539,21 @@ func TestUnknownPerformanceOpExitsUsageWithNoServerRunning(t *testing.T) {
 	}
 }
 
+// TestUnknownPerformanceMonitorExitsUsageWithNoServerRunning is the
+// regression test for godot-stagehand-r7k9: an unrecognized --assert monitor
+// name must be caught client-side before the dial, not reach Godot first.
+func TestUnknownPerformanceMonitorExitsUsageWithNoServerRunning(t *testing.T) {
+	withToken(t)
+	code, _, stderr := invoke(t, "performance", "--port=1", "--timeout=3s",
+		"--assert=NOPE", "--threshold=1")
+	if code != ExitUsage {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitUsage, stderr)
+	}
+	if !strings.Contains(stderr, "monitor") {
+		t.Errorf("stderr %q does not name monitor", stderr)
+	}
+}
+
 // TestDialTimeoutExitsConnectionNotTimeout is the regression test for the
 // 521c832 lazy-dial fallout: a dial to a blackholed host (192.0.2.1, the
 // reserved TEST-NET-1 address, never routes and so times out rather than

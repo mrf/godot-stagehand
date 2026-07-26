@@ -24,6 +24,21 @@ var PerformanceOps = []string{"lt", "lte", "gt", "gte", "eq"}
 // mirroring addons/stagehand/core/performance_sampler.gd's STATISTICS constant.
 var PerformanceStatistics = []string{"min", "max", "mean", "median", "p95"}
 
+// PerformanceMonitors is the closed set of Performance monitor names the
+// addon recognizes, mirroring the keys of
+// addons/stagehand/core/performance_sampler.gd's MONITORS dictionary (which
+// in turn mirrors Godot's Performance.Monitor enum).
+var PerformanceMonitors = []string{
+	"TIME_FPS", "TIME_PROCESS", "TIME_PHYSICS_PROCESS", "TIME_NAVIGATION_PROCESS",
+	"MEMORY_STATIC", "MEMORY_STATIC_MAX", "MEMORY_MESSAGE_BUFFER_MAX",
+	"OBJECT_COUNT", "OBJECT_RESOURCE_COUNT", "OBJECT_NODE_COUNT", "OBJECT_ORPHAN_NODE_COUNT",
+	"RENDER_TOTAL_OBJECTS_IN_FRAME", "RENDER_TOTAL_PRIMITIVES_IN_FRAME", "RENDER_TOTAL_DRAW_CALLS_IN_FRAME",
+	"RENDER_VIDEO_MEM_USED", "RENDER_TEXTURE_MEM_USED", "RENDER_BUFFER_MEM_USED",
+	"PHYSICS_2D_ACTIVE_OBJECTS", "PHYSICS_2D_COLLISION_PAIRS", "PHYSICS_2D_ISLAND_COUNT",
+	"PHYSICS_3D_ACTIVE_OBJECTS", "PHYSICS_3D_COLLISION_PAIRS", "PHYSICS_3D_ISLAND_COUNT",
+	"AUDIO_OUTPUT_LATENCY",
+}
+
 // Compare evaluates `actual <operator> expected`. It is deliberately strict:
 // an ordering comparison on non-numbers is a scenario authoring bug, not a
 // silent false, because a silently-false assertion reads as a real regression.

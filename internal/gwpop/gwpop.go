@@ -257,7 +257,7 @@ func buildSpecs() map[string]Spec {
 			},
 			RequiredNonEmpty: []string{"monitor"},
 			NonNegativeInts:  []string{"warmup_ms", "sample_interval_ms", "sample_count", "duration_ms"},
-			Enums:            map[string][]string{"op": PerformanceOps, "statistic": PerformanceStatistics},
+			Enums:            map[string][]string{"monitor": PerformanceMonitors, "op": PerformanceOps, "statistic": PerformanceStatistics},
 			Summary:          "Assert a performance monitor against a threshold"},
 
 		{Action: "record_start", Method: "record_start", Capability: gwp.CapabilityRecording,
