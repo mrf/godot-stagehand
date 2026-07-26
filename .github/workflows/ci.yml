@@ -175,6 +175,14 @@ jobs:
   # The scenario is deliberately screenshot-free so it needs no display. Visual
   # gates are covered by docs/visual-smoke-contract.md and need Xvfb or a real
   # screen; see the "Headless Godot cannot render" note in the README.
+  #
+  # "Run the full godot-tagged suite" below is every `-tags=godot` test in the
+  # module (`./...`, no `-run` filter) — not just this file's two scenario
+  # tests. Locally against a real Godot 4.6.2 this whole suite takes ~50s
+  # (godot-stagehand-ci-godot-tagged-suite-unwired-n7ib), well inside the 10m
+  # timeout. TestCIScenarioSmokeRunsFullGodotTaggedSuite
+  # (ci_scenario_smoke_gate_test.go) fails the build if this step is ever
+  # narrowed back to a package or a -run filter.
   scenario-smoke:
     name: Scenario runner smoke (real Godot)
     runs-on: ubuntu-latest
@@ -205,8 +213,8 @@ jobs:
           source scripts/ci-install-godot.sh
           echo "GODOT_BIN=${GODOT_BIN}" >> "$GITHUB_ENV"
 
-      - name: Run the scenario runner against real Godot
-        run: go test -tags=godot -run '^TestScenarioRunner' -count=1 -timeout=10m .
+      - name: Run the full godot-tagged suite against real Godot
+        run: go test -tags=godot -count=1 -timeout=10m ./...
 
       - name: Reproduce the documented CI invocation
         run: |
