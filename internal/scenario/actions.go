@@ -28,6 +28,11 @@ var localSpecs = map[string]gwpop.Spec{
 		Required: []string{"duration_ms"},
 		Summary:  "Pause the run for a fixed duration",
 	},
+	// This is the spec SpecFor actually resolves for "screenshot" — it wins
+	// over gwpop's same-named entry, which exists only for gwpop.Capture's
+	// internal use (see the comment on that entry in gwpop.go). Scenarios
+	// have no full_page knob: doScreenshot always captures full-viewport
+	// unless selector crops it.
 	ActionScreenshot: {
 		Action:    ActionScreenshot,
 		Optional:  []string{"selector", "output"},

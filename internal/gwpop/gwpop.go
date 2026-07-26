@@ -196,8 +196,16 @@ func buildSpecs() map[string]Spec {
 			TimeoutParam: "timeout_ms", DefaultTimeoutMs: 10000,
 			Summary: "Wait for a property to satisfy a condition"},
 
+		// "screenshot" is registered here only so Capture (which always calls
+		// Execute with action "screenshot") resolves a spec; the scenario
+		// runner's localSpecs entry is the one SpecFor actually exposes to
+		// scenario/CLI callers. Optional is deliberately just "selector":
+		// Capture never forwards a "full_page" param on any path, so
+		// advertising it here would be a dead, unreachable knob. full_page is
+		// a real, wired option only on the MCP server surface
+		// (mcpserver/tools_visual.go), which does not use this registry.
 		{Action: "screenshot", Method: "screenshot", Capability: gwp.CapabilityScreenshot,
-			Optional: []string{"selector", "full_page"}, Selectors: []string{"selector"},
+			Optional: []string{"selector"}, Selectors: []string{"selector"},
 			Summary: "Capture the viewport"},
 
 		{Action: "get_performance", Method: "get_performance", Capability: gwp.CapabilityPerformance,
