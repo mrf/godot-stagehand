@@ -193,3 +193,75 @@ func TestRun_MissingProjectDir(t *testing.T) {
 		t.Error("expected error when project directory does not exist")
 	}
 }
+
+// preinstallAddon writes an addon directory containing only a
+// stagehand_version.gd reporting version, simulating an addon already
+// installed in a target project before Run is called.
+func preinstallAddon(t *testing.T, project, version string) {
+	t.Helper()
+	destDir := filepath.Join(project, "addons", "stagehand")
+	writeInstalledVersion(t, destDir, version)
+}
+
+func TestRun_WarnsOnStaleAddon(t *testing.T) {
+	project := newTestProject(t, readFixture(t, "fresh.godot"))
+	preinstallAddon(t, project, "0.1.0")
+
+	var out bytes.Buffer
+	opts := Options{ProjectPath: project, BinaryPath: "/bin/x", AddonFS: versionedAddon("0.3.1")}
+	if err := Run(&out, opts); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	got := out.String()
+	if !strings.Contains(got, "0.1.0") || !strings.Contains(got, "0.3.1") {
+		t.Errorf("expected both installed and embedded versions in warning:\n%s", got)
+	}
+	if !strings.Contains(got, "--force") {
+		t.Errorf("expected --force guidance in stale warning:\n%s", got)
+	}
+
+	// The installed addon must be untouched — no auto-upgrade without --force.
+	destDir := filepath.Join(project, "addons", "stagehand")
+	installed, err := os.ReadFile(filepath.Join(destDir, "stagehand_version.gd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(installed), "0.1.0") {
+		t.Errorf("installed addon was modified without --force:\n%s", installed)
+	}
+}
+
+func TestRun_NoStaleWarningWhenVersionsMatch(t *testing.T) {
+	project := newTestProject(t, readFixture(t, "fresh.godot"))
+	preinstallAddon(t, project, "0.3.1")
+
+	var out bytes.Buffer
+	opts := Options{ProjectPath: project, BinaryPath: "/bin/x", AddonFS: versionedAddon("0.3.1")}
+	if err := Run(&out, opts); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	got := out.String()
+	if strings.Contains(got, "stale") {
+		t.Errorf("did not expect a stale warning when versions match:\n%s", got)
+	}
+	if !strings.Contains(got, "already present") {
+		t.Errorf("expected unchanged 'already present' message:\n%s", got)
+	}
+}
+
+func TestRun_NoStaleWarningWhenInstalledVersionUnparseable(t *testing.T) {
+	project := newTestProject(t, readFixture(t, "fresh.godot"))
+	preinstallAddon(t, project, "") // no VERSION line — e.g. a pre-versioning addon copy
+
+	var out bytes.Buffer
+	opts := Options{ProjectPath: project, BinaryPath: "/bin/x", AddonFS: versionedAddon("0.3.1")}
+	if err := Run(&out, opts); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if strings.Contains(out.String(), "stale") {
+		t.Errorf("did not expect a stale warning with an unparseable installed version:\n%s", out.String())
+	}
+}
