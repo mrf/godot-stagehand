@@ -410,6 +410,43 @@ func TestExecuteRejectsUnknownPerformanceMonitor(t *testing.T) {
 	}
 }
 
+func TestExecuteRejectsUnknownPerformanceMonitorInList(t *testing.T) {
+	caller := &recordingCaller{}
+	_, err := Execute(context.Background(), caller, Op{
+		Action: "get_performance",
+		Params: map[string]any{"monitors": []string{"TIME_FPS", "NOPE"}},
+	})
+	if err == nil {
+		t.Fatal("Execute accepted an unknown performance monitor in a monitors list")
+	}
+	if KindOf(err) != KindUsage {
+		t.Errorf("KindOf = %v, want KindUsage", KindOf(err))
+	}
+	if !strings.Contains(err.Error(), "monitor") {
+		t.Errorf("error %q does not name the monitors parameter", err)
+	}
+	if caller.calls != 0 {
+		t.Error("an unknown monitor must not reach the wire")
+	}
+}
+
+func TestExecuteAcceptsValidPerformanceMonitorList(t *testing.T) {
+	caller := &recordingCaller{}
+	raw, err := Execute(context.Background(), caller, Op{
+		Action: "get_performance",
+		Params: map[string]any{"monitors": []string{"TIME_FPS", "MEMORY_STATIC"}},
+	})
+	if err != nil {
+		t.Fatalf("Execute rejected a valid monitors list: %v", err)
+	}
+	if caller.calls != 1 {
+		t.Errorf("calls = %d, want 1", caller.calls)
+	}
+	if raw == nil {
+		t.Error("expected a result")
+	}
+}
+
 func TestExecuteRejectsUnknownPerformanceStatistic(t *testing.T) {
 	caller := &recordingCaller{}
 	_, err := Execute(context.Background(), caller, Op{
