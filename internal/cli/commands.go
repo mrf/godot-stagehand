@@ -222,6 +222,11 @@ var cmdInput = &command{
 			return usagef(fmt.Errorf("input needs a subcommand: click, key, action, text, move, touch or focus"))
 		}
 		sub, rest := args[0], args[1:]
+		switch sub {
+		case "click", "key", "action", "text", "move", "touch", "focus":
+		default:
+			return usagef(fmt.Errorf("unknown input subcommand %q (want click, key, action, text, move, touch or focus)", sub))
+		}
 
 		var selector, position, coordinates, dragTo, button, modifiers, touchAction string
 		var doubleClick bool
@@ -355,6 +360,11 @@ var cmdWait = &command{
 			return usagef(fmt.Errorf("wait needs a subcommand: node, signal or property"))
 		}
 		sub, rest := args[0], args[1:]
+		switch sub {
+		case "node", "signal", "property":
+		default:
+			return usagef(fmt.Errorf("unknown wait subcommand %q (want node, signal or property)", sub))
+		}
 
 		var state, operator, expected string
 		var timeoutMs, pollMs int

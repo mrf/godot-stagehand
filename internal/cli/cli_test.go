@@ -185,6 +185,32 @@ func TestMissingPortIsUsageErrorNotAConnectionAttempt(t *testing.T) {
 	}
 }
 
+func TestMisplacedPortFlagIsUnknownSubcommandNotMissingPort(t *testing.T) {
+	withToken(t)
+	for _, tt := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"wait", []string{"wait", "--port", "26788", "node", "name:Ghost", "--timeout", "3s"}, `unknown wait subcommand "--port"`},
+		{"input", []string{"input", "--port", "26788", "click", "--selector=text:Start"}, `unknown input subcommand "--port"`},
+		{"property", []string{"property", "--port", "26799", "get", "name:Label", "text"}, `unknown property subcommand "--port"`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			code, _, stderr := invoke(t, tt.args...)
+			if code != ExitUsage {
+				t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitUsage, stderr)
+			}
+			if !strings.Contains(stderr, tt.want) {
+				t.Errorf("stderr %q does not contain %q", stderr, tt.want)
+			}
+			if strings.Contains(stderr, "--port is required") {
+				t.Errorf("stderr %q misreports the supplied --port as missing", stderr)
+			}
+		})
+	}
+}
+
 func TestMissingTokenIsUsageError(t *testing.T) {
 	t.Setenv("STAGEHAND_AUTH_TOKEN", "")
 	code, _, stderr := invoke(t, "tree", "--port=26701")
