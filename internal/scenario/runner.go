@@ -428,6 +428,8 @@ func (r *runState) resolveDirs() {
 	r.artifactDir = r.opts.OutDir
 	if r.artifactDir != "" {
 		r.diffDir = filepath.Join(r.artifactDir, "diffs")
+	} else {
+		r.diffDir = r.sc.resolve("stagehand-diffs")
 	}
 
 	switch {
@@ -437,9 +439,6 @@ func (r *runState) resolveDirs() {
 		r.baselineDir = r.sc.resolve(r.sc.BaselineDir)
 	default:
 		r.baselineDir = r.sc.resolve("stagehand-baselines")
-	}
-	if r.diffDir == "" {
-		r.diffDir = "stagehand-diffs"
 	}
 }
 

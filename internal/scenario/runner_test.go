@@ -407,6 +407,64 @@ func TestRunClassifiesTimeout(t *testing.T) {
 	}
 }
 
+// TestResolveDirsDefaultDiffDirIsScenarioRelative pins the bug from
+// godot-stagehand-xmhh: with no --out-dir, the default diff dir must resolve
+// against the scenario file's directory, just like the default baseline dir,
+// so the same scenario run from a different CWD writes diffs to the same
+// place instead of scattering them CWD-relative.
+func TestResolveDirsDefaultDiffDirIsScenarioRelative(t *testing.T) {
+	sc := mustParse(t, `{
+		"name": "diffdir",
+		"target": {"mode": "launch", "project_path": "proj", "headless": false},
+		"steps": [{"action": "screenshot", "with": {"output": "frame.png"}}]
+	}`)
+	sc.dir = filepath.Join(t.TempDir(), "scenarios", "nested")
+
+	r := &runState{sc: sc, opts: Options{}}
+	r.resolveDirs()
+
+	wantBaseline := filepath.Join(sc.dir, "stagehand-baselines")
+	if r.baselineDir != wantBaseline {
+		t.Errorf("baselineDir = %q, want %q", r.baselineDir, wantBaseline)
+	}
+	wantDiff := filepath.Join(sc.dir, "stagehand-diffs")
+	if r.diffDir != wantDiff {
+		t.Errorf("diffDir = %q, want %q (scenario-relative, matching baselineDir's anchoring)", r.diffDir, wantDiff)
+	}
+}
+
+// TestResolveDirsExplicitOutDirDiffDirKeepsCurrentMeaning covers the
+// "explicit" side of xmhh: the only way to steer the diff dir today is
+// --out-dir (diffDir = OutDir/diffs). That must NOT be re-anchored to the
+// scenario's directory — only the bare default changes.
+func TestResolveDirsExplicitOutDirDiffDirKeepsCurrentMeaning(t *testing.T) {
+	sc := mustParse(t, `{
+		"name": "diffdir",
+		"target": {"mode": "launch", "project_path": "proj", "headless": false},
+		"steps": [{"action": "screenshot", "with": {"output": "frame.png"}}]
+	}`)
+	sc.dir = filepath.Join(t.TempDir(), "scenarios")
+
+	t.Run("relative out-dir", func(t *testing.T) {
+		r := &runState{sc: sc, opts: Options{OutDir: "run-artifacts"}}
+		r.resolveDirs()
+		want := filepath.Join("run-artifacts", "diffs")
+		if r.diffDir != want {
+			t.Errorf("diffDir = %q, want %q (CWD-relative, unchanged by the scenario dir)", r.diffDir, want)
+		}
+	})
+
+	t.Run("absolute out-dir", func(t *testing.T) {
+		abs := filepath.Join(t.TempDir(), "run-artifacts")
+		r := &runState{sc: sc, opts: Options{OutDir: abs}}
+		r.resolveDirs()
+		want := filepath.Join(abs, "diffs")
+		if r.diffDir != want {
+			t.Errorf("diffDir = %q, want %q", r.diffDir, want)
+		}
+	})
+}
+
 func TestJUnitSeparatesAssertionFailuresFromHarnessErrors(t *testing.T) {
 	report := &Report{
 		Name: "mixed", Status: StatusFailed, DurationMs: 1200,
