@@ -338,7 +338,7 @@ runtime asset) — copy it into wherever your agent loads custom skills from.
 | Env var | `STAGEHAND_ENABLED=1 godot ...` |
 | Editor toggle | Stagehand button in toolbar |
 | Release-export opt-in | `STAGEHAND_ENABLED=1 STAGEHAND_ALLOW_RELEASE=1 ./game` |
-| Custom port | `STAGEHAND_PORT=9999` or `--stagehand-port=9999` |
+| Custom port | `STAGEHAND_PORT=9999` or `--stagehand-port=9999` (put it after `--`, e.g. `godot ... -- --stagehand-port=9999`; before `--` also works but logs a warning) |
 | Fixed authentication token | `STAGEHAND_AUTH_TOKEN=<secret>` (otherwise a fresh token is generated and printed) |
 | Bind address | `STAGEHAND_BIND_ADDRESS=127.0.0.1` (loopback is the default) |
 | Remote access | `STAGEHAND_BIND_ADDRESS=0.0.0.0 STAGEHAND_ALLOW_REMOTE=1` |
