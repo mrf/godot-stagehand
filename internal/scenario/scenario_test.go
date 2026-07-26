@@ -1,6 +1,7 @@
 package scenario
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -80,6 +81,67 @@ func TestParseRequiresExplicitPortInConnectMode(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "26700") {
 		t.Errorf("error %q does not explain why the shared default is refused", err)
+	}
+}
+
+func TestParseRejectsOutOfRangePort(t *testing.T) {
+	cases := []struct {
+		name string
+		port int
+		ok   bool
+	}{
+		{"zero", 0, false},
+		{"negative", -5, false},
+		{"too_high", 65536, false},
+		{"way_too_high", 99999, false},
+		{"min_boundary", 1, true},
+		{"max_boundary", 65535, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			src := fmt.Sprintf(`{
+				"target": {"mode": "connect", "port": %d, "token": "x"},
+				"steps": [{"action": "tree"}]
+			}`, tc.port)
+			_, err := Parse([]byte(src))
+			if tc.ok {
+				if err != nil {
+					t.Fatalf("Parse rejected valid port %d: %v", tc.port, err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Parse accepted out-of-range port %d", tc.port)
+			}
+			if !strings.Contains(err.Error(), "target.port") {
+				t.Errorf("error %q does not name target.port", err)
+			}
+			if !strings.Contains(err.Error(), "1-65535") {
+				t.Errorf("error %q does not state the valid range", err)
+			}
+		})
+	}
+}
+
+func TestParseAllowsAutoAssignPortInLaunchMode(t *testing.T) {
+	if _, err := Parse([]byte(`{
+		"target": {"mode": "launch", "project_path": "p", "port": 0},
+		"steps": [{"action": "tree"}]
+	}`)); err != nil {
+		t.Fatalf("Parse rejected launch mode auto-assign port 0: %v", err)
+	}
+}
+
+func TestParseRejectsOutOfRangePortInLaunchMode(t *testing.T) {
+	_, err := Parse([]byte(`{
+		"target": {"mode": "launch", "project_path": "p", "port": 99999},
+		"steps": [{"action": "tree"}]
+	}`))
+	if err == nil {
+		t.Fatal("Parse accepted out-of-range port in launch mode")
+	}
+	if !strings.Contains(err.Error(), "target.port") {
+		t.Errorf("error %q does not name target.port", err)
 	}
 }
 

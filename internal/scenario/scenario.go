@@ -189,6 +189,12 @@ func (t *Target) validate() error {
 	default:
 		return fmt.Errorf("unknown target.mode %q (want %q or %q)", t.Mode, ModeLaunch, ModeConnect)
 	}
+	// In launch mode, 0 means auto-assign a free port and is not range-checked.
+	if t.Port != nil && !(t.Mode == ModeLaunch && *t.Port == 0) {
+		if *t.Port < 1 || *t.Port > 65535 {
+			return fmt.Errorf("target.port %d is outside the valid TCP port range (1-65535)", *t.Port)
+		}
+	}
 	return nil
 }
 
