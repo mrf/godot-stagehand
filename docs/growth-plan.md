@@ -47,7 +47,12 @@ servers, which is a genuinely differentiated slot in a crowded directory:
 - mcp.so / Smithery / PulseMCP style aggregators (submission forms)
 - `awesome-godot` (PR — the canonical Godot resource list)
 
-Each is a one-time PR/form and keeps paying out.
+Each is a one-time PR/form and keeps paying out. Paste-ready entries, verified
+locations/rules, and PR titles/bodies for every target above:
+[`docs/directory-submission-kit.md`](directory-submission-kit.md). That doc
+also found the `modelcontextprotocol/servers` README PR path no longer exists
+(retired in favor of the MCP Registry, which needs packaging Stagehand doesn't
+currently produce) — treat that one target as blocked, not one-time-PR-ready.
 
 ## Phase 2 — the demo that does the selling
 
