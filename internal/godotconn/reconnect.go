@@ -94,6 +94,7 @@ func (c *Connection) handleDisconnect(disconnected *websocket.Conn) {
 	c.cancelPendingLocked()
 	c.state = Reconnecting
 	c.reconnected = make(chan struct{})
+	c.reconnectFailed = make(chan struct{})
 	c.reconnectDone = make(chan struct{})
 	c.mu.Unlock()
 	_ = disconnected.Close()
@@ -196,12 +197,24 @@ func (c *Connection) reconnectLoop() {
 // terminal Disconnected state, distinguishable from Reconnecting/Connecting
 // via State() and reported through godot_status, so a caller polling status
 // learns the instance is gone instead of waiting on a Reconnecting state
-// nothing will ever move out of.
+// nothing will ever move out of. It also closes reconnectFailed so any Call
+// already parked in waitConnected wakes immediately instead of blocking for
+// the full queueTimeout. Guarded by reconnectGaveUp so a second call (there
+// is currently no path that produces one, but future callers shouldn't have
+// to prove that) is a no-op rather than a double-close panic.
 func (c *Connection) giveUp() {
 	c.mu.Lock()
+	if c.reconnectGaveUp {
+		c.mu.Unlock()
+		return
+	}
 	c.state = Disconnected
 	c.reconnectGaveUp = true
+	failed := c.reconnectFailed
 	c.mu.Unlock()
+	if failed != nil {
+		close(failed)
+	}
 }
 
 // ReconnectExhausted reports whether the connection reached Disconnected

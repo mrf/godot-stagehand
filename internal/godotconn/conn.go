@@ -46,6 +46,7 @@ type Connection struct {
 	state           State
 	pending         map[int64]chan *Response
 	reconnected     chan struct{} // closed when reconnect succeeds
+	reconnectFailed chan struct{} // closed when the reconnect loop gives up permanently
 	reconnectDone   chan struct{} // closed when reconnectLoop returns, success or not
 	reconnectGaveUp bool          // true once the retry budget is exhausted or re-auth is rejected
 	authToken       string
@@ -241,6 +242,7 @@ func (c *Connection) waitConnected(ctx context.Context) error {
 	c.mu.Lock()
 	st := c.state
 	rc := c.reconnected
+	failed := c.reconnectFailed
 	c.mu.Unlock()
 
 	switch st {
@@ -253,6 +255,13 @@ func (c *Connection) waitConnected(ctx context.Context) error {
 		select {
 		case <-rc:
 			return nil
+		case <-failed:
+			// The reconnect loop gave up permanently: this connection will
+			// never reach Connected on its own, so return the same terminal
+			// error a fresh Call would get post-give-up rather than making
+			// the caller wait out queueTimeout for an ErrReconnecting that
+			// invites a retry that can never succeed.
+			return ErrNotConnected
 		case <-time.After(queueTimeout):
 			return ErrReconnecting
 		case <-ctx.Done():

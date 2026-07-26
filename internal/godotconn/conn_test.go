@@ -781,6 +781,134 @@ func TestReconnectGivesUpAfterMaxAttempts(t *testing.T) {
 	}
 }
 
+func TestReconnectGiveUpWakesParkedCallPromptly(t *testing.T) {
+	srv := echoServer(t)
+	host, port := serverHostPort(t, srv)
+
+	// maxReconnectAttempts=1 gives up after a single failed dial attempt
+	// (~100ms backoff), so the window between "parked in Reconnecting" and
+	// "give up" is short and the test doesn't need to wait long.
+	conn, err := dialWithLimits(context.Background(), host, port, defaultLiveness, 1)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	// Kill the peer permanently so the reconnect dial can never succeed.
+	srv.Close()
+
+	conn.mu.Lock()
+	ws := conn.ws
+	conn.mu.Unlock()
+	if err := ws.Close(); err != nil {
+		t.Fatalf("force-close local socket: %v", err)
+	}
+
+	// Wait until the connection has entered Reconnecting with a live
+	// reconnected channel, i.e. a Call issued now will park in the
+	// Reconnecting branch of waitConnected rather than hitting the
+	// Disconnected default branch.
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		conn.mu.Lock()
+		st := conn.state
+		rc := conn.reconnected
+		conn.mu.Unlock()
+		if st == Reconnecting && rc != nil {
+			break
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	conn.mu.Lock()
+	st := conn.state
+	conn.mu.Unlock()
+	if st != Reconnecting {
+		t.Fatalf("state = %v, want Reconnecting before parking a call", st)
+	}
+
+	// Park a call in waitConnected's Reconnecting branch before give-up
+	// happens, then confirm it wakes promptly with the terminal error
+	// instead of blocking for the full queueTimeout.
+	type result struct {
+		err     error
+		elapsed time.Duration
+	}
+	done := make(chan result, 1)
+	start := time.Now()
+	go func() {
+		_, callErr := conn.Call(context.Background(), "ping", nil)
+		done <- result{err: callErr, elapsed: time.Since(start)}
+	}()
+
+	select {
+	case res := <-done:
+		if res.elapsed >= queueTimeout {
+			t.Errorf("parked call took %v to wake, want well under queueTimeout %v", res.elapsed, queueTimeout)
+		}
+		if errors.Is(res.err, ErrReconnecting) {
+			t.Errorf("err = %v, want a terminal error distinguishable from ErrReconnecting", res.err)
+		}
+		if !errors.Is(res.err, ErrNotConnected) {
+			t.Errorf("err = %v, want ErrNotConnected (terminal, does not invite retry)", res.err)
+		}
+	case <-time.After(queueTimeout + time.Second):
+		t.Fatal("parked call never returned")
+	}
+
+	if !conn.ReconnectExhausted() {
+		t.Error("ReconnectExhausted() = false, want true after giving up")
+	}
+}
+
+func TestWaitConnectedStillReconnectingReturnsErrReconnecting(t *testing.T) {
+	// A Call parked while the reconnect loop is still actively retrying (no
+	// give-up yet) must keep returning ErrReconnecting after queueTimeout,
+	// not be affected by the new give-up signalling path.
+	conn := &Connection{
+		state:       Reconnecting,
+		reconnected: make(chan struct{}), // never closed in this test
+		done:        make(chan struct{}),
+	}
+	// reconnectFailed deliberately left nil: mirrors a Reconnecting state
+	// reached without giveUp ever running.
+
+	start := time.Now()
+	err := conn.waitConnected(context.Background())
+	elapsed := time.Since(start)
+
+	if !errors.Is(err, ErrReconnecting) {
+		t.Errorf("err = %v, want ErrReconnecting", err)
+	}
+	if elapsed < queueTimeout {
+		t.Errorf("waitConnected returned after %v, want to wait out queueTimeout %v", elapsed, queueTimeout)
+	}
+}
+
+func TestGiveUpIdempotent(t *testing.T) {
+	// giveUp must be safe to call more than once: no double-close panic on
+	// reconnectFailed, and state/flag stay consistent.
+	conn := &Connection{
+		state:           Reconnecting,
+		reconnected:     make(chan struct{}),
+		reconnectFailed: make(chan struct{}),
+	}
+
+	conn.giveUp()
+	conn.giveUp() // must not panic (double close)
+
+	select {
+	case <-conn.reconnectFailed:
+	default:
+		t.Fatal("reconnectFailed was not closed")
+	}
+	if conn.State() != Disconnected {
+		t.Errorf("state = %v, want Disconnected", conn.State())
+	}
+	if !conn.ReconnectExhausted() {
+		t.Error("ReconnectExhausted() = false, want true")
+	}
+}
+
 func TestDialAddrIPv6(t *testing.T) {
 	// net.JoinHostPort must bracket IPv6 literals; verify without a live listener.
 	cases := []struct {
