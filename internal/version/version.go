@@ -20,7 +20,7 @@ import (
 
 // Version is the authoritative Stagehand version. Do not edit by hand; run
 // scripts/set-version.sh <version> so every mirror moves with it.
-const Version = "0.3.0"
+const Version = "0.3.1"
 
 // commit and buildTime may be supplied at link time with
 // -X github.com/mrf/godot-stagehand/internal/version.commit=<sha>. When empty

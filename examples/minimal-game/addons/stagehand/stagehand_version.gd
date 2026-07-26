@@ -13,7 +13,7 @@ extends RefCounted
 ## generation is supported. Bump PROTOCOL_VERSION only for a breaking wire
 ## change; prefer adding a capability for anything additive.
 
-const VERSION: String = "0.3.0"
+const VERSION: String = "0.3.1"
 const PROTOCOL_VERSION: int = 1
 const PROTOCOL_ID: String = "gwp/1"
 
