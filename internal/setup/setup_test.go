@@ -194,6 +194,66 @@ func TestRun_MissingProjectDir(t *testing.T) {
 	}
 }
 
+// addonNotCopied fails the test if an addon tree was left behind in project —
+// used to prove validation ran before the copy step, not just that Run erred.
+func addonNotCopied(t *testing.T, project string) {
+	t.Helper()
+	if _, err := os.Stat(filepath.Join(project, "addons", "stagehand")); !os.IsNotExist(err) {
+		t.Errorf("addon was copied despite invalid project.godot; partial install left behind")
+	}
+}
+
+func TestRun_ProjectGodotIsDirectory(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "project.godot"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	opts := Options{ProjectPath: dir, BinaryPath: "/bin/x", AddonFS: fakeAddon()}
+	if err := Run(&out, opts); err == nil {
+		t.Error("expected error when project.godot is a directory")
+	}
+	addonNotCopied(t, dir)
+}
+
+func TestRun_ProjectGodotUnreadable(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; permission bits do not block reads")
+	}
+	project := newTestProject(t, readFixture(t, "fresh.godot"))
+	pgPath := filepath.Join(project, "project.godot")
+	if err := os.Chmod(pgPath, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(pgPath, 0o644) })
+
+	var out bytes.Buffer
+	opts := Options{ProjectPath: project, BinaryPath: "/bin/x", AddonFS: fakeAddon()}
+	if err := Run(&out, opts); err == nil {
+		t.Error("expected error for unreadable project.godot")
+	}
+	addonNotCopied(t, project)
+}
+
+func TestRun_ProjectGodotReadOnly(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; permission bits do not block writes")
+	}
+	project := newTestProject(t, readFixture(t, "fresh.godot"))
+	pgPath := filepath.Join(project, "project.godot")
+	if err := os.Chmod(pgPath, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(pgPath, 0o644) })
+
+	var out bytes.Buffer
+	opts := Options{ProjectPath: project, BinaryPath: "/bin/x", AddonFS: fakeAddon()}
+	if err := Run(&out, opts); err == nil {
+		t.Error("expected error for read-only project.godot")
+	}
+	addonNotCopied(t, project)
+}
+
 // preinstallAddon writes an addon directory containing only a
 // stagehand_version.gd reporting version, simulating an addon already
 // installed in a target project before Run is called.

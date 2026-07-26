@@ -51,8 +51,20 @@ func Run(out io.Writer, opts Options) error {
 	}
 
 	projectFile := filepath.Join(opts.ProjectPath, "project.godot")
-	if _, err := os.Stat(projectFile); err != nil {
+	pgInfo, err := os.Stat(projectFile)
+	if err != nil {
 		return fmt.Errorf("no project.godot in %q — is this a Godot project? (%w)", opts.ProjectPath, err)
+	}
+	if !pgInfo.Mode().IsRegular() {
+		return fmt.Errorf("project.godot in %q is not a regular file — is this a Godot project?", opts.ProjectPath)
+	}
+
+	content, err := os.ReadFile(projectFile)
+	if err != nil {
+		return fmt.Errorf("project.godot in %q is not readable: %w", opts.ProjectPath, err)
+	}
+	if err := checkWritable(projectFile); err != nil {
+		return fmt.Errorf("project.godot in %q is not writable: %w", opts.ProjectPath, err)
 	}
 
 	// 1. Copy the addon.
@@ -73,10 +85,6 @@ func Run(out io.Writer, opts Options) error {
 	}
 
 	// 2. Configure project.godot (idempotent).
-	content, err := os.ReadFile(projectFile)
-	if err != nil {
-		return fmt.Errorf("read project.godot: %w", err)
-	}
 	pluginBefore := containsPlugin(string(content))
 	autoloadBefore := containsAutoload(string(content))
 
@@ -93,6 +101,17 @@ func Run(out io.Writer, opts Options) error {
 	// 3. Print MCP client config + run guidance.
 	printGuidance(out, opts)
 	return nil
+}
+
+// checkWritable verifies path can be opened for writing without modifying its
+// contents (no O_TRUNC, no data written), so a probe never corrupts the file
+// it's validating.
+func checkWritable(path string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
+	return f.Close()
 }
 
 func reportStep(out io.Writer, doneMsg, alreadyMsg string, wasPresent bool) {
