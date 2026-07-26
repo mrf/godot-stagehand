@@ -123,6 +123,47 @@ func TestParseRejectsOutOfRangePort(t *testing.T) {
 	}
 }
 
+// TestParseRejectsNegativeTimeoutMs pins target.timeout_ms to the same
+// non-negative contract as target.port: zero stays valid (it means "use the
+// runner's default", per connectDeadline in session.go) but a negative value
+// produces an already-expired deadline and must fail at validation time
+// instead of surfacing as a mystifying Godot connection timeout.
+func TestParseRejectsNegativeTimeoutMs(t *testing.T) {
+	cases := []struct {
+		name      string
+		timeoutMs int
+		ok        bool
+	}{
+		{"negative", -1, false},
+		{"zero_means_default", 0, true},
+		{"positive", 5000, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			src := fmt.Sprintf(`{
+				"target": {"mode": "launch", "project_path": "p", "timeout_ms": %d},
+				"steps": [{"action": "tree"}]
+			}`, tc.timeoutMs)
+			_, err := Parse([]byte(src))
+			if tc.ok {
+				if err != nil {
+					t.Fatalf("Parse rejected valid timeout_ms %d: %v", tc.timeoutMs, err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Parse accepted negative timeout_ms %d", tc.timeoutMs)
+			}
+			if !strings.Contains(err.Error(), "target.timeout_ms") {
+				t.Errorf("error %q does not name target.timeout_ms", err)
+			}
+			if !strings.Contains(err.Error(), "positive") {
+				t.Errorf("error %q does not say it must be positive", err)
+			}
+		})
+	}
+}
+
 func TestParseAllowsAutoAssignPortInLaunchMode(t *testing.T) {
 	if _, err := Parse([]byte(`{
 		"target": {"mode": "launch", "project_path": "p", "port": 0},

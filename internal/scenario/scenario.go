@@ -195,6 +195,12 @@ func (t *Target) validate() error {
 			return fmt.Errorf("target.port %d is outside the valid TCP port range (1-65535)", *t.Port)
 		}
 	}
+	// Zero means "use the runner's default" (see connectDeadline in
+	// session.go) and is not rejected; only a negative value produces an
+	// already-expired deadline.
+	if t.TimeoutMs < 0 {
+		return fmt.Errorf("target.timeout_ms %d must be positive", t.TimeoutMs)
+	}
 	return nil
 }
 
