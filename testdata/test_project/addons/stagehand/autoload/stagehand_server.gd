@@ -308,7 +308,7 @@ func _handle_message(peer_id: int, text: String) -> void:
 			peer_id,
 			id,
 			UNSAFE_CAPABILITY_REQUIRED,
-			"Unsafe method disabled; relaunch with an explicit unsafe-capability opt-in"
+			"Unsafe method disabled; relaunch the game with STAGEHAND_ALLOW_UNSAFE=1"
 		)
 		return
 
