@@ -1,5 +1,6 @@
 # Godot Stagehand
 
+[![CI](https://github.com/mrf/godot-stagehand/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mrf/godot-stagehand/actions/workflows/ci.yml)
 [![GitHub issues](https://img.shields.io/github/issues/mrf/godot-stagehand)](https://github.com/mrf/godot-stagehand/issues)
 [![GitHub pull requests](https://img.shields.io/github/issues-pr/mrf/godot-stagehand)](https://github.com/mrf/godot-stagehand/pulls)
 [![License](https://img.shields.io/github/license/mrf/godot-stagehand)](LICENSE)
