@@ -139,6 +139,10 @@ type Spec struct {
 	// Enums maps a parameter name to its closed vocabulary; a supplied value
 	// outside the list is a usage error caught before the dial.
 	Enums map[string][]string
+	// ListEnums maps a parameter name to its closed vocabulary for a
+	// list-typed parameter (e.g. get_performance's "monitors"); every element
+	// supplied must be in the list, checked before the dial.
+	ListEnums map[string][]string
 	// TimeoutParam, when set, names the millisecond parameter that bounds the
 	// remote operation. The Go-side deadline is that value plus DeadlineBuffer.
 	TimeoutParam string
@@ -248,8 +252,9 @@ func buildSpecs() map[string]Spec {
 			Summary: "Capture the viewport"},
 
 		{Action: "get_performance", Method: "get_performance", Capability: gwp.CapabilityPerformance,
-			Optional: []string{"monitors"},
-			Summary:  "Read Performance singleton monitors"},
+			Optional:  []string{"monitors"},
+			ListEnums: map[string][]string{"monitors": PerformanceMonitors},
+			Summary:   "Read Performance singleton monitors"},
 		{Action: "assert_performance", Method: "assert_performance", Capability: gwp.CapabilityPerformance,
 			Required: []string{"monitor", "threshold"},
 			Optional: []string{
@@ -397,6 +402,21 @@ func (s Spec) Params(supplied map[string]any) (map[string]any, error) {
 			return nil, newError(KindUsage, s.Action, "parameter %q must be one of %s, got %q", name, strings.Join(allowed, ", "), text)
 		}
 	}
+	for name, allowed := range s.ListEnums {
+		raw, ok := out[name]
+		if !ok {
+			continue
+		}
+		values, ok := asStringSlice(raw)
+		if !ok {
+			return nil, newError(KindUsage, s.Action, "parameter %q must be a list of strings", name)
+		}
+		for _, text := range values {
+			if !slices.Contains(allowed, text) {
+				return nil, newError(KindUsage, s.Action, "parameter %q must be one of %s, got %q", name, strings.Join(allowed, ", "), text)
+			}
+		}
+	}
 	for _, group := range s.OneOf {
 		if !hasAny(out, group) {
 			return nil, newError(KindUsage, s.Action, "one of %s is required", strings.Join(group, ", "))
@@ -509,6 +529,28 @@ func dedupe(values []string) []string {
 		out = append(out, value)
 	}
 	return out
+}
+
+// asStringSlice accepts either a native []string (an in-process Go caller,
+// e.g. the CLI) or a []any of strings (params decoded from a JSON scenario
+// file), the two shapes a list-typed parameter can arrive in.
+func asStringSlice(v any) ([]string, bool) {
+	switch vals := v.(type) {
+	case []string:
+		return vals, true
+	case []any:
+		out := make([]string, 0, len(vals))
+		for _, item := range vals {
+			text, ok := item.(string)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, text)
+		}
+		return out, true
+	default:
+		return nil, false
+	}
 }
 
 func asInt(v any) (int, bool) {
