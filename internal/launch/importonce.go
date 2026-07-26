@@ -69,14 +69,18 @@ func ensureProjectImported(ctx context.Context, godotBin, projectPath string, ti
 	if timeout <= 0 {
 		timeout = defaultImportTimeout
 	}
-	stamp := projectImportStampPath(projectPath)
+	// projectPath may be a WSL UNC form (\\wsl.localhost\<Distro>\...) required
+	// by a Windows Godot binary's --path; our own filesystem operations need
+	// the local path it actually refers to, not that UNC form verbatim.
+	localPath := localProjectPath(projectPath)
+	stamp := projectImportStampPath(localPath)
 	if _, err := os.Stat(stamp); err == nil {
 		return nil
 	}
 
 	lockCtx, cancel := context.WithTimeout(ctx, timeout+importLockGrace)
 	defer cancel()
-	release, err := acquireImportLock(lockCtx, importLockPath(projectPath), 2*(timeout+importLockGrace))
+	release, err := acquireImportLock(lockCtx, importLockPath(localPath), 2*(timeout+importLockGrace))
 	if err != nil {
 		return err
 	}

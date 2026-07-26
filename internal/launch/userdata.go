@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 )
 
 // Per-instance user:// isolation.
@@ -66,7 +65,7 @@ func userDataUnsupportedReason(goos, godotBin string) string {
 	// The WSL shape: a Linux host process driving a Windows godot.exe. The XDG
 	// variables we would export mean nothing to the Windows build, and APPDATA
 	// would have to be a Windows-native path we cannot synthesize reliably.
-	if goos != "windows" && strings.HasSuffix(strings.ToLower(godotBin), ".exe") {
+	if isWindowsBinaryFromNonWindowsHost(goos, godotBin) {
 		return "per-instance user:// isolation is unavailable when a Windows Godot binary (.exe) is launched from a non-Windows host (e.g. WSL): " +
 			"the Godot build ignores this host's data-path environment variables. Concurrent launches of the same project will share user:// — " +
 			"run one instance at a time, or set use_custom_user_dir/custom_user_dir_name per project copy"

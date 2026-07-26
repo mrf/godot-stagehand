@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -221,9 +222,26 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		fmt.Sprintf("STAGEHAND_AUTH_TOKEN=%s", authToken),
 		fmt.Sprintf("STAGEHAND_ALLOW_UNSAFE=%s", unsafeSetting),
 	)
+	// The addon defaults its WebSocket bind address to loopback. A caller that
+	// asked for a non-loopback host (e.g. the WSL NAT gateway IP) needs the
+	// addon to actually bind there, or dialGodotWhenReady's dial to that host
+	// times out against a socket nothing is listening on.
+	if !isLoopbackHost(host) {
+		cmd.Env = append(cmd.Env,
+			"STAGEHAND_BIND_ADDRESS=0.0.0.0",
+			"STAGEHAND_ALLOW_REMOTE=1",
+		)
+	}
 	// Appended last so the isolated data paths win over anything inherited:
 	// os/exec keeps the final occurrence of a duplicated variable.
 	cmd.Env = append(cmd.Env, isolation.env...)
+	// A Windows godot.exe launched from WSL runs across the WSL/Win32 interop
+	// boundary, which only forwards environment variables listed in WSLENV —
+	// setting STAGEHAND_* above on this (Linux) side does not otherwise reach
+	// the Windows process at all.
+	if isWindowsBinaryFromNonWindowsHost(runtime.GOOS, godotBin) {
+		cmd.Env = append(cmd.Env, "WSLENV="+wslenvValue(os.Getenv("WSLENV"), stagehandEnvNames(cmd.Env)))
+	}
 	attachProcessLogs(cmd, cfg.LogWriter)
 
 	if err := cmd.Start(); err != nil {
