@@ -161,7 +161,7 @@ func (r *runState) runPhase(ctx context.Context, phase string, steps []Step, for
 			})
 			continue
 		}
-		result := r.runStep(ctx, i, step)
+		result := r.runStep(ctx, phase, i, step)
 		results = append(results, result)
 		if result.Status == StatusFailed && failure == nil && !step.ContinueOnFailure {
 			failure = &Failure{
@@ -173,8 +173,8 @@ func (r *runState) runPhase(ctx context.Context, phase string, steps []Step, for
 	return results, failure
 }
 
-func (r *runState) runStep(ctx context.Context, index int, step Step) StepResult {
-	r.trace.setStep(index)
+func (r *runState) runStep(ctx context.Context, phase string, index int, step Step) StepResult {
+	r.trace.setStep(phase, index)
 	start := r.opts.now()
 	result := StepResult{
 		Index:     index,

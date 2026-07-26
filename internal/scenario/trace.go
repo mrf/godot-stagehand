@@ -12,7 +12,11 @@ import (
 // TraceCall is one recorded RPC. Timings are measured around the wire call
 // only, so a slow step is attributable to Godot rather than to the runner.
 type TraceCall struct {
-	Seq        int    `json:"seq"`
+	Seq int `json:"seq"`
+	// Phase is "step" or "teardown". Combined with Step, it uniquely
+	// identifies the report.json entry that issued this RPC — Step alone is
+	// not unique because both phases index their steps from zero.
+	Phase      string `json:"phase"`
 	Step       int    `json:"step"`
 	Method     string `json:"method"`
 	StartedAt  string `json:"started_at"`
@@ -36,6 +40,7 @@ type tracer struct {
 	now   func() time.Time
 
 	mu    sync.Mutex
+	phase string
 	step  int
 	calls []TraceCall
 }
@@ -47,9 +52,11 @@ func newTracer(inner gwpop.Caller, now func() time.Time) *tracer {
 	return &tracer{inner: inner, now: now, step: -1}
 }
 
-// setStep attributes subsequent calls to a step index.
-func (t *tracer) setStep(index int) {
+// setStep attributes subsequent calls to a phase ("step" or "teardown") and
+// the step index within it.
+func (t *tracer) setStep(phase string, index int) {
 	t.mu.Lock()
+	t.phase = phase
 	t.step = index
 	t.mu.Unlock()
 }
@@ -62,6 +69,7 @@ func (t *tracer) Call(ctx context.Context, method string, params any) (*godotcon
 	t.mu.Lock()
 	call := TraceCall{
 		Seq:        len(t.calls) + 1,
+		Phase:      t.phase,
 		Step:       t.step,
 		Method:     method,
 		StartedAt:  start.UTC().Format(time.RFC3339Nano),
