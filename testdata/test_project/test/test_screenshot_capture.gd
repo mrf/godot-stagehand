@@ -28,3 +28,38 @@ func test_crop_rect_partially_inside_viewport_returns_intersection() -> void:
 	var rect: Rect2i = result["rect"]
 	assert_that(rect.position).is_equal(Vector2i(600, 440))
 	assert_that(rect.size).is_equal(Vector2i(40, 40))
+
+
+func test_get_node_rect_returns_error_for_unsupported_node_type() -> void:
+	var node: Node = auto_free(Node.new())
+
+	var result: Dictionary = StagehandScreenshotCapture._get_node_rect(node)
+
+	assert_that(result.get("error_code")).is_equal("invalid_params")
+	assert_bool(result.has("details")).is_true()
+	var details: Dictionary = result["details"]
+	assert_that(details.get("node_class")).is_equal("Node")
+
+
+func test_get_node_rect_returns_error_for_zero_sized_control() -> void:
+	var control: Control = auto_free(Control.new())
+	control.position = Vector2.ZERO
+	control.size = Vector2.ZERO
+
+	var result: Dictionary = StagehandScreenshotCapture._get_node_rect(control)
+
+	assert_that(result.get("error_code")).is_equal("invalid_params")
+	assert_bool(result.has("details")).is_true()
+
+
+func test_get_node_rect_returns_rect_for_sized_control() -> void:
+	var control: Control = auto_free(Control.new())
+	control.position = Vector2(10, 20)
+	control.size = Vector2(30, 40)
+
+	var result: Dictionary = StagehandScreenshotCapture._get_node_rect(control)
+
+	assert_bool(result.has("error")).is_false()
+	var rect: Rect2i = result["rect"]
+	assert_that(rect.position).is_equal(Vector2i(10, 20))
+	assert_that(rect.size).is_equal(Vector2i(30, 40))
