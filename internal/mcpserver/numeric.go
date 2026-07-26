@@ -75,10 +75,18 @@ func boundedNumber(req mcp.CallToolRequest, key string, def, min, max float64) (
 // logically integers (timeout_ms, limit, ...). Range-checking happens on the
 // float64 value before narrowing, so an out-of-range value is rejected
 // instead of silently saturating through a direct int(float64) conversion.
+// A non-integral value (e.g. 1.5) is rejected rather than truncated, so a
+// mistyped or forged numeric argument never silently maps to a different
+// wire value than the one supplied.
 func boundedInt(req mcp.CallToolRequest, key string, def, min, max int) (int, *mcp.CallToolResult) {
 	value, errResult := boundedNumber(req, key, float64(def), float64(min), float64(max))
 	if errResult != nil {
 		return 0, errResult
+	}
+	if value != math.Trunc(value) {
+		return 0, mcp.NewToolResultError(fmt.Sprintf(
+			"parameter %q must be a whole number (got %s)", key, formatBound(value),
+		))
 	}
 	return int(value), nil
 }

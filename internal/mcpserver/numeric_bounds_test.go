@@ -191,6 +191,62 @@ func TestLaunchPortEnforcesRange(t *testing.T) {
 	}
 }
 
+// TestBoundedIntRejectsFractionalValues is the regression test for
+// godot-stagehand-lv03: boundedInt range-checked the float64 but then
+// narrowed with a bare int(value), silently truncating a fractional
+// argument (e.g. port: 1.5) toward zero instead of rejecting it. Every
+// non-integral case here must be rejected with an error naming the
+// parameter; every integral case (including at the declared bounds) must
+// still pass through unchanged.
+func TestBoundedIntRejectsFractionalValues(t *testing.T) {
+	cases := []struct {
+		name      string
+		value     float64
+		wantError bool
+		wantInt   int
+	}{
+		{"fractional positive", 1.5, true, 0},
+		{"fractional negative", -2.5, true, 0},
+		{"small fraction", 0.1, true, 0},
+		{"integral at min bound", -10.0, false, -10},
+		{"integral at max bound", 100.0, false, 100},
+		{"integral mid-range", 50.0, false, 50},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := mcp.CallToolRequest{}
+			req.Params.Arguments = map[string]any{"n": tc.value}
+
+			got, errResult := boundedInt(req, "n", 1, -10, 100)
+
+			if tc.wantError {
+				if errResult == nil {
+					t.Fatalf("value %v: expected a validation error, got none (result=%v)", tc.value, got)
+				}
+				text, ok := mcp.AsTextContent(errResult.Content[0])
+				if !ok {
+					t.Fatalf("error result has no text content")
+				}
+				if !strings.Contains(text.Text, "n") {
+					t.Errorf("error text = %q, want it to mention parameter %q", text.Text, "n")
+				}
+				if !strings.Contains(text.Text, "whole number") {
+					t.Errorf("error text = %q, want it to mention %q", text.Text, "whole number")
+				}
+				return
+			}
+			if errResult != nil {
+				text, _ := mcp.AsTextContent(errResult.Content[0])
+				t.Fatalf("value %v: unexpected validation error: %q", tc.value, text.Text)
+			}
+			if got != tc.wantInt {
+				t.Errorf("value %v: got %d, want %d", tc.value, got, tc.wantInt)
+			}
+		})
+	}
+}
+
 // TestLaunchTimeoutMsEnforcesBounds covers godot_launch's timeout_ms, which
 // has a declared Min but no Max — the bound must still be enforced, and
 // enforcement must happen before launch.Launch is ever invoked (no real
