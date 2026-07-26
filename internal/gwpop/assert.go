@@ -124,13 +124,13 @@ func Connect(ctx context.Context, host string, port int, token string) (*godotco
 	return conn, info, nil
 }
 
-// Capture performs a screenshot RPC and decodes the frame.
+// Capture performs a screenshot RPC and decodes the frame. It reuses
+// visual.Params so a selector implies full_page=false here exactly as it does
+// on the MCP surface (mcpserver/tools_visual.go) — without that, the addon's
+// full_page-true default silently ignores the selector and returns a
+// full-viewport frame instead of the addon's NODE_NOT_FOUND error.
 func Capture(ctx context.Context, c Caller, nodeSelector string) (visual.Shot, error) {
-	params := map[string]any{}
-	if nodeSelector != "" {
-		params["selector"] = nodeSelector
-	}
-	raw, err := Execute(ctx, c, Op{Action: "screenshot", Params: params})
+	raw, err := Execute(ctx, c, Op{Action: "screenshot", Params: visual.Params(nodeSelector)})
 	if err != nil {
 		return visual.Shot{}, err
 	}
