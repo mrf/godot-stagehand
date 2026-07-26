@@ -8,11 +8,14 @@ Library.
 
 Nothing here is a messaging problem. The funnel is broken at step 1: a Godot dev
 who finds the repo is told "build from source, requires Go 1.25+". Most Godot
-devs don't have a Go toolchain and won't install one to try a testing tool. The
-in-editor Setup wizard's "Download server binary" button hits
-`/releases/latest/download/...` and 404s today. And the single largest discovery
-channel for Godot addons — the Asset Library — is explicitly blocked on a
-release existing.
+devs don't have a Go toolchain and won't install one to try a testing tool. As
+of the v0.3.1 release, the in-editor Setup wizard's "Download server binary"
+button resolves all four `/releases/latest/download/<asset>` URLs and the
+downloaded binary runs (verified 2026-07-26 via `gh`/`curl` and a live
+`--version` run of the linux binary); the wizard's actual GUI click inside a
+running editor is still unverified. Before this release, the single largest
+discovery channel for Godot addons — the Asset Library — was explicitly
+blocked on a release existing.
 
 So: ship binaries first, then distribute. Marketing before that just sends
 traffic to a wall.
