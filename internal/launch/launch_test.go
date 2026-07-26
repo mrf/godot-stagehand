@@ -39,6 +39,19 @@ func TestLaunchValidation(t *testing.T) {
 	}
 }
 
+func TestLaunchRejectsOutOfRangePort(t *testing.T) {
+	ctx := context.Background()
+	for _, port := range []int{-1, 65536, 99999} {
+		_, err := Launch(ctx, Config{ProjectPath: "/some/project", Port: port})
+		if err == nil {
+			t.Fatalf("port %d: expected error, got nil", port)
+		}
+		if !contains(err.Error(), "1-65535") {
+			t.Errorf("port %d: unexpected error: %v", port, err)
+		}
+	}
+}
+
 func TestNormalizeHostDefaultUsesDeterministicLoopback(t *testing.T) {
 	if got := normalizeHost(""); got != "127.0.0.1" {
 		t.Fatalf("normalizeHost(\"\") = %q, want 127.0.0.1", got)

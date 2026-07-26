@@ -26,6 +26,8 @@ var connectTool = mcp.NewTool("godot_connect",
 	mcp.WithNumber("port",
 		mcp.Description("WebSocket port. The default 26700 is the addon's shared default and may belong to another agent's game; pass the port your own instance printed at startup. Required when STAGEHAND_MULTI is set."),
 		mcp.DefaultNumber(defaultSharedPort),
+		mcp.Min(1),
+		mcp.Max(65535),
 	),
 	instanceIDOpt,
 )
@@ -40,7 +42,10 @@ func (s *Server) handleConnect(ctx context.Context, req mcp.CallToolRequest) (*m
 	if !portSupplied && multiInstanceModeEnabled() {
 		return mcp.NewToolResultError(explicitPortGuidance()), nil
 	}
-	port := req.GetInt("port", defaultSharedPort)
+	port, errResult := boundedInt(req, "port", defaultSharedPort, 1, 65535)
+	if errResult != nil {
+		return errResult, nil
+	}
 	instanceID := req.GetString("instance_id", "default")
 	release, errResult := s.beginGodotCall()
 	if errResult != nil {

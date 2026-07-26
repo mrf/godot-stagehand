@@ -37,6 +37,8 @@ var launchTool = mcp.NewTool("godot_launch",
 	mcp.WithNumber("port",
 		mcp.Description("TCP port for the WebSocket server (0 = auto-assign a free port, recommended: keeps this instance private to you)"),
 		mcp.DefaultNumber(0),
+		mcp.Min(0),
+		mcp.Max(65535),
 	),
 	mcp.WithBoolean("headless",
 		mcp.Description("Launch Godot in headless mode"),
@@ -75,7 +77,10 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 	}
 	godotBin := req.GetString("godot_bin", "")
 	host := req.GetString("host", launch.DefaultHost)
-	port := req.GetInt("port", 0)
+	port, errResult := boundedInt(req, "port", 0, 0, 65535)
+	if errResult != nil {
+		return errResult, nil
+	}
 	headless := req.GetBool("headless", true)
 	expectScreenshots := req.GetBool("expect_screenshots", false)
 	allowUnsafe := req.GetBool("allow_unsafe", false)

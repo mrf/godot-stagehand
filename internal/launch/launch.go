@@ -129,6 +129,9 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 	if cfg.ProjectPath == "" {
 		return nil, fmt.Errorf("project_path is required")
 	}
+	if cfg.Port != 0 && (cfg.Port < 1 || cfg.Port > 65535) {
+		return nil, fmt.Errorf("port %d is outside the valid TCP port range (1-65535)", cfg.Port)
+	}
 	godotBin := cfg.GodotBin
 	if godotBin == "" {
 		var err error

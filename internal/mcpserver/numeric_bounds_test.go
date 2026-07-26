@@ -99,6 +99,98 @@ func TestNumericParamsEnforceDeclaredBounds(t *testing.T) {
 	}
 }
 
+// TestConnectPortEnforcesRange is the regression test for
+// godot-stagehand-17vv: godot_connect's port had no declared bound and was
+// read with plain req.GetInt, so an out-of-range port reached godotconn.Dial
+// and came back wrapped in connectionGuidance() — advice about host
+// networking, which misdiagnoses a typo'd port number. Out-of-range values
+// must be rejected before any dial, with an error that does not mention
+// connectionGuidance's host advice.
+func TestConnectPortEnforcesRange(t *testing.T) {
+	s := New()
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		name string
+		port float64
+		want bool // true = expect rejection
+	}{
+		{"below range", -1, true},
+		{"zero", 0, true},
+		{"above range", 65536, true},
+		{"valid", 26700, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := mcp.CallToolRequest{}
+			req.Params.Arguments = map[string]any{
+				"auth_token": "token",
+				"port":       tc.port,
+			}
+			res, err := s.handleConnect(ctx, req)
+			if err != nil {
+				t.Fatalf("transport error: %v", err)
+			}
+			if !tc.want {
+				// A valid port proceeds to dial, which fails in this test
+				// environment (no live Godot) — that failure is fine as long
+				// as it is a connection error, not a usage rejection.
+				if res == nil || !res.IsError {
+					t.Fatalf("expected a connection error, got success")
+				}
+				text, _ := mcp.AsTextContent(res.Content[0])
+				if strings.Contains(text.Text, "must be between") {
+					t.Errorf("valid port rejected as out-of-range: %q", text.Text)
+				}
+				return
+			}
+			if res == nil || !res.IsError {
+				t.Fatalf("expected a usage error, got success")
+			}
+			text, ok := mcp.AsTextContent(res.Content[0])
+			if !ok {
+				t.Fatalf("error result has no text content")
+			}
+			if !strings.Contains(text.Text, "port") {
+				t.Errorf("error text = %q, want it to mention port", text.Text)
+			}
+			if strings.Contains(text.Text, "Host guidance") {
+				t.Errorf("out-of-range port wrapped in connectionGuidance(): %q", text.Text)
+			}
+		})
+	}
+}
+
+// TestLaunchPortEnforcesRange covers godot_launch's port, mirroring
+// TestConnectPortEnforcesRange. Port 0 is the auto-assign sentinel and must
+// remain valid; it is resolved to a free port before launch.Launch is ever
+// called, so it cannot reach the invalid-project-path failure below.
+func TestLaunchPortEnforcesRange(t *testing.T) {
+	s := New()
+	ctx := context.Background()
+
+	for _, port := range []float64{-1, 65536, 99999} {
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]any{
+			"project_path": "/nonexistent/project",
+			"port":         port,
+		}
+		res, err := s.handleLaunch(ctx, req)
+		if err != nil {
+			t.Fatalf("transport error: %v", err)
+		}
+		if res == nil || !res.IsError {
+			t.Fatalf("port %v: expected a usage error, got success", port)
+		}
+		text, _ := mcp.AsTextContent(res.Content[0])
+		if !strings.Contains(text.Text, "port") {
+			t.Errorf("port %v: error text = %q, want it to mention port", port, text.Text)
+		}
+		if strings.Contains(text.Text, "Failed to launch Godot") {
+			t.Errorf("port %v: validation ran after attempting to launch, not before: %q", port, text.Text)
+		}
+	}
+}
+
 // TestLaunchTimeoutMsEnforcesBounds covers godot_launch's timeout_ms, which
 // has a declared Min but no Max — the bound must still be enforced, and
 // enforcement must happen before launch.Launch is ever invoked (no real
