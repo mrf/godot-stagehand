@@ -20,6 +20,19 @@ const BIND_FAILURE_EXIT_CODE: int = 70
 ## otherwise a transient network flap would be indistinguishable from the
 ## client actually going away and would kill the game mid-session.
 const QUIT_ON_DISCONNECT_GRACE_MS: int = 10000
+## Grace period used when the quit-on-disconnect timer arms after only ONE
+## connection has ever been accepted (_accepted_connection_count <= 1),
+## instead of QUIT_ON_DISCONNECT_GRACE_MS. Longer because a hand-rolled launch
+## (a human/agent reading the port and auth token out of the log, then
+## loading MCP tool schemas, before ever connecting) is on a much slower
+## clock than a reconnect — and because that first accepted connection can be
+## nothing more than a bare TCP-level touch of the port (e.g. a port-liveness
+## probe) that never completes the WebSocket handshake: `_had_client` is set
+## as soon as accept_stream() succeeds, before any real Stagehand client has
+## attached (confirmed via instrumentation against a real Godot instance —
+## godot-stagehand-mt3i). Once a second connection has been accepted, later
+## disconnects revert to the shorter grace.
+const INITIAL_QUIT_ON_DISCONNECT_GRACE_MS: int = 30000
 ## Replay speed used when the client does not ask for one: realtime.
 const RECORDER_SPEED_DEFAULT: float = 1.0
 ## Hard cap on concurrent client connections. Each accepted peer reserves
@@ -76,6 +89,14 @@ var _recorder: INPUT_RECORDER
 var _quit_on_disconnect: bool = true
 var _had_client: bool = false
 var _pending_quit_at_msec: int = -1
+var _pending_quit_grace_ms: int = QUIT_ON_DISCONNECT_GRACE_MS
+## Total number of peers ever accepted (accept_stream() success), real client
+## or bare TCP probe alike. Used, not a boolean "have we armed once" flag, so
+## a reconnect fast enough that `_clients` never observably empties in
+## between (the accept for the new peer and the reap of the old one landing
+## in the same _process() frame) still correctly counts as "more than one
+## connection has happened" — see the arm check in _poll_clients().
+var _accepted_connection_count: int = 0
 
 
 func _ready() -> void:
@@ -120,6 +141,17 @@ func _ready() -> void:
 
 	_active = true
 	print("Stagehand: Server listening on port %d (%s)" % [_port, _bind_address])
+	if _quit_on_disconnect and OS.get_environment("STAGEHAND_INSTANCE_TOKEN").is_empty():
+		# STAGEHAND_INSTANCE_TOKEN is only set by the Go launcher
+		# (internal/launch.Launch); its absence means no launcher handshake is
+		# racing to connect, so this is a hand-rolled launch — spell out the
+		# self-quit and its opt-out up front instead of only learning about it
+		# when the quit message fires (godot-stagehand-mt3i).
+		print(
+			"Stagehand: No launcher detected — will quit if no client connects "
+			+ "within %dms (opt out with STAGEHAND_QUIT_ON_DISCONNECT=0)"
+			% INITIAL_QUIT_ON_DISCONNECT_GRACE_MS
+		)
 
 
 func _process(_delta: float) -> void:
@@ -177,6 +209,7 @@ func _accept_new_connections() -> void:
 			_clients[peer_id] = ws_peer
 			_peer_connected_at_msec[peer_id] = Time.get_ticks_msec()
 			_had_client = true
+			_accepted_connection_count += 1
 			_pending_quit_at_msec = -1
 		else:
 			push_warning("Stagehand: Failed to accept WebSocket stream: %s" % error_string(err))
@@ -221,13 +254,18 @@ func _poll_clients(now_msec: int = -1) -> void:
 		_had_client and _clients.is_empty() and _quit_on_disconnect
 		and _pending_quit_at_msec < 0
 	):
-		_pending_quit_at_msec = now_msec + QUIT_ON_DISCONNECT_GRACE_MS
+		_pending_quit_grace_ms = QUIT_ON_DISCONNECT_GRACE_MS
+		if _accepted_connection_count <= 1:
+			_pending_quit_grace_ms = INITIAL_QUIT_ON_DISCONNECT_GRACE_MS
+		_pending_quit_at_msec = now_msec + _pending_quit_grace_ms
 
 
-## Self-quit once the last client has been gone for QUIT_ON_DISCONNECT_GRACE_MS
-## without a reconnect, so an abandoned game/CLI launch (client crashed, or the
-## MCP server exited without cleanly killing this process) doesn't linger as a
-## ~500MB headless zombie. Opt out with STAGEHAND_QUIT_ON_DISCONNECT=0.
+## Self-quit once the last client has been gone for _pending_quit_grace_ms
+## (QUIT_ON_DISCONNECT_GRACE_MS, or INITIAL_QUIT_ON_DISCONNECT_GRACE_MS on the
+## first arm) without a reconnect, so an abandoned game/CLI launch (client
+## crashed, or the MCP server exited without cleanly killing this process)
+## doesn't linger as a ~500MB headless zombie. Opt out with
+## STAGEHAND_QUIT_ON_DISCONNECT=0.
 func _check_pending_quit() -> void:
 	if _pending_quit_at_msec < 0:
 		return
@@ -235,7 +273,7 @@ func _check_pending_quit() -> void:
 		return
 	print(
 		"Stagehand: No client reconnected within %dms of the last disconnect — quitting "
-		% QUIT_ON_DISCONNECT_GRACE_MS
+		% _pending_quit_grace_ms
 		+ "(opt out with STAGEHAND_QUIT_ON_DISCONNECT=0)"
 	)
 	get_tree().quit()
