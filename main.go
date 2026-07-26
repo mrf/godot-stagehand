@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -46,7 +48,10 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	}
 
 	if args[0] == "setup" {
-		if err := runSetup(args[1:]); err != nil {
+		if err := runSetup(args[1:], stderr); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				return cli.ExitOK
+			}
 			fmt.Fprintf(stderr, "error: %v\n", err)
 			return cli.ExitUsage
 		}

@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 
@@ -10,17 +11,23 @@ import (
 )
 
 // runSetup implements the "godot-stagehand setup <project_path>" subcommand.
-func runSetup(args []string) error {
+// Flag/usage output goes to stderr rather than the hardcoded os.Stderr so
+// callers (and tests) can capture it; a flag.ErrHelp is returned to the
+// caller unmodified rather than swallowed, matching how every other
+// subcommand's --help is handled in internal/cli.
+func runSetup(args []string, stderr io.Writer) error {
 	fset := flag.NewFlagSet("setup", flag.ContinueOnError)
+	fset.SetOutput(stderr)
 	force := fset.Bool("force", false, "overwrite an existing addon installation")
 	fset.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: godot-stagehand setup [--force] <project_path>")
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Installs the Stagehand addon into a Godot project: copies the addon,")
-		fmt.Fprintln(os.Stderr, "enables the plugin, registers the StagehandServer autoload, and prints")
-		fmt.Fprintln(os.Stderr, "the MCP client configuration snippet.")
-		fmt.Fprintln(os.Stderr, "")
-		fset.PrintDefaults()
+		fmt.Fprintln(stderr, "Usage: godot-stagehand setup [--force] <project_path>")
+		fmt.Fprintln(stderr, "")
+		fmt.Fprintln(stderr, "Installs the Stagehand addon into a Godot project: copies the addon,")
+		fmt.Fprintln(stderr, "enables the plugin, registers the StagehandServer autoload, and prints")
+		fmt.Fprintln(stderr, "the MCP client configuration snippet.")
+		fmt.Fprintln(stderr, "")
+		fmt.Fprintln(stderr, "  --force")
+		fmt.Fprintln(stderr, "    \toverwrite an existing addon installation")
 	}
 	if err := fset.Parse(args); err != nil {
 		return err
