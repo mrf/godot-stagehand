@@ -79,6 +79,15 @@ var _pending_quit_at_msec: int = -1
 
 
 func _ready() -> void:
+	# A pure-networking node with no gameplay side effects: it must keep
+	# servicing its TCP accept/WebSocket poll loop even if the host game
+	# pauses the SceneTree (e.g. an intro/menu overlay at startup), or a
+	# client's WebSocket handshake never completes while paused
+	# (godot-stagehand-sprh). Set unconditionally, before the enablement
+	# gate below, since a disabled server already stops processing via
+	# set_process(false) regardless of process_mode.
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
 	if not _is_enabled():
 		set_process(false)
 		return
