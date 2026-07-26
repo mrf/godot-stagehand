@@ -2,6 +2,31 @@
 
 This is a minimal Godot project demonstrating how to use the Stagehand addon for external game automation and testing.
 
+## Watch an agent play it (one command)
+
+No project setup, no manual Godot steps — this single command builds the CLI,
+launches this exact project headless, and drives it: it waits for the scene,
+reads the label, clicks the button, and asserts the label changed. It's the
+scenario runner from [docs/cli.md](../../docs/cli.md), pointed at
+[`scenarios/watch-agent-play.json`](scenarios/watch-agent-play.json).
+
+From the repository root, with a Godot 4.3+ binary on `PATH` or `$GODOT_BIN`:
+
+```bash
+go build -o godot-stagehand .
+GODOT_BIN=/path/to/godot ./godot-stagehand run examples/minimal-game/scenarios/watch-agent-play.json
+```
+
+Exit code `0` means every step passed — the agent found the scene, read the
+label's starting text, clicked the button, and confirmed the label updated to
+"Button was pressed!". Add `--out-dir some-dir` to also collect
+`report.json`, `junit.xml`, `rpc-trace.json`, and the engine's own log.
+
+This runs headless (no window), so it's the structural half of the loop, not
+a visual one — see [Testing Automation](#testing-automation) below for the
+interactive tools (screenshots included) once you connect an MCP client
+instead.
+
 ## Setup Instructions
 
 1. Open this project in Godot Engine (tested with Godot 4.2+)

@@ -1,0 +1,47 @@
+{
+  "name": "watch-agent-play",
+  "description": "Launch the minimal example headless, click its button, and confirm the label updates. One command that shows an agent driving a real running game.",
+  "target": {
+    "mode": "launch",
+    "project_path": "..",
+    "headless": true,
+    "timeout_ms": 60000
+  },
+  "steps": [
+    {
+      "name": "the scene is up",
+      "action": "wait_for_node",
+      "with": { "selector": "name:Main", "state": "exists", "timeout_ms": 15000 }
+    },
+    {
+      "name": "the label starts with its default text",
+      "action": "assert_property",
+      "with": {
+        "selector": "name:Label",
+        "property": "text",
+        "operator": "equals",
+        "expected": "Hello from Stagehand!"
+      }
+    },
+    {
+      "name": "the agent clicks the button",
+      "action": "click",
+      "with": { "selector": "name:Button" }
+    },
+    {
+      "name": "let the click handler run",
+      "action": "sleep",
+      "with": { "duration_ms": 200 }
+    },
+    {
+      "name": "the label reflects the click",
+      "action": "assert_property",
+      "with": {
+        "selector": "name:Label",
+        "property": "text",
+        "operator": "equals",
+        "expected": "Button was pressed!"
+      }
+    }
+  ]
+}
