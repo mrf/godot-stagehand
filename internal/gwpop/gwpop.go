@@ -100,6 +100,18 @@ func newError(kind Kind, action, format string, args ...any) *Error {
 	return &Error{Kind: kind, Action: action, Message: fmt.Sprintf(format, args...)}
 }
 
+// ClassifiedError is implemented by a Caller.Call error that already knows
+// its own Kind at the point it occurred — e.g. a session that dials lazily
+// and hits a dial timeout, which is indistinguishable from a genuine RPC
+// response timeout once it has unwrapped down to context.DeadlineExceeded.
+// Execute checks for this before falling back to errors.Is(DeadlineExceeded),
+// so the classification made where the mechanism is knowable survives
+// instead of being re-derived (wrongly) downstream.
+type ClassifiedError interface {
+	error
+	OpKind() Kind
+}
+
 // Spec describes one action's contract.
 type Spec struct {
 	// Action is the stable name used in scenario files and CLI commands.
@@ -282,6 +294,10 @@ func Execute(ctx context.Context, c Caller, op Op) (json.RawMessage, error) {
 		var rpcErr *godotconn.RPCError
 		if errors.As(err, &rpcErr) {
 			return nil, rpcError(op.Action, spec.Method, rpcErr)
+		}
+		var classified ClassifiedError
+		if errors.As(err, &classified) {
+			return nil, newError(classified.OpKind(), op.Action, "%v", err)
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, newError(KindTimeout, op.Action, "timed out waiting for Godot to answer %q", spec.Method)

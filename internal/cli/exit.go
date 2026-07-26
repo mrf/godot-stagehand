@@ -117,3 +117,9 @@ type connectionError struct{ err error }
 
 func (e *connectionError) Error() string { return e.err.Error() }
 func (e *connectionError) Unwrap() error { return e.err }
+
+// OpKind satisfies gwpop.ClassifiedError: a dial failure is a connection
+// failure even when it unwraps to context.DeadlineExceeded (a blackholed
+// host times out the same way an established-but-silent one does), so
+// gwpop.Execute must not re-derive a timeout Kind for it.
+func (e *connectionError) OpKind() gwpop.Kind { return gwpop.KindTransport }
