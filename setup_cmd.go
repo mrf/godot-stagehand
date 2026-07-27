@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 
+	"github.com/mrf/godot-stagehand/internal/cli"
 	"github.com/mrf/godot-stagehand/internal/setup"
 )
 
@@ -28,8 +29,15 @@ func runSetup(args []string, stderr io.Writer) error {
 		fmt.Fprintln(stderr, "")
 		fmt.Fprintln(stderr, "  --force")
 		fmt.Fprintln(stderr, "    \toverwrite an existing addon installation")
+		fmt.Fprintln(stderr, "")
+		fmt.Fprintln(stderr, "Flags may appear before or after <project_path>.")
 	}
-	if err := fset.Parse(args); err != nil {
+	// Go's flag package stops parsing at the first non-flag argument, so
+	// "setup proj --force" would otherwise leave --force in the positional
+	// args. cli.Permute reorders flags ahead of positionals, matching how
+	// every other subcommand (via internal/cli's runWithFlags) already
+	// accepts trailing flags.
+	if err := fset.Parse(cli.Permute(fset, args)); err != nil {
 		return err
 	}
 	if fset.NArg() != 1 {

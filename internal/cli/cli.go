@@ -152,7 +152,7 @@ func runWithFlags(
 	if cmd.connects {
 		e.conn.bind(fset)
 	}
-	if err := fset.Parse(permute(fset, args)); err != nil {
+	if err := fset.Parse(Permute(fset, args)); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return err
 		}
@@ -175,14 +175,16 @@ func runWithFlags(
 	return body(ctx, sess, fset)
 }
 
-// permute moves flags ahead of positional arguments.
+// Permute moves flags ahead of positional arguments.
 //
 // Go's flag package stops parsing at the first non-flag argument, so
-// `find class:Button --limit 5` would silently ignore --limit. A debugging CLI
-// that demands flags-first is a trap, so the ordering is normalised here
-// instead. A positional that genuinely begins with "-" must be preceded by the
-// conventional "--" terminator.
-func permute(fset *flag.FlagSet, args []string) []string {
+// `find class:Button --limit 5` would silently ignore --limit. A CLI that
+// demands flags-first is a trap, so the ordering is normalised here instead.
+// A positional that genuinely begins with "-" must be preceded by the
+// conventional "--" terminator. Exported so other flag.FlagSet-based
+// subcommands outside this package (e.g. the root "setup" command) get the
+// same trailing-flag handling instead of inventing a second convention.
+func Permute(fset *flag.FlagSet, args []string) []string {
 	var flags, positional []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
