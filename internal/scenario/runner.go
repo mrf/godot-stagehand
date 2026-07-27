@@ -76,7 +76,7 @@ func Run(ctx context.Context, sc *Scenario, opts Options) (*Report, error) {
 		// pipeline is supposed to read does not exist.
 		if report.Failure == nil {
 			report.Status = StatusFailed
-			report.Failure = &Failure{StepIndex: -1, Phase: "artifacts", Kind: KindInternal, Message: err.Error()}
+			report.Failure = &Failure{Phase: "artifacts", Kind: KindInternal, Message: err.Error()}
 		}
 		return report, err
 	}
@@ -102,14 +102,14 @@ func (r *runState) execute(ctx context.Context) *Report {
 		StartedAt:        r.started.UTC().Format(time.RFC3339Nano),
 		StagehandVersion: version.Version,
 		Protocol:         gwp.ProtocolID,
-		Target:           ReportTarget{Mode: r.sc.Target.Mode},
+		Target:           targetFromConfig(r.sc.Target),
 		Artifacts:        map[string]string{},
 	}
 	r.resolveDirs()
 
 	logs, logPath, err := r.openGodotLog()
 	if err != nil {
-		return r.finish(report, &Failure{StepIndex: -1, Phase: "setup", Kind: KindInternal, Message: err.Error()})
+		return r.finish(report, &Failure{Phase: "setup", Kind: KindInternal, Message: err.Error()})
 	}
 	if logs != nil {
 		defer logs.Close()
@@ -119,7 +119,7 @@ func (r *runState) execute(ctx context.Context) *Report {
 	session, err := r.opts.dial(ctx, r.sc, r.opts, logs)
 	if err != nil {
 		report.RPC = Trace{Calls: []TraceCall{}}
-		return r.finish(report, &Failure{StepIndex: -1, Phase: "connect", Kind: KindConnection, Message: err.Error()})
+		return r.finish(report, &Failure{Phase: "connect", Kind: KindConnection, Message: err.Error()})
 	}
 	defer func() { _ = session.Close() }()
 
@@ -164,8 +164,9 @@ func (r *runState) runPhase(ctx context.Context, phase string, steps []Step, for
 		result := r.runStep(ctx, phase, i, step)
 		results = append(results, result)
 		if result.Status == StatusFailed && failure == nil && !step.ContinueOnFailure {
+			index := i
 			failure = &Failure{
-				StepIndex: i, StepName: step.Label(), Phase: phase,
+				StepIndex: &index, StepName: step.Label(), Phase: phase,
 				Kind: result.ErrorKind, Message: result.Error,
 			}
 		}
@@ -467,6 +468,9 @@ func (r *runState) finish(report *Report, failure *Failure) *Report {
 	}
 	if report.RPC.Calls == nil {
 		report.RPC.Calls = []TraceCall{}
+	}
+	if report.Steps == nil {
+		report.Steps = []StepResult{}
 	}
 	return report
 }

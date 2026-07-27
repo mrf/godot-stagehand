@@ -12,11 +12,12 @@ import (
 // is literally "step" for the main phase, so formatting "%s step %d" printed
 // "failed at step step 1" instead of "failed at step 1".
 func TestSummaryDoesNotDoubleTheWordStep(t *testing.T) {
+	idx := 1
 	r := &Report{
 		Name:   "smoke",
 		Status: StatusFailed,
 		Failure: &Failure{
-			StepIndex: 1,
+			StepIndex: &idx,
 			Phase:     "step",
 			Kind:      KindAssertion,
 			Message:   "boom",
@@ -29,11 +30,12 @@ func TestSummaryDoesNotDoubleTheWordStep(t *testing.T) {
 }
 
 func TestSummaryLabelsTeardownStepCorrectly(t *testing.T) {
+	idx := 0
 	r := &Report{
 		Name:   "smoke",
 		Status: StatusFailed,
 		Failure: &Failure{
-			StepIndex: 0,
+			StepIndex: &idx,
 			Phase:     "teardown",
 			Kind:      KindAssertion,
 			Message:   "boom",
@@ -42,6 +44,28 @@ func TestSummaryLabelsTeardownStepCorrectly(t *testing.T) {
 	summary := r.Summary()
 	if want := "failed at teardown step 0 (assertion): boom"; !strings.Contains(summary, want) {
 		t.Fatalf("Summary() = %q, want it to contain %q", summary, want)
+	}
+}
+
+// TestSummaryOmitsFakeStepIndexForPreStepFailure reproduces
+// godot-stagehand-07v1: a connect failure happens before any step runs, so
+// there is no step to index. Location() must not surface the -1 sentinel.
+func TestSummaryOmitsFakeStepIndexForPreStepFailure(t *testing.T) {
+	r := &Report{
+		Name:   "unreachable",
+		Status: StatusFailed,
+		Failure: &Failure{
+			Phase:   "connect",
+			Kind:    KindConnection,
+			Message: "dial tcp 127.0.0.1:1: connect: connection refused",
+		},
+	}
+	summary := r.Summary()
+	if want := "failed at connect phase (connection):"; !strings.Contains(summary, want) {
+		t.Fatalf("Summary() = %q, want it to contain %q", summary, want)
+	}
+	if strings.Contains(summary, "-1") {
+		t.Errorf("Summary() = %q, must not leak the -1 step sentinel", summary)
 	}
 }
 
@@ -119,7 +143,8 @@ func TestJUnitSurfacesTeardownFailureInSystemOut(t *testing.T) {
 	r.Teardown[0].Status = StatusFailed
 	r.Teardown[0].Error = "disconnect: broken pipe"
 	r.Status = StatusFailed
-	r.Failure = &Failure{StepIndex: 0, Phase: "teardown", Kind: KindConnection, Message: "disconnect: broken pipe"}
+	idx := 0
+	r.Failure = &Failure{StepIndex: &idx, Phase: "teardown", Kind: KindConnection, Message: "disconnect: broken pipe"}
 
 	path := filepath.Join(t.TempDir(), "junit.xml")
 	if err := r.WriteJUnit(path); err != nil {

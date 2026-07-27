@@ -133,6 +133,23 @@ func connectSession(ctx context.Context, sc *Scenario, opts Options) (*Session, 
 	}, nil
 }
 
+// targetFromConfig builds the report's target block from the scenario's own
+// configuration, before any session is opened. A failure to connect never
+// reaches Session, so this is the only source for the host/port a failed run
+// tried to reach; a successful dial overwrites it with the session's actual
+// values.
+func targetFromConfig(target Target) ReportTarget {
+	host := target.Host
+	if host == "" {
+		host = launch.DefaultHost
+	}
+	port := 0
+	if target.Port != nil {
+		port = *target.Port
+	}
+	return ReportTarget{Mode: target.Mode, Host: host, Port: port}
+}
+
 // resolveToken finds the session secret, preferring an explicit CLI flag, then
 // the scenario's named environment variable, then an inline token, then the
 // conventional STAGEHAND_AUTH_TOKEN.

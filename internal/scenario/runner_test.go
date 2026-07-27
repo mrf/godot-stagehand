@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -161,6 +162,12 @@ func TestRunFailsAssertionAndSkipsRemainingSteps(t *testing.T) {
 	if report.Failure == nil || report.Failure.Kind != KindAssertion {
 		t.Fatalf("failure = %+v, want an assertion failure", report.Failure)
 	}
+	if report.Failure.StepIndex == nil || *report.Failure.StepIndex != 0 {
+		t.Errorf("Failure.StepIndex = %v, want 0 (the failed step)", report.Failure.StepIndex)
+	}
+	if want := "step 0"; report.Failure.Location() != want {
+		t.Errorf("Location() = %q, want %q", report.Failure.Location(), want)
+	}
 	if report.Steps[1].Status != StatusSkipped {
 		t.Errorf("step 1 status = %s, want skipped", report.Steps[1].Status)
 	}
@@ -268,6 +275,60 @@ func TestRunReportsConnectionFailureWithoutSteps(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(opts.OutDir, reportFile)); err != nil {
 		t.Errorf("no report written for a connection failure: %v", err)
+	}
+}
+
+// TestRunReportsPreStepConnectFailure reproduces godot-stagehand-07v1: a
+// scenario targeting a dead connect-mode port must report `"steps": []` (not
+// null), a location with no fake step index, and the host/port it tried to
+// reach — none of which require a session to have ever opened.
+func TestRunReportsPreStepConnectFailure(t *testing.T) {
+	deadPort := 1
+	opts := Options{
+		OutDir: t.TempDir(),
+		now:    fakeClock(time.Millisecond),
+		dial: func(_ context.Context, _ *Scenario, _ Options, _ io.Writer) (*Session, error) {
+			return nil, errors.New("dial tcp 127.0.0.1:1: connect: connection refused")
+		},
+	}
+	sc := mustParse(t, fmt.Sprintf(`{
+		"name": "unreachable",
+		"target": {"mode": "connect", "host": "127.0.0.1", "port": %d, "token": "secret"},
+		"steps": [{"action": "tree"}]
+	}`, deadPort))
+
+	report, err := Run(context.Background(), sc, opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if report.Failure == nil || report.Failure.Kind != KindConnection {
+		t.Fatalf("failure = %+v, want a connection failure", report.Failure)
+	}
+	if report.Failure.StepIndex != nil {
+		t.Errorf("Failure.StepIndex = %v, want nil (no step ran)", *report.Failure.StepIndex)
+	}
+	if want := "connect phase"; report.Failure.Location() != want {
+		t.Errorf("Location() = %q, want %q", report.Failure.Location(), want)
+	}
+	if report.Target.Host != "127.0.0.1" || report.Target.Port != deadPort {
+		t.Errorf("Target = %+v, want the configured host/port the run tried to reach", report.Target)
+	}
+	if report.Steps == nil {
+		t.Fatal("Steps is nil, want an empty slice")
+	}
+	if len(report.Steps) != 0 {
+		t.Errorf("steps = %d, want none when the session never opened", len(report.Steps))
+	}
+
+	data, err := os.ReadFile(filepath.Join(opts.OutDir, reportFile))
+	if err != nil {
+		t.Fatalf("read report.json: %v", err)
+	}
+	if !strings.Contains(string(data), `"steps": []`) {
+		t.Errorf("report.json = %s, want \"steps\": [] rather than null", data)
+	}
+	if strings.Contains(string(data), "step_index") {
+		t.Errorf("report.json = %s, must not include step_index when there is no step", data)
 	}
 }
 

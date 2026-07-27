@@ -85,22 +85,27 @@ type StepResult struct {
 
 // Failure summarises why the run failed.
 type Failure struct {
-	StepIndex int    `json:"step_index"`
+	// StepIndex is nil for a failure that happened before any step ran
+	// (connect, setup, artifacts) — there is no step to index.
+	StepIndex *int   `json:"step_index,omitempty"`
 	StepName  string `json:"step_name,omitempty"`
 	Phase     string `json:"phase"`
 	Kind      string `json:"kind"`
 	Message   string `json:"message"`
 }
 
-// Location renders where the failure occurred, e.g. "step 1" or "teardown
-// step 0". Phase is "step" for the main phase, so it is elided rather than
-// doubled; every other phase (teardown, setup, connect, artifacts) prefixes
-// the step number as-is.
+// Location renders where the failure occurred, e.g. "step 1", "teardown step
+// 0", or "connect phase" when it happened before any step ran. Phase is
+// "step" for the main phase, so it is elided rather than doubled; every other
+// phase (teardown, setup, connect, artifacts) prefixes the step number as-is.
 func (f *Failure) Location() string {
-	if f.Phase == "step" {
-		return fmt.Sprintf("step %d", f.StepIndex)
+	if f.StepIndex == nil {
+		return f.Phase + " phase"
 	}
-	return fmt.Sprintf("%s step %d", f.Phase, f.StepIndex)
+	if f.Phase == "step" {
+		return fmt.Sprintf("step %d", *f.StepIndex)
+	}
+	return fmt.Sprintf("%s step %d", f.Phase, *f.StepIndex)
 }
 
 // Passed reports whether every step succeeded.
