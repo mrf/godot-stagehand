@@ -144,6 +144,7 @@ echo $?   # 0 pass, 5 an assertion failed, 3 could not reach Godot, ...
 | `description` | Carried into the report |
 | `target` | How to obtain the session (below) |
 | `baseline_dir` | Screenshot baselines. Relative to the scenario file. Default `stagehand-baselines` |
+| *(diff dir)* | Not a scenario field. `screenshot_diff` failure artifacts default to `stagehand-diffs` relative to the scenario file — same resolution as `baseline_dir` — unless `--out-dir` is set, in which case they go to `<out-dir>/diffs` instead (see [Artifacts](#artifacts)) |
 | `steps` | Ordered operations. The first failure stops the run |
 | `teardown` | Always runs, including after a failure |
 
@@ -230,6 +231,12 @@ directories. Scenario files are data and may arrive in a pull request.
 | `screenshots/` | Frames written by `screenshot` steps |
 | `diffs/` | `<name>-actual.png` and `<name>-diff.png` for failed comparisons |
 | `<baseline_dir>/` | Baselines written by `save_baseline` steps |
+
+Without `--out-dir`, diff artifacts still land in `stagehand-diffs/` — resolved
+relative to the scenario file, same as `baseline_dir` above, not the process's
+working directory. This differs from the MCP server's own default (relative to
+the server's working directory) — see
+[visual-smoke-contract.md](visual-smoke-contract.md#one-time-save-baselines).
 
 `--json` and `--junit` override the report locations individually. The JSON
 report also goes to stdout so a pipeline can consume it without an out-dir;

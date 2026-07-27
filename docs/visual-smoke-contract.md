@@ -145,7 +145,13 @@ godot_screenshot_diff(name="hud", selector="HUD", threshold=0.01, pixel_sensitiv
 
 A passing diff returns `pass: true`. A failing diff returns `pass: false` and
 writes `stagehand-diffs/<name>-actual.png` + `stagehand-diffs/<name>-diff.png`
-for inspection.
+(relative to the server's working directory, same as baselines above) for
+inspection.
+
+This CWD-relative default is specific to the MCP server. The scenario runner
+(`godot-stagehand run`) resolves its default diff dir against the scenario
+file instead, unless `--out-dir` is given — see
+[cli.md § Artifacts](cli.md#artifacts).
 
 Branch on the machine-readable `pass` field rather than parsing the text report.
 See [visual-regression.md § Machine-readable result fields](visual-regression.md#machine-readable-result-fields)

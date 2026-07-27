@@ -131,7 +131,8 @@ to match or the comparison errors out rather than guessing.
 ## When a diff fails: the artifacts you get
 
 A failing diff doesn't just print "no match." It writes two PNGs next to
-your baselines (default `stagehand-diffs/`, configurable):
+your baselines (default `stagehand-diffs/`, relative to wherever you ran
+`godot-stagehand` from, configurable via `--artifact-dir`):
 
 - `<name>-actual.png` — the frame that was actually captured this run.
 - `<name>-diff.png` — a visualization where every differing pixel is
@@ -154,6 +155,13 @@ scenario step actions, and a scenario is rejected at validation time —
 before Godot is even launched — if it includes a screenshot step while
 `headless` is `true`. That fails fast on a config mistake instead of burning
 an engine startup to discover it.
+
+Diff-dir resolution differs between the two paths: the standalone `screenshot`
+command above defaults to `stagehand-diffs/` relative to your current working
+directory, while the scenario runner defaults to `stagehand-diffs/` relative
+to the *scenario file* — unless `--out-dir` is set, in which case diffs go to
+`<out-dir>/diffs` as shown below (see [cli.md](../cli.md#artifacts) for the
+full breakdown).
 
 ```yaml
 - name: Stagehand visual smoke
