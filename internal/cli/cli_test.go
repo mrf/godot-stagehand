@@ -397,6 +397,104 @@ func TestScreenshotDiffFailsWithAssertionExitCode(t *testing.T) {
 	}
 }
 
+func TestScreenshotDiffRejectsOutOfRangeUnitFlags(t *testing.T) {
+	withToken(t)
+	stub := newStubGodot(t, map[string]any{
+		"screenshot": map[string]any{"data": visualtest.SolidPNGBase64(4, 4, visualtest.Opaque), "width": 4, "height": 4},
+	})
+	port := stub.portFlag(t)
+	baselineDir := t.TempDir()
+	if code, _, stderr := invoke(t, "screenshot", port, "--baseline=menu", "--baseline-dir="+baselineDir); code != ExitOK {
+		t.Fatalf("save baseline exit = %d (stderr: %s)", code, stderr)
+	}
+
+	for _, tt := range []struct {
+		name, flag, value string
+	}{
+		{"threshold too high", "--threshold", "5"},
+		{"threshold negative", "--threshold", "-1"},
+		{"threshold NaN", "--threshold", "NaN"},
+		{"threshold +Inf", "--threshold", "+Inf"},
+		{"pixel-sensitivity too high", "--pixel-sensitivity", "9"},
+		{"pixel-sensitivity negative", "--pixel-sensitivity", "-1"},
+		{"pixel-sensitivity NaN", "--pixel-sensitivity", "NaN"},
+		{"pixel-sensitivity +Inf", "--pixel-sensitivity", "+Inf"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			before := len(stub.called())
+			code, _, stderr := invoke(t, "screenshot", port, "--diff=menu", "--baseline-dir="+baselineDir, tt.flag+"="+tt.value)
+			if code != ExitUsage {
+				t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitUsage, stderr)
+			}
+			if len(stub.called()) != before {
+				t.Errorf("RPC issued despite invalid %s=%s; validation must happen before connecting", tt.flag, tt.value)
+			}
+		})
+	}
+}
+
+func TestScreenshotDiffAcceptsUnitFlagBoundaries(t *testing.T) {
+	withToken(t)
+	stub := newStubGodot(t, map[string]any{
+		"screenshot": map[string]any{"data": visualtest.SolidPNGBase64(4, 4, visualtest.Opaque), "width": 4, "height": 4},
+	})
+	port := stub.portFlag(t)
+	baselineDir := t.TempDir()
+	if code, _, stderr := invoke(t, "screenshot", port, "--baseline=menu", "--baseline-dir="+baselineDir); code != ExitOK {
+		t.Fatalf("save baseline exit = %d (stderr: %s)", code, stderr)
+	}
+
+	for _, flag := range []string{"--threshold", "--pixel-sensitivity"} {
+		for _, value := range []string{"0", "1"} {
+			t.Run(flag+"="+value, func(t *testing.T) {
+				code, _, stderr := invoke(t, "screenshot", port, "--diff=menu", "--baseline-dir="+baselineDir, flag+"="+value)
+				if code != ExitOK {
+					t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitOK, stderr)
+				}
+			})
+		}
+	}
+}
+
+func TestInputActionStrengthRejectsOutOfRangeValues(t *testing.T) {
+	withToken(t)
+	stub := newStubGodot(t, nil)
+	port := stub.portFlag(t)
+
+	for _, tt := range []struct{ name, value string }{
+		{"too high", "5"},
+		{"negative", "-1"},
+		{"NaN", "NaN"},
+		{"+Inf", "+Inf"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			before := len(stub.called())
+			code, _, stderr := invoke(t, "input", "action", port, "ui_accept", "--strength="+tt.value)
+			if code != ExitUsage {
+				t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitUsage, stderr)
+			}
+			if len(stub.called()) != before {
+				t.Errorf("RPC issued despite invalid strength=%s; validation must happen before connecting", tt.value)
+			}
+		})
+	}
+}
+
+func TestInputActionStrengthAcceptsBoundaries(t *testing.T) {
+	withToken(t)
+	stub := newStubGodot(t, nil)
+	port := stub.portFlag(t)
+
+	for _, value := range []string{"0", "1"} {
+		t.Run(value, func(t *testing.T) {
+			code, _, stderr := invoke(t, "input", "action", port, "ui_accept", "--strength="+value)
+			if code != ExitOK {
+				t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitOK, stderr)
+			}
+		})
+	}
+}
+
 func TestPerformanceAssertionFailureExitsAssertion(t *testing.T) {
 	withToken(t)
 	stub := newStubGodot(t, map[string]any{

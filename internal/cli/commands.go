@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,21 @@ import (
 	"github.com/mrf/godot-stagehand/internal/version"
 	"github.com/mrf/godot-stagehand/internal/visual"
 )
+
+// validateUnitRange rejects a [0, 1]-domain flag value that is non-finite or
+// outside the range, matching the checks the MCP frontend (boundedNumber) and
+// the scenario loader (validateUnitRangeParam) already apply to the same
+// params — the CLI is otherwise the only frontend that lets threshold,
+// pixel-sensitivity, and action strength reach Godot unvalidated.
+func validateUnitRange(flagName string, value float64) error {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return usagef(fmt.Errorf("--%s must be a finite number, got %v", flagName, value))
+	}
+	if value < 0 || value > 1 {
+		return usagef(fmt.Errorf("--%s must be between 0 and 1, got %v", flagName, value))
+	}
+	return nil
+}
 
 // ── connect / status ──────────────────────────────────────────────────────
 
@@ -293,6 +309,11 @@ var cmdInput = &command{
 				if err := requireArgs(cmd, fset.Args(), 1, "<action>"); err != nil {
 					return err
 				}
+				if wasSet(fset, "strength") {
+					if err := validateUnitRange("strength", strength); err != nil {
+						return err
+					}
+				}
 				params["action"] = fset.Arg(0)
 				setIf(params, "strength", strength, wasSet(fset, "strength"))
 				setIf(params, "hold_ms", holdMs, wasSet(fset, "hold-ms"))
@@ -450,6 +471,14 @@ var cmdScreenshot = &command{
 		return runWithFlags(ctx, cmd, e, args, bind, func(ctx context.Context, s *session, _ *flag.FlagSet) error {
 			if baseline != "" && diff != "" {
 				return usagef(fmt.Errorf("--baseline and --diff are mutually exclusive: save a baseline or compare against one"))
+			}
+			if diff != "" {
+				if err := validateUnitRange("threshold", threshold); err != nil {
+					return err
+				}
+				if err := validateUnitRange("pixel-sensitivity", sensitivity); err != nil {
+					return err
+				}
 			}
 			shot, err := gwpop.Capture(ctx, s.Caller(), nodeSelector)
 			if err != nil {
