@@ -5,21 +5,21 @@
 [![GitHub pull requests](https://img.shields.io/github/issues-pr/mrf/godot-stagehand)](https://github.com/mrf/godot-stagehand/pulls)
 [![License](https://img.shields.io/github/license/mrf/godot-stagehand)](LICENSE)
 
+Playwright, but for game engines.
+
 **Drive your *running* Godot game from outside the engine.** Click real buttons,
-read real node state, capture real frames — and diff them against saved
-baselines. Playwright, but for game engines.
+read real node state, capture real frames and diff them against saved
+baselines.
 
-<!-- Demo video goes here (godot-stagehand-growth-distribution-87s.7). -->
+One Go binary. Two frontends over the same live connection:
+- **MCP server.** Claude or any other agent plays your game and finds the bugs
+  you would have found by clicking.
+- **CLI with a scenario runner.** The same checks run in CI. JUnit output,
+  stable exit codes, no MCP client anywhere.
 
-One Go binary, two frontends over the same live connection: an **MCP server**, so
-Claude or any other agent can play your game and find the bugs you'd have found
-by clicking; and a **CLI with a scenario runner**, so the same checks run in CI
-with JUnit output and stable exit codes and no MCP client anywhere.
-
-**See it work in one command:**
-[`examples/minimal-game`](examples/minimal-game#watch-an-agent-play-it-one-command)
-— clone, run one command, watch an agent click a button in a real running Godot
-scene and assert the result.
+**See it work:** [`examples/minimal-game`](examples/minimal-game#watch-an-agent-play-it-one-command)
+is one command. Clone it and watch an agent click a button in a real running
+Godot scene, then assert the result.
 
 **Status: beta, pre-1.0.** Prebuilt binaries for Linux, macOS (Intel and Apple
 Silicon) and Windows. Tool schemas and the wire protocol may still change
@@ -40,12 +40,14 @@ chmod +x godot-stagehand
 godot --path /path/to/your/project --stagehand
 ```
 
-`setup` prints the MCP client config snippet and the run command; Godot prints a
-one-session auth token on startup — keep it private and hand it to
-`godot_connect`. Prefer no terminal? Enable the addon in **Project → Project
-Settings → Plugins** and use the **Setup…** button in the editor toolbar, whose
-wizard downloads the binary, generates the config, and tests the connection.
-Full walkthrough either way: **[Quickstart](docs/quickstart.md)**.
+`setup` prints the MCP client config snippet and the command to run your game.
+Your game then prints a one-session auth token. Keep it private, and give it to
+`godot_connect`.
+
+Rather not use a terminal? Enable the addon in **Project → Project Settings →
+Plugins**, then click **Setup…** in the editor toolbar. That wizard downloads the
+binary, writes the config, and tests the connection. Either path is walked
+through step by step in the **[Quickstart](docs/quickstart.md)**.
 
 ## Use it
 
@@ -70,12 +72,12 @@ godot-stagehand run scenarios/menu-smoke.json --out-dir ci-artifacts
 ```
 
 `run` executes a declarative list of launch, action, wait and assertion steps
-against a real Godot build and exits nonzero on failure — exit `5` means a real
+against a real Godot build and exits nonzero on failure. Exit `5` means a real
 regression. `--out-dir` collects `report.json`, `junit.xml`, `rpc-trace.json`,
 `godot.log`, screenshots and diff images.
 
 Stagehand binds to `127.0.0.1` and rejects every command until the peer supplies
-the session token — but it is a dev control plane, not a hardened endpoint.
+the session token, but it is a dev control plane, not a hardened endpoint.
 **Read the [security boundary](docs/security.md) before you expose anything.**
 
 ## Docs
@@ -89,7 +91,7 @@ the session token — but it is a dev control plane, not a hardened endpoint.
 | [Configuration](docs/configuration.md) | Flags, env vars, timeouts, running several agents at once |
 | [Security boundary](docs/security.md) | Auth, remote binding, unsafe methods |
 | [Architecture](docs/architecture.md) | How the addon, the binary and your client fit together |
-| [Compatibility](docs/compatibility.md) | Godot 4.3–4.7, and why not 4.2 |
+| [Compatibility](docs/compatibility.md) | Godot 4.3 to 4.7, and why not 4.2 |
 | [Troubleshooting](docs/troubleshooting.md) | When it won't connect, or the screenshots are black |
 | [Comparison](docs/comparison.md) | Versus editor-automation tools and in-engine test frameworks |
 | [Visual regression](docs/visual-regression.md) | Baselines, diffing, and the [CI gate contract](docs/visual-smoke-contract.md) |
@@ -101,10 +103,8 @@ the session token — but it is a dev control plane, not a hardened endpoint.
 ```bash
 go vet ./...          # lint
 go test ./...         # Go tests (no Godot needed)
-
 # Scenario runner against a real headless Godot
 GODOT_BIN=/path/to/godot go test -tags=godot -run '^TestScenarioRunner' .
-
 # GDScript unit suite (GdUnit4, headless, needs Godot 4.6+)
 GODOT_BIN=/path/to/godot ./scripts/run-gdscript-tests.sh
 ```
