@@ -39,7 +39,7 @@ its matching GitHub-hosted runner.
 - [ ] Smoke test: Complete the quickstart guide end-to-end
 
 ## Documentation Verification
-- [ ] Quickstart in README.md works in clean environment
+- [ ] Quickstart (README.md install block + docs/quickstart.md) works in a clean environment
 - [ ] Examples/ directory updated to use correct stagehand version
 - [ ] Copy addon script works correctly
 - [ ] Version numbers are consistent across all files (`go test ./internal/version/`)

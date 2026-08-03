@@ -47,10 +47,10 @@ func TestShippedScenarioIsValid(t *testing.T) {
 	}
 }
 
-// TestDocumentedExitCodesMatchTheImplementation keeps docs/cli.md and the
-// README honest: the exit-code table is the contract CI pipelines are told to
-// branch on, and a drift there is silently wrong until somebody's gate stops
-// failing.
+// TestDocumentedExitCodesMatchTheImplementation keeps docs/cli.md honest: the
+// exit-code table is the contract CI pipelines are told to branch on, and a
+// drift there is silently wrong until somebody's gate stops failing. cli.md is
+// the single home for that table; the README deliberately does not repeat it.
 func TestDocumentedExitCodesMatchTheImplementation(t *testing.T) {
 	rows := []struct {
 		code  int
@@ -59,7 +59,7 @@ func TestDocumentedExitCodesMatchTheImplementation(t *testing.T) {
 		{0, "success"}, {1, "internal"}, {2, "usage"},
 		{3, "connection"}, {4, "godot"}, {5, "assertion"}, {6, "timeout"},
 	}
-	for _, doc := range []string{filepath.Join("docs", "cli.md"), "README.md"} {
+	for _, doc := range []string{filepath.Join("docs", "cli.md")} {
 		body, err := os.ReadFile(doc)
 		if err != nil {
 			t.Fatalf("read %s: %v", doc, err)

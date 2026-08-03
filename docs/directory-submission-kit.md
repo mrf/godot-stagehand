@@ -251,7 +251,7 @@ by search.
   - "Must be useful in a project" — satisfied.
   - Follow existing style; **sort in alphabetical order**; categorize by
     newest compatible Godot version (Stagehand → Godot 4, minimum supported
-    4.3 per the README's compatibility table).
+    4.3 per [docs/compatibility.md](compatibility.md)).
   - No cryptocurrency/NFT integration — not applicable.
 - **Alphabetical placement**: within `#### Godot 4`, entries run
   ...`Godot Shader Warmup` → `Godot Spin Button` → `Godot SQLite` →

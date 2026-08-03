@@ -30,7 +30,7 @@ The addon is plain GDScript, so you don't need the server program yet to complet
 
 **You're good if:** a **Stagehand** toggle button and a **Setup…** button appear in the editor's top toolbar.
 
-> **Comfortable with a terminal?** You can skip steps 2–3 of this guide entirely. Download the binary for your platform from the [latest release](https://github.com/mrf/godot-stagehand/releases/latest) — `godot-stagehand-linux-amd64`, `godot-stagehand-darwin-amd64`/`-arm64` for macOS, or `godot-stagehand-windows-amd64.exe` (macOS/Linux: `chmod +x` it first) — then run `godot-stagehand setup /path/to/your/project`. That one command copies the addon, enables the plugin, registers the runtime autoload, and prints the exact Claude config and run command for you. Pass `--force` to overwrite an existing install. If no release exists yet for your platform, see [Build from source](#build-from-source-fallback) below.
+> **Comfortable with a terminal?** You can skip steps 2–3 of this guide entirely. Download the binary for your platform from the [latest release](https://github.com/mrf/godot-stagehand/releases/latest) — `godot-stagehand-linux-amd64`, `godot-stagehand-darwin-arm64` (Apple Silicon), `godot-stagehand-darwin-amd64` (Intel Mac), or `godot-stagehand-windows-amd64.exe` (macOS/Linux: `chmod +x` it first) — then run `godot-stagehand setup /path/to/your/project`. That one command copies the addon, enables the plugin, registers the runtime autoload, and prints the exact Claude config and run command for you. Pass `--force` to overwrite an existing install. If no release exists yet for your platform, see [Build from source](#build-from-source-fallback) below. (The old `./copy-addon.sh` script is deprecated; it now just forwards to `godot-stagehand setup`.)
 
 ---
 
@@ -159,40 +159,14 @@ token printed by the currently running Godot session, not one from an earlier ru
 
 ## Troubleshooting
 
-### "Connection refused" or "failed to connect"
-
-1. Is Godot running? The game window must be open and the scene loaded.
-2. Is Stagehand enabled? Look for `Server listening on port 26700` in Godot's output.
-3. Are you on Windows with Claude in WSL? See [Windows / WSL Setup](windows-setup.md).
-4. Port conflict? Run another instance on a different port:
-   - Start Godot with `--stagehand-port=26701` after the `--` separator
-     (e.g. `godot ... -- --stagehand-port=26701`), or set `STAGEHAND_PORT=26701`
-     for a position-independent alternative — the flag before `--` still
-     works too, but logs a warning
-   - In Claude: "Connect to my game on port 26701"
-
-### "Plugin not found" or Stagehand doesn't appear in Project Settings
-
-1. Confirm `addons/stagehand/plugin.cfg` exists in your project folder.
-2. In Godot: **Project → Project Settings → Plugins** — if Stagehand isn't listed, the folder is in the wrong place.
-3. Try: close Project Settings, wait a moment, reopen it.
-
-### Screenshots come back black or empty
-
-Stagehand can only capture what Godot actually renders. This happens if you launched with `--headless` — there's nothing to render. Launch normally, with a visible, non-minimized window.
-
-### "Unknown option: --stagehand"
-
-The host project parses its own command-line arguments and doesn't recognize
-`--stagehand`, so it aborts before Stagehand (which had already started fine)
-gets a chance to do anything useful. Use the environment variable instead,
-which bypasses argument parsing entirely: `STAGEHAND_ENABLED=1 godot --path
-/path/to/your/project`. See the callout in [Step 4](#step-4-run-your-game-with-stagehand-enabled) above.
+Every known failure mode — connection refused, `Unknown option: --stagehand`,
+authentication errors, black screenshots, a missing plugin — is collected in one
+place: **[Troubleshooting](troubleshooting.md)**.
 
 ---
 
 ## What's next
 
-- **More tools:** See the [full tool reference](../README.md#available-tools) — you can click buttons, set properties, wait for signals, record input, and more.
+- **More tools:** See the [full tool reference](tools.md) — you can click buttons, set properties, wait for signals, record input, and more.
 - **Selectors:** Learn how to target specific nodes by name, class, group, or text — see [Selectors guide](selectors.md).
 - **Windows / WSL details:** [Windows / WSL Setup](windows-setup.md).
