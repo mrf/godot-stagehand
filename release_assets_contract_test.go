@@ -54,7 +54,7 @@ func TestReleaseAssetSurfacesMatchFixture(t *testing.T) {
 	surfaces := []string{
 		"build-release.sh",
 		filepath.Join(".github", "workflows", "release.yml"),
-		"README.md",
+		filepath.Join("docs", "quickstart.md"),
 		filepath.Join("docs", "release-checklist.md"),
 	}
 	for _, relativePath := range surfaces {

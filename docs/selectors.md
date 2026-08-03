@@ -2,6 +2,23 @@
 
 This document describes the selector syntax supported by Stagehand for identifying UI elements in Godot scenes.
 
+## At a glance
+
+| Syntax | Example | Finds |
+|--------|---------|-------|
+| Path | `/root/UI/StartButton` | Node at exact path |
+| Name | `name:*Button*` | Glob match on node name |
+| Class | `class:Button` | All nodes of class |
+| Group | `group:interactive` | All nodes in group |
+| Text | `text:Start` | Nodes containing text |
+| Meta | `meta:id=player` | Nodes with metadata |
+| Unique | `unique:submit-btn` | Node by its unique name |
+| Role | `role:button` | Nodes with an accessibility role (Godot 4.5+) |
+| Chain | `class:Panel >> name:*Btn*` | Scoped search (find within) |
+
+The rest of this guide covers matching rules, disambiguation, and chaining
+semantics in full.
+
 ## Basic Selectors
 
 These are the original selectors that were available from the start.

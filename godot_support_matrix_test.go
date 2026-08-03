@@ -9,10 +9,11 @@ import (
 	"testing"
 )
 
-// The CI compatibility matrix and the README support table are two statements of
-// the same claim: which Godot versions this addon is verified against. A version
-// that CI exercises but README calls unsupported (or vice versa) leaves a
-// permanently red job or an unbacked promise, so they must agree exactly.
+// The CI compatibility matrix and the docs/compatibility.md support table are
+// two statements of the same claim: which Godot versions this addon is verified
+// against. A version that CI exercises but the docs call unsupported (or vice
+// versa) leaves a permanently red job or an unbacked promise, so they must agree
+// exactly.
 
 var (
 	ciMatrixVersionRE = regexp.MustCompile(`"(\d+\.\d+(?:\.\d+)?)\.stable"`)
@@ -31,23 +32,24 @@ func TestCICompatMatrixMatchesREADMESupportTable(t *testing.T) {
 		t.Fatal("no Godot versions found in the CI compat matrix")
 	}
 
-	readme, err := os.ReadFile(filepath.Join(repoRoot, "README.md"))
+	const supportTableDoc = "docs/compatibility.md"
+	readme, err := os.ReadFile(filepath.Join(repoRoot, "docs", "compatibility.md"))
 	if err != nil {
-		t.Fatalf("read README: %v", err)
+		t.Fatalf("read %s: %v", supportTableDoc, err)
 	}
 	supported := readmeSupportedVersions(t, string(readme))
 	if len(supported) == 0 {
-		t.Fatal("no supported versions found in the README support table")
+		t.Fatalf("no supported versions found in the %s support table", supportTableDoc)
 	}
 
 	for _, v := range ciVersions {
 		if !supported[v] {
-			t.Errorf("CI runs Godot %s but README does not list it as supported: either drop it from the matrix or update the support table", v)
+			t.Errorf("CI runs Godot %s but %s does not list it as supported: either drop it from the matrix or update the support table", v, supportTableDoc)
 		}
 	}
 	for v := range supported {
 		if !contains(ciVersions, v) {
-			t.Errorf("README claims Godot %s is supported but the CI compat matrix never exercises it", v)
+			t.Errorf("%s claims Godot %s is supported but the CI compat matrix never exercises it", supportTableDoc, v)
 		}
 	}
 }

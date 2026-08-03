@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// TestReadmeToolTableMatchesRegisteredTools guards against README.md's
+// TestReadmeToolTableMatchesRegisteredTools guards against docs/tools.md's
 // "Available tools" table drifting from the tools actually registered on the
 // server. It compares the live tool registry (via New()'s registerTools call)
 // against every `godot_*` name documented in that section, in both
@@ -26,9 +26,10 @@ func TestReadmeToolTableMatchesRegisteredTools(t *testing.T) {
 	}
 
 	repoRoot := filepath.Join("..", "..")
-	content, err := os.ReadFile(filepath.Join(repoRoot, "README.md"))
+	const toolDoc = "docs/tools.md"
+	content, err := os.ReadFile(filepath.Join(repoRoot, "docs", "tools.md"))
 	if err != nil {
-		t.Fatalf("read README.md: %v", err)
+		t.Fatalf("read %s: %v", toolDoc, err)
 	}
 
 	const heading = "## Available tools"
@@ -45,12 +46,12 @@ func TestReadmeToolTableMatchesRegisteredTools(t *testing.T) {
 
 	for name := range registered {
 		if !documented[name] {
-			t.Errorf("tool %q is registered on the server but not documented under %q in README.md", name, heading)
+			t.Errorf("tool %q is registered on the server but not documented under %q in %s", name, heading, toolDoc)
 		}
 	}
 	for name := range documented {
 		if !registered[name] {
-			t.Errorf("README.md documents %q under %q, but no such tool is registered on the server", name, heading)
+			t.Errorf("%s documents %q under %q, but no such tool is registered on the server", toolDoc, name, heading)
 		}
 	}
 }

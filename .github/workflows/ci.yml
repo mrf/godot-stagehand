@@ -54,12 +54,12 @@ jobs:
   # code assets.go embeds into release binaries. See docs/addon-sync-contract.md.
   #
   # 4.3-4.7.1 are the supported range (4.3 is the documented minimum — see
-  # README.md's Godot version compatibility section) and block the pipeline.
-  # Every version here is one the README claims support for, and every job is
-  # blocking: a red job must mean a real regression. 4.2 is deliberately absent
-  # (GDScript `is not` and `OS.get_entropy` are both 4.3+) — see the support
-  # matrix in README.md. TestCICompatMatrixMatchesREADMESupportTable enforces
-  # that this list and the README table stay in agreement.
+  # docs/compatibility.md) and block the pipeline. Every version here is one the
+  # docs claim support for, and every job is blocking: a red job must mean a real
+  # regression. 4.2 is deliberately absent (GDScript `is not` and
+  # `OS.get_entropy` are both 4.3+) — see the support matrix in
+  # docs/compatibility.md. TestCICompatMatrixMatchesREADMESupportTable enforces
+  # that this list and that table stay in agreement.
   gdscript-parse:
     name: Godot compat (${{ matrix.godot-version }})
     runs-on: ubuntu-latest

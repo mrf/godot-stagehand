@@ -133,9 +133,10 @@ func TestOrdinaryCallDeadlineCanBeConfigured(t *testing.T) {
 }
 
 func TestOrdinaryCallDeadlineIsDocumented(t *testing.T) {
-	readme, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+	const deadlineDoc = "docs/configuration.md"
+	readme, err := os.ReadFile(filepath.Join("..", "..", "docs", "configuration.md"))
 	if err != nil {
-		t.Fatalf("read README: %v", err)
+		t.Fatalf("read %s: %v", deadlineDoc, err)
 	}
 	for _, want := range []string{
 		"STAGEHAND_CALL_TIMEOUT_MS",
@@ -145,7 +146,7 @@ func TestOrdinaryCallDeadlineIsDocumented(t *testing.T) {
 		"pong",
 	} {
 		if !strings.Contains(string(readme), want) {
-			t.Fatalf("README does not document ordinary/wait call deadlines: missing %q", want)
+			t.Fatalf("%s does not document ordinary/wait call deadlines: missing %q", deadlineDoc, want)
 		}
 	}
 }
