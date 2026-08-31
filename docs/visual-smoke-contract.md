@@ -84,12 +84,19 @@ your baselines and flip your gates.
 Recommended approach:
 
 ```bash
-# Pin via go install with a specific commit
-go install github.com/mrf/godot-stagehand@<commit-sha>
-
-# Or pin in a go.mod if used as a library dependency
-require github.com/mrf/godot-stagehand v0.2.0
+# Pin to an exact release tag and verify the binary reports it
+curl -fsSLo godot-stagehand \
+  https://github.com/mrf/godot-stagehand/releases/download/v0.2.0/godot-stagehand-linux-amd64
+chmod +x godot-stagehand
+./godot-stagehand --version    # must print v0.2.0
 ```
+
+`go install github.com/mrf/godot-stagehand@<rev>` does **not** work: the repo's
+`.gitattributes` marks everything outside `addons/` as `export-ignore` so Godot
+Asset Library downloads carry only the addon, and Go builds module zips with
+`git archive`, which honours that. Use the release binaries above, or build from
+a cloned checkout (`git clone && go build -o godot-stagehand .`). See
+[asset-library.md](asset-library.md).
 
 Document your pinned version in your game repo's CI setup comments so reviewers
 know to update it deliberately.

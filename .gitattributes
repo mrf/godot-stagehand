@@ -1,0 +1,24 @@
+# Normalize line endings for everything Git considers text.
+* text=auto eol=lf
+
+# Windows batch files must keep CRLF or cmd.exe mis-parses them.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Vendored third-party tree: keep byte-exact, no EOL normalization. gdUnit4
+# ships a CRLF .tscn and a .cmd; renormalizing them would churn upstream files.
+testdata/test_project/addons/gdUnit4/** -text
+
+# Explicit binary marks (belt-and-braces; text=auto already detects these).
+*.png binary
+*.jpg binary
+*.ico binary
+
+# --- Godot Asset Library packaging ---------------------------------------
+# AssetLib downloads https://github.com/<repo>/archive/<commit>.zip, which
+# honours export-ignore. Ship only the addon so users install a ~250K plugin
+# instead of the whole 6MB repo (Go server, testdata, docs, examples, CI).
+# See docs/asset-library.md before changing this.
+/**        export-ignore
+/addons    !export-ignore
+/addons/** !export-ignore

@@ -123,13 +123,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.25"
-
-      - name: Build godot-stagehand
-        run: go install github.com/mrf/godot-stagehand@<pinned-commit-sha>
+      - name: Install godot-stagehand
+        run: |
+          curl -fsSLo /usr/local/bin/godot-stagehand \
+            https://github.com/mrf/godot-stagehand/releases/download/<pinned-tag>/godot-stagehand-linux-amd64
+          chmod +x /usr/local/bin/godot-stagehand
 
       - name: Run the smoke scenario
         run: |
