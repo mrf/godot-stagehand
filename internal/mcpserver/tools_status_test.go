@@ -18,6 +18,11 @@ import (
 // statusFooter closes every godot_status text response.
 const statusFooter = "\nNote: Each MCP client runs its own godot-stagehand process. All clients share one Godot game via WebSocket."
 
+// statusNoteJSON closes every structured godot_status response: the same
+// sentence as statusFooter, because Claude Code shows the model the
+// structured content in place of the text.
+const statusNoteJSON = `,"note":"Each MCP client runs its own godot-stagehand process. All clients share one Godot game via WebSocket."}`
+
 // TestStatusTextAndStructuredContent pins godot_status's text byte for byte
 // (golden strings captured from the handler before structured content was
 // added) and pins the wire JSON of its structured content, which external
@@ -33,7 +38,7 @@ func TestStatusTextAndStructuredContent(t *testing.T) {
 			name:     "no instances",
 			setup:    func(*testing.T, *Server) {},
 			wantText: "Connection: not connected\n\nUse godot_connect to connect to a running game, or godot_launch to start one." + statusFooter,
-			wantJSON: `{"instances":[]}`,
+			wantJSON: `{"instances":[],"hint":"Use godot_connect to connect to a running game, or godot_launch to start one."` + statusNoteJSON,
 		},
 		{
 			name: "launched with versions",
@@ -51,7 +56,7 @@ func TestStatusTextAndStructuredContent(t *testing.T) {
 				"    PID:        12345 (launched)\n" +
 				"    Engine:     4.6.2.stable.official\n" +
 				"    Stagehand:  0.4.1\n" + statusFooter,
-			wantJSON: `{"instances":[{"id":"default","state":"connected","host":"127.0.0.1","port":26700,"pid":12345,"launched":true,"reconnect_exhausted":false,"engine_version":"4.6.2.stable.official","stagehand_version":"0.4.1"}]}`,
+			wantJSON: `{"instances":[{"id":"default","state":"connected","host":"127.0.0.1","port":26700,"pid":12345,"launched":true,"reconnect_exhausted":false,"engine_version":"4.6.2.stable.official","stagehand_version":"0.4.1"}]` + statusNoteJSON,
 		},
 		{
 			name: "manual connect",
@@ -63,7 +68,7 @@ func TestStatusTextAndStructuredContent(t *testing.T) {
 				"    Connection: Connected\n" +
 				"    Address:    10.0.0.5:27000\n" +
 				"    PID:        -1 (manual connect)\n" + statusFooter,
-			wantJSON: `{"instances":[{"id":"manual","state":"connected","host":"10.0.0.5","port":27000,"pid":-1,"launched":false,"reconnect_exhausted":false}]}`,
+			wantJSON: `{"instances":[{"id":"manual","state":"connected","host":"10.0.0.5","port":27000,"pid":-1,"launched":false,"reconnect_exhausted":false}]` + statusNoteJSON,
 		},
 		{
 			name: "no connection",
@@ -73,7 +78,7 @@ func TestStatusTextAndStructuredContent(t *testing.T) {
 			wantText: "Instances: 1\n\n  [ghost]\n" +
 				"    Connection: disconnected\n" +
 				"    PID:        -1 (manual connect)\n" + statusFooter,
-			wantJSON: `{"instances":[{"id":"ghost","state":"disconnected","host":"127.0.0.1","port":26701,"pid":-1,"launched":false,"reconnect_exhausted":false}]}`,
+			wantJSON: `{"instances":[{"id":"ghost","state":"disconnected","host":"127.0.0.1","port":26701,"pid":-1,"launched":false,"reconnect_exhausted":false}]` + statusNoteJSON,
 		},
 		{
 			name: "reconnect exhausted",
@@ -85,7 +90,7 @@ func TestStatusTextAndStructuredContent(t *testing.T) {
 				"    Note:       gave up reconnecting; instance appears permanently unreachable. Use godot_connect or godot_launch to retry.\n" +
 				"    Address:    127.0.0.1:26703\n" +
 				"    PID:        -1 (manual connect)\n" + statusFooter,
-			wantJSON: `{"instances":[{"id":"default","state":"disconnected","host":"127.0.0.1","port":26703,"pid":-1,"launched":false,"reconnect_exhausted":true}]}`,
+			wantJSON: `{"instances":[{"id":"default","state":"disconnected","host":"127.0.0.1","port":26703,"pid":-1,"launched":false,"reconnect_exhausted":true,"note":"gave up reconnecting; instance appears permanently unreachable. Use godot_connect or godot_launch to retry."}]` + statusNoteJSON,
 		},
 		{
 			name: "multiple instances in id order",
@@ -102,7 +107,7 @@ func TestStatusTextAndStructuredContent(t *testing.T) {
 				"    Connection: Connected\n" +
 				"    Address:    10.0.0.5:27000\n" +
 				"    PID:        -1 (manual connect)\n" + statusFooter,
-			wantJSON: `{"instances":[{"id":"alpha","state":"disconnected","host":"127.0.0.1","port":26702,"pid":4242,"launched":true,"reconnect_exhausted":false},{"id":"beta","state":"connected","host":"10.0.0.5","port":27000,"pid":-1,"launched":false,"reconnect_exhausted":false}]}`,
+			wantJSON: `{"instances":[{"id":"alpha","state":"disconnected","host":"127.0.0.1","port":26702,"pid":4242,"launched":true,"reconnect_exhausted":false},{"id":"beta","state":"connected","host":"10.0.0.5","port":27000,"pid":-1,"launched":false,"reconnect_exhausted":false}]` + statusNoteJSON,
 		},
 	}
 

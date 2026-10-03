@@ -14,11 +14,24 @@ var statusTool = mcp.NewTool("godot_status",
 	mcp.WithReadOnlyHintAnnotation(true),
 )
 
+// The guidance sentences godot_status prints. They also go into the
+// structured content, because Claude Code shows the model the structured
+// content in place of the text (verified on Claude Code 2.1.288; see
+// docs/design/claude-code-plugin.md, Q8), so leaving them out of the JSON
+// would leave Claude without them.
+const (
+	statusHintNotConnected = "Use godot_connect to connect to a running game, or godot_launch to start one."
+	statusNoteReconnect    = "gave up reconnecting; instance appears permanently unreachable. Use godot_connect or godot_launch to retry."
+	statusNoteProcesses    = "Each MCP client runs its own godot-stagehand process. All clients share one Godot game via WebSocket."
+)
+
 // statusReport is godot_status's structured content. Its JSON shape is a
 // contract with external consumers (the Claude Code status band); change it
 // only additively.
 type statusReport struct {
 	Instances []statusInstance `json:"instances"`
+	Hint      string           `json:"hint,omitempty"`
+	Note      string           `json:"note"`
 }
 
 // statusInstance describes one managed Godot instance.
@@ -32,6 +45,7 @@ type statusInstance struct {
 	ReconnectExhausted bool   `json:"reconnect_exhausted"`
 	EngineVersion      string `json:"engine_version,omitempty"`
 	StagehandVersion   string `json:"stagehand_version,omitempty"`
+	Note               string `json:"note,omitempty"`
 }
 
 // statusState maps a connection state to its wire value. A state this
@@ -54,13 +68,17 @@ func statusState(st godotconn.State) string {
 
 func (s *Server) handleStatus(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	entries := s.instances.list()
-	report := statusReport{Instances: make([]statusInstance, 0, len(entries))}
+	report := statusReport{
+		Instances: make([]statusInstance, 0, len(entries)),
+		Note:      statusNoteProcesses,
+	}
 
 	var sb strings.Builder
 
 	if len(entries) == 0 {
 		sb.WriteString("Connection: not connected\n")
-		sb.WriteString("\nUse godot_connect to connect to a running game, or godot_launch to start one.")
+		sb.WriteString("\n" + statusHintNotConnected)
+		report.Hint = statusHintNotConnected
 	} else {
 		fmt.Fprintf(&sb, "Instances: %d\n", len(entries))
 		for _, e := range entries {
@@ -68,7 +86,7 @@ func (s *Server) handleStatus(_ context.Context, _ mcp.CallToolRequest) (*mcp.Ca
 		}
 	}
 
-	sb.WriteString("\nNote: Each MCP client runs its own godot-stagehand process. All clients share one Godot game via WebSocket.")
+	sb.WriteString("\nNote: " + statusNoteProcesses)
 
 	return mcp.NewToolResultStructured(report, sb.String()), nil
 }
@@ -94,7 +112,8 @@ func writeInstanceStatus(sb *strings.Builder, e *instanceEntry) statusInstance {
 
 		fmt.Fprintf(sb, "    Connection: %s\n", state)
 		if inst.ReconnectExhausted {
-			sb.WriteString("    Note:       gave up reconnecting; instance appears permanently unreachable. Use godot_connect or godot_launch to retry.\n")
+			inst.Note = statusNoteReconnect
+			sb.WriteString("    Note:       " + statusNoteReconnect + "\n")
 		}
 		fmt.Fprintf(sb, "    Address:    %s:%d\n", e.host, e.port)
 	} else {

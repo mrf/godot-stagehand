@@ -1,8 +1,9 @@
 # Claude Code plugin
 
-**Status:** signed off by the owner 2026-10-03. Implementation paused after
-the mod spike (step 6) on 2026-10-03: the Q7 and Q8 findings conflict with
-D7. Steps 7–8 wait for an owner decision.
+**Status:** signed off by the owner 2026-10-03. The mod spike (step 6) found
+two conflicts with D7. The owner decided both on 2026-10-03: an observe-only
+band, and guidance carried in the JSON. D7 is revised to match, and
+implementation continues.
 
 **Owner walkthrough 2026-10-03:** D1–D6 accepted as recommended. Q1 and Q3
 decided (see Open questions). A mod is added to v1 (D7) with the full strict
@@ -269,21 +270,49 @@ code that runs inside Claude Code and can draw. v1 ships two features:
   has no `Image` element, and `Image` caps PNGs at 2 MiB. In either case the
   pane shows the frame's size and says to ask Claude for a screenshot.
 
-**Data flow.** The mod observes first. A `tool.call` hook passes every call on
-unchanged. For tools named `mcp__plugin_godot-stagehand_stagehand__*` it keeps
-the awaited result: the PNG from `godot_screenshot`, and after any stagehand
-call, a `godot_status` refresh through `$.mcp.call`, at most once every 2 s.
-There are no timers, so an idle game costs nothing. Only that refresh and the
-pane's buttons call the server. The server serves five requests concurrently
-and keeps one worker free for local tools (`internal/mcpserver/server.go`), and
-`godot_status` never reaches Godot, so the mod cannot starve Claude's calls.
+**Revised after the mod spike (owner decision, 2026-10-03).** The spike
+(Q7, Q8) found two problems with the original data flow:
 
-`godot_status` gains structured content (per instance: id, state, host, port,
-pid, engine and Stagehand versions) next to its unchanged text, through
-mcp-go's `NewToolResultStructured`, which is present in the pinned v1.1.0
-(`mcp/utils.go`). The mod reads the structure, not the prose. *Alternative:*
-parse the text and pin its format with a Go contract test. It loses because a
-wording change made for Claude's benefit would silently break the band.
+- Claude Code shows the model `godot_status`'s structured content instead of
+  its text.
+- A `$.mcp.call` made inside a turn goes through the permission rules.
+
+The owner chose an observe-only band and guidance carried in the JSON. The
+two paragraphs below are the revised design.
+
+**Data flow.** The mod only observes. A `tool.call` hook passes every call on
+unchanged, and for tools named `mcp__plugin_godot-stagehand_stagehand__*` it
+reads the awaited result:
+
+- the PNG from `godot_screenshot`;
+- the instance list from `godot_status` and `godot_list_instances`;
+- the new instance from `godot_launch` (JSON result) and from a successful
+  `godot_connect`, taken from the call's own `instance_id`, `host` and `port`
+  arguments, so no prose is parsed;
+- the removed instance from `godot_disconnect`.
+
+The hook never calls the server. Because `$.mcp.call` fires `tool.call` too,
+a call there would re-enter the hook, and inside a turn it needs a permission
+grant (Q7). Only the pane's buttons call the server, through `$.mcp.call`
+with the server name `plugin:godot-stagehand:stagehand`. Buttons run outside
+a turn. There are no timers, so an idle game costs nothing. The band can go
+stale when a game dies between calls. It corrects itself at Claude's next
+status or lifecycle call, or when the user presses `s` in the pane.
+
+`godot_status` gains structured content next to its unchanged text, through
+mcp-go's `NewToolResultStructured` (pinned v1.1.0, `mcp/utils.go`). Per
+instance it carries id, state, host, port, pid, engine and Stagehand
+versions. Claude Code gives the model `JSON.stringify(structuredContent)` in
+place of the text (Q8), so the JSON also carries the text's guidance in the
+same words:
+
+- a top-level `hint` when nothing is connected;
+- a top-level `note` about one server process per client;
+- a per-instance `note` when reconnecting gave up.
+
+Other MCP clients still read the text, which a Go test pins byte for byte.
+The mod reads the JSON. Claude Code passes it as the result's text, so the
+mod parses that text and ignores a result that is not JSON.
 
 **Rules.**
 
@@ -501,7 +530,7 @@ decided Q1 and Q3 on 2026-10-03.
   an output schema declared, and `$.mcp.call` returns the JSON as its text
   block with no `structuredContent` field. So D7's "unchanged text" holds on
   the wire, but Claude in Claude Code no longer reads the prose. Owner
-  decision pending.
+  decision 2026-10-03: put the guidance into the JSON too (D7, revised).
 - **Q9.** On Claude Code older than v2.1.287, is a `hooks.json` that holds
   only `modules` ignored, or does it fail the whole plugin? If it fails, the
   plugin states a minimum Claude Code version.

@@ -95,7 +95,7 @@ the session token, but it is a dev control plane, not a hardened endpoint.
 | [Troubleshooting](docs/troubleshooting.md) | When it won't connect, or the screenshots are black |
 | [Comparison](docs/comparison.md) | Versus editor-automation tools and in-engine test frameworks |
 | [Visual regression](docs/visual-regression.md) | Baselines, diffing, and the [CI gate contract](docs/visual-smoke-contract.md) |
-| [Agent skill](skills/stagehand.md) | Drop-in skill file that teaches an agent the whole workflow |
+| [Agent skill](integrations/claude-code/skills/stagehand/SKILL.md) | Drop-in skill file that teaches an agent the whole workflow |
 | [Windows / WSL](docs/windows-setup.md) | Bridging Godot on Windows with a client in WSL |
 
 ## Development
