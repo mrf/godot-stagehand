@@ -36,6 +36,13 @@ The addon is plain GDScript, so you don't need the server program yet to complet
 
 ## Step 3: Get the server and configure Claude
 
+> **Using Claude Code?** Install the plugin instead of Step 3's wizard:
+> `/plugin marketplace add mrf/godot-stagehand`, then
+> `/plugin install godot-stagehand@godot-stagehand`. It connects the server,
+> adds the agent skill, and puts `godot-stagehand` on Claude's `PATH`, so
+> "set up Stagehand in this project" runs `godot-stagehand setup .` for you.
+> Remove any hand-written `godot-stagehand` MCP entry first.
+
 With the addon enabled, click the **Setup…** button in the toolbar. This opens the Stagehand Setup wizard, which handles the rest without a terminal:
 
 1. **Server binary** — the wizard detects your OS and shows a destination path (editable, or use **Browse…**). Click **Download server binary**.

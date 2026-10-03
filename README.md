@@ -49,6 +49,19 @@ Plugins**, then click **Setup…** in the editor toolbar. That wizard downloads 
 binary, writes the config, and tests the connection. Either path is walked
 through step by step in the **[Quickstart](docs/quickstart.md)**.
 
+### Claude Code
+
+```text
+/plugin marketplace add mrf/godot-stagehand
+/plugin install godot-stagehand@godot-stagehand
+```
+
+The plugin brings the MCP server (it downloads the matching release binary on
+first start), the agent skill, and `godot-stagehand` on the Bash tool's `PATH`.
+Enable it in your Godot project's `.claude/settings.json` rather than user-wide,
+and remove any hand-written `godot-stagehand` MCP entry first, or every tool
+appears twice.
+
 ## Use it
 
 From an MCP client (Claude Code, Claude Desktop, Cursor, anything speaking MCP):
