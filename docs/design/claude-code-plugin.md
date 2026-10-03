@@ -317,6 +317,33 @@ Other MCP clients still read the text, which a Go test pins byte for byte.
 The mod reads the JSON. Claude Code passes it as the result's text, so the
 mod parses that text and ignores a result that is not JSON.
 
+**Frame fallback (owner decision, 2026-10-03 after the v0.5.0 live test).**
+`Image` draws pixels only where the terminal supports kitty-style images
+(the types name kitty and Ghostty). Elsewhere it draws its `alt`, which
+includes Windows Terminal and anything inside tmux. The live test ran in
+Windows Terminal → tmux and showed only the alt text and summary. The pane
+therefore falls back to a `Raster`:
+
+- **Detection.** The pane draws the frame as a keyed `Image`, then calls
+  `$.ui.blit` with the same source. The types document that `blit` returns
+  `{ deny }` when the Image is drawing its alt. A deny switches the pane to
+  `Raster` for the rest of the session.
+- **Raster.** Each cell is `▀`, with the foreground set to the top pixel and
+  the background to the bottom pixel. The frame is box-filtered to the
+  pane's `bodyColumns` × `bodyRows` with its aspect ratio kept. `Raster` is
+  terminal-only, like `Image`, so the Desktop app keeps the text summary.
+- **Decode.** The mod has its own inflate and PNG decoder for 8-bit RGB and
+  RGBA non-interlaced PNGs, which is what Godot's `save_png_to_buffer`
+  writes. Any other PNG keeps the text summary. A mod has no Node APIs and
+  no `DecompressionStream`: a `claude -p` probe on 2026-10-03 printed
+  `DecompressionStream=undefined`.
+- **Cost.** Each frame is decoded once, when it arrives, never in a render
+  hook. A thumbnail of at most 512 px on the long side is kept for resizes,
+  and the full decoded buffer is dropped.
+- **Colour.** Cell colours are 24-bit. A terminal or tmux without truecolor
+  shows them in 256 colours. That is the user's terminal setup, and the
+  pane does not try to fix it.
+
 **Rules.**
 
 - **Additive only.** Mods need Claude Code v2.1.287 or later. The mod also
@@ -328,8 +355,9 @@ mod parses that text and ignores a result that is not JSON.
   mod never returns `{ deny }`, `{ result }`, or a `tool.check` decision.
   Guarding risky tools such as `godot_evaluate` is left to permission rules.
 - **Smallest call surface.** The mods API calls come from an allowlist:
-  `command.register`, `ui.open`, `ui.resolve`, `ui.invalidate`, and
-  `mcp.call`. No `process`, `http`, `fs`, `store`, `env`, or `model`. A gate
+  `command.register`, `ui.open`, `ui.resolve`, `ui.invalidate`, `ui.blit`
+  (the frame fallback's probe), and `mcp.call`. No `process`, `http`, `fs`,
+  `store`, `env`, or `model`. A gate
   checks the list against `claude plugin validate --json`, so the `calls:`
   line a cautious user reads shows a mod that only draws and talks to its own
   server.
