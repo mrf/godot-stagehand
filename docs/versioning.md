@@ -22,6 +22,9 @@ else is a mirror:
 | `addons/stagehand/plugin.cfg` (`version=`) | What the Godot editor's plugin list shows |
 | `addons/stagehand/stagehand_version.gd` (`const VERSION`) | What the addon reports in the `ping` handshake |
 | The `testdata/` and `examples/` addon copies | Byte-identical fixtures, kept in sync by `scripts/sync-addon-copies.sh` |
+| `integrations/claude-code/.claude-plugin/plugin.json` (`version`) | The Claude Code plugin's version, which pins installed users to it |
+| `integrations/claude-code/bin/godot-stagehand` (`VERSION=`) | Which release binary the plugin's launcher downloads |
+| `.claude-plugin/marketplace.json` (`plugins[0].source.ref`, `vX.Y.Z`) | Which tag the plugin's files are fetched from |
 | The release tag `vX.Y.Z` | What the published artifacts are named after |
 
 The Go constant is the root because it is the only one that must be *compiled
