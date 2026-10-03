@@ -1,6 +1,8 @@
 # Claude Code plugin
 
-**Status:** signed off by the owner 2026-10-03; implementation in progress.
+**Status:** signed off by the owner 2026-10-03. Implementation paused after
+the mod spike (step 6) on 2026-10-03: the Q7 and Q8 findings conflict with
+D7. Steps 7–8 wait for an owner decision.
 
 **Owner walkthrough 2026-10-03:** D1–D6 accepted as recommended. Q1 and Q3
 decided (see Open questions). A mod is added to v1 (D7) with the full strict
@@ -346,7 +348,10 @@ tool call.
   Claude Code CLI installed in the job) is Q4. Failing that, a Go test parses
   both JSON files and checks every referenced path exists, and the strict
   validate stays a release-checklist step.
-- **Launcher:** shellcheck-clean with `set -euo pipefail`. A Go test runs it
+- **Launcher:** shellcheck-clean with `set -euo pipefail`. *Implemented as
+  `set -eu` with no pipelines (2026-10-03): Ubuntu's `/bin/sh`, dash 0.5.12,
+  rejects it (`dash -c 'set -o pipefail'` → `Illegal option -o pipefail`).*
+  A Go test runs it
   against an `httptest` server through a test-only `STAGEHAND_RELEASE_BASE`
   override and a fake binary. It asserts: checksum mismatch is refused and
   leaves nothing behind; a second run does not download again; stdout is
@@ -410,6 +415,11 @@ decided Q1 and Q3 on 2026-10-03.
   use exec-form `args`, or have the launcher read
   `CLAUDE_PLUGIN_OPTION_BINARY_PATH`, if MCP servers receive it (the docs list
   it only for hooks).
+  Verified 2026-10-03 (CLI 2.1.288, `claude -p "/spike-probe" --plugin-dir
+  <spike>` with this manifest's `env` and `userConfig`): it substitutes to an
+  empty string and the server starts. The server command logged
+  `STAGEHAND_BINARY set=yes value=[]`, and no `CLAUDE_PLUGIN_OPTION_*`
+  variables reach it.
 - **Q3 (decided).** First start downloads about 13 MB inside the MCP startup
   timeout (`MCP_TIMEOUT`). On a slow link the first session's server may time
   out and the second session works. Measure it. Add a SessionStart prefetch
@@ -421,31 +431,107 @@ decided Q1 and Q3 on 2026-10-03.
   Confirm that an unauthenticated CI job can run both commands. If it cannot,
   the mod gates become a release-checklist step, and that is called out as an
   exception to the testing rule.
+  Verified 2026-10-03, locally, not yet on a runner: `npm ci` gets the CLI
+  from `@anthropic-ai/claude-code@2.1.288` (a devDependency of
+  `tools/claude-mod`). With a fresh `CLAUDE_CONFIG_DIR` and no sign-in,
+  `claude plugin validate --strict` passes on both roots, and `claude plugin
+  test` on a spike mod printed `1 pass 0 fail`. One trap: in a config dir
+  where an earlier session cached the mods rollout switch off, `claude plugin
+  test` refuses ("hooks modules are turned off in this process: the rollout
+  switch was saved off by an earlier session"). A fresh runner has no such
+  cache.
 - **Q5.** The existing skill frontmatter uses an `arguments:` list. Confirm
   `claude plugin validate` accepts it as-is in `SKILL.md`.
+  Verified 2026-10-03: `claude plugin validate --strict integrations/claude-code`
+  passes. A negative control (frontmatter with `bogus_key: [unclosed`) also
+  passed, so validate does not check SKILL.md frontmatter. The skill does
+  load, though: `claude -p "/godot-stagehand:stagehand explore" --plugin-dir
+  integrations/claude-code` against a local fake Messages API sent the model
+  the skill body, ending `ARGUMENTS: explore`, and listed
+  `godot-stagehand:stagehand` among the skills.
 - **Q6.** The launcher-path → data-dir derivation in D3 step 2 matches an
   observed install layout, not a documented contract. The XDG fallback keeps
   it working if that layout changes. Confirm both paths in the launcher test.
+  Verified 2026-10-03: a local install has `plugins/cache/<marketplace>/<plugin>/<version>/`
+  next to `plugins/data/<plugin>-<marketplace>/`. `TestLauncherDerivesDataDirFromPluginCacheLayout`
+  and `TestLauncherFallsBackToXDGCache` (`claude_plugin_launcher_test.go`)
+  pass for both paths. An MCP server launched from `--plugin-dir` gets
+  `CLAUDE_PLUGIN_DATA=<config>/plugins/data/godot-stagehand-inline`.
 - **Q7.** Does `$.mcp.call` reach the session's running `stagehand` server,
   which holds the Godot connections, or does it start a second process? A
   second process would always report "not connected". In that case the pane
   drops its buttons, and the band reads only results it observed in
   `tool.call`.
+  Verified 2026-10-03 (CLI 2.1.288): it reaches the session's server. A spike
+  mod launched the game with `$.mcp.call("plugin:godot-stagehand:stagehand",
+  "godot_launch", …)`, and Claude's own `godot_screenshot` then returned the
+  frame, with one server process logged. Three findings the design did not
+  expect:
+  1. The server name is `plugin:godot-stagehand:stagehand`. A bare
+     `stagehand` fails: `no connected MCP tool "godot_status" on a server
+     named "stagehand"`.
+  2. `$.mcp.call` fires `tool.call`, including the calling mod's own hook. A
+     refresh made from that hook would re-enter it.
+  3. Inside a turn, `$.mcp.call` goes through the permission rules. In `-p`
+     with the tool not allowed: `$.mcp.call(plugin:godot-stagehand:stagehand,
+     godot_launch) refused: Claude requested permissions to use
+     mcp__plugin_godot-stagehand_stagehand__godot_launch, but you haven't
+     granted it yet`. The same call from a command, outside a turn, ran
+     without a grant. What an interactive session shows instead is
+     unverified.
 - **Q8.** Does `tool.call` fire for plugin MCP tools? What does `next(e)`
   resolve to for an MCP result carrying image content? The pane needs the PNG
   bytes from it.
+  Verified 2026-10-03 (CLI 2.1.288). A fresh config pointed at a local fake
+  Messages API through `ANTHROPIC_BASE_URL`, which scripted Claude's
+  `tool_use` blocks, so no subscription usage. `tool.call` fires for
+  Claude's calls to `mcp__plugin_godot-stagehand_stagehand__*`. For
+  `godot_screenshot`, `next(e)` resolves to `{ ref, result: [{ type: "image",
+  source: { type: "base64", media_type: "image/png", data } }, { type: "text",
+  text: "[Image: source: <session dir>/tool-results/….png]" }], text,
+  isReadOnly: true }`. The PNG bytes are `result[0].source.data`. Claude Code
+  also saves the frame to a file and gives its path, which an `Image` element
+  can take instead of bytes.
+  **Finding that conflicts with D7:** when a result carries
+  `structuredContent`, Claude Code gives the model
+  `JSON.stringify(structuredContent)` instead of the text content. The request
+  the fake API received held `{"instances":[]}` as `godot_status`'s
+  tool_result, not "Connection: not connected … Use godot_connect …", although
+  the binary sends that prose on the wire as `content`. The same happens with
+  an output schema declared, and `$.mcp.call` returns the JSON as its text
+  block with no `structuredContent` field. So D7's "unchanged text" holds on
+  the wire, but Claude in Claude Code no longer reads the prose. Owner
+  decision pending.
 - **Q9.** On Claude Code older than v2.1.287, is a `hooks.json` that holds
   only `modules` ignored, or does it fail the whole plugin? If it fails, the
   plugin states a minimum Claude Code version.
+  Verified 2026-10-03 on 2.1.284 only: the mod is skipped and the rest loads.
+  The session printed `hooks module not loaded: hooks modules are not turned
+  on for installed plugins in this process`, and the plugin's MCP server
+  still started. 2.1.284's `claude plugin validate` passes the same plugin.
+  Versions before 2.1.284 are unverified.
 - **Q10.** Where does CI get the `claude-code` and `claude-code/testing` type
   declarations for `tsc`? Either the copy the installed CLI writes for its
   build (Q4), or a vendored copy pinned to a CLI version. The GitHub copy can
   lag the CLI.
+  Verified 2026-10-03 (CLI 2.1.288): only a session that loads the plugin
+  writes them. `claude -p "/<mod command>" --plugin-dir <dir>`, with no
+  sign-in and no model call, wrote `.claude-plugin/types/` (`claude-code`,
+  `claude-code-tools`, `claude-code-mcp`, a `tsconfig.json`, and a
+  `.gitignore` containing `*`) plus a root `tsconfig.json` that extends it.
+  `claude plugin validate` and `claude plugin test` write nothing. Decision:
+  never commit them. They are generated, they ignore themselves, and
+  `claude-code-mcp` lists whichever MCP servers the writing session had.
+  The repo `.gitignore` covers the root `tsconfig.json`. CI generates them
+  with that unauthenticated `-p` run before `tsc`. Not yet run in CI.
 - **Q11.** How often does a real game's full-resolution PNG exceed the 2 MiB
   `Image` limit? The addon's capture is unscaled
   (`core/screenshot_capture.gd`). If it happens often, a follow-up adds a
   downscale parameter to the addon's screenshot. That is an addon change, so
   it is out of v1.
+  Partly verified 2026-10-03: the `testdata/test_project` frame (1152×648) is
+  16,872 base64 characters, about 12 KiB of PNG, far under 2 MiB. No real
+  game was measured, so how often real games exceed the limit is still open.
 
 ## Implementation order (after sign-off)
 

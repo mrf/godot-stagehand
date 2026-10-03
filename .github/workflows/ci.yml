@@ -24,6 +24,40 @@ jobs:
       - name: shellcheck scripts/*.sh
         run: shellcheck scripts/*.sh
 
+      # The Claude Code plugin's launcher is the plugin's MCP command and its
+      # CLI shim; build-release.sh writes the SHA256SUMS the launcher verifies.
+      - name: shellcheck launcher and release build
+        run: shellcheck integrations/claude-code/bin/godot-stagehand build-release.sh
+
+  # ── Claude Code plugin manifests (pinned Claude Code CLI) ────────────────
+  # tools/claude-mod pins @anthropic-ai/claude-code as a devDependency so the
+  # validator matches a known CLI build. Verified locally with a fresh
+  # CLAUDE_CONFIG_DIR and no sign-in, which is what a runner has
+  # (docs/design/claude-code-plugin.md, Q4).
+  claude-plugin:
+    name: Claude Code plugin
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/claude-mod
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tools/claude-mod/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: claude plugin validate --strict (plugin and marketplace)
+        env:
+          DISABLE_AUTOUPDATER: "1"
+        run: npm run validate
+
   # ── Go quality checks (vet + test + linux build) ─────────────────────────
   go-quality:
     name: Go quality

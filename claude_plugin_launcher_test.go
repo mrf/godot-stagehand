@@ -2,8 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -61,8 +59,7 @@ func newFakeRelease(t *testing.T) *fakeRelease {
 // sumsHash for it (pass "" to list the binary's real hash).
 func (r *fakeRelease) publish(version string, binary []byte, sumsHash string) {
 	if sumsHash == "" {
-		sum := sha256.Sum256(binary)
-		sumsHash = hex.EncodeToString(sum[:])
+		sumsHash = releaseContractSHA256(binary)
 	}
 	sums := fmt.Sprintf("%064x  godot-stagehand-darwin-arm64\n%s  %s\n%064x  godot-stagehand-windows-amd64.exe\n",
 		1, sumsHash, launcherTestAsset, 2)

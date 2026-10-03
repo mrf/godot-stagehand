@@ -4,6 +4,15 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+  # Dev-only Claude Code mod toolchain (pinned Claude Code CLI, TypeScript,
+  # ESLint). Nothing here ships in the plugin.
+  - package-ecosystem: "npm"
+    directory: "/tools/claude-mod"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

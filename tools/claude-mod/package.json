@@ -1,0 +1,20 @@
+{
+  "name": "godot-stagehand-claude-mod-toolchain",
+  "private": true,
+  "description": "Dev-only toolchain for the Claude Code plugin mod in integrations/claude-code. Never ships.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "validate": "claude plugin validate --strict ../../integrations/claude-code && claude plugin validate --strict ../.."
+  },
+  "devDependencies": {
+    "@anthropic-ai/claude-code": "2.1.288",
+    "@eslint/js": "10.0.1",
+    "eslint": "10.12.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.0"
+  }
+}
