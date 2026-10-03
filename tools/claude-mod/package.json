@@ -8,7 +8,13 @@
     "node": ">=20.19.0"
   },
   "scripts": {
-    "validate": "claude plugin validate --strict ../../integrations/claude-code && claude plugin validate --strict ../.."
+    "types": "sh gen-types.sh",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "cd ../.. && eslint -c tools/claude-mod/eslint.config.mjs --max-warnings=0 integrations/claude-code/hooks tools/claude-mod/check-calls.mjs tools/claude-mod/eslint.config.mjs",
+    "validate": "claude plugin validate --strict ../../integrations/claude-code && claude plugin validate --strict ../..",
+    "calls": "claude plugin validate --strict --json ../../integrations/claude-code | node check-calls.mjs",
+    "test": "CLAUDE_CONFIG_DIR=\"$PWD/.cc-config\" claude plugin test ../../integrations/claude-code",
+    "check": "npm run types && npm run typecheck && npm run lint && npm run validate && npm run calls && npm run test"
   },
   "devDependencies": {
     "@anthropic-ai/claude-code": "2.1.288",

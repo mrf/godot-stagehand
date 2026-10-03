@@ -82,6 +82,9 @@ tools/claude-mod/                  # dev-only TS toolchain; never ships
   package-lock.json
   tsconfig.json
   eslint.config.mjs
+  gen-types.sh                     # writes the mod's types, no sign-in (Q10)
+  check-calls.mjs                  # the D7 calls-allowlist gate
+  go.mod                           # fences node_modules off `go test ./...`
 ```
 
 The mod's tests ship inside the plugin, because `claude plugin test` runs
@@ -395,6 +398,7 @@ tool call.
     PNG is over 2 MiB;
   - Refresh calls `mcp.call` for `godot_screenshot`;
   - every `tool.call` result passes through identical;
+  - the `tool.call` hook never calls the server (revised D7);
   - a refused `command.register` does not break the band.
 - **Mod types and lint, the strict floor:** `tsc --noEmit` with `strict` and
   the full strict family (`noUncheckedIndexedAccess`,

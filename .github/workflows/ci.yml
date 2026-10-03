@@ -26,14 +26,15 @@ jobs:
 
       # The Claude Code plugin's launcher is the plugin's MCP command and its
       # CLI shim; build-release.sh writes the SHA256SUMS the launcher verifies.
-      - name: shellcheck launcher and release build
-        run: shellcheck integrations/claude-code/bin/godot-stagehand build-release.sh
+      - name: shellcheck launcher, release build and mod toolchain
+        run: shellcheck integrations/claude-code/bin/godot-stagehand build-release.sh tools/claude-mod/gen-types.sh
 
-  # ── Claude Code plugin manifests (pinned Claude Code CLI) ────────────────
-  # tools/claude-mod pins @anthropic-ai/claude-code as a devDependency so the
-  # validator matches a known CLI build. Verified locally with a fresh
-  # CLAUDE_CONFIG_DIR and no sign-in, which is what a runner has
-  # (docs/design/claude-code-plugin.md, Q4).
+  # ── Claude Code plugin: manifests and the mod (pinned Claude Code CLI) ───
+  # tools/claude-mod pins @anthropic-ai/claude-code as a devDependency, so the
+  # validator, the mod's type declarations and the test runner all come from
+  # one known CLI build. Every step here needs no sign-in and makes no model
+  # call; verified locally with a fresh CLAUDE_CONFIG_DIR, which is what a
+  # runner has (docs/design/claude-code-plugin.md, Q4 and Q10).
   claude-plugin:
     name: Claude Code plugin
     runs-on: ubuntu-latest
@@ -53,10 +54,29 @@ jobs:
       - name: npm ci
         run: npm ci
 
+      - name: Generate the mod's type declarations
+        run: npm run types
+
+      - name: tsc --noEmit (strict family)
+        run: npm run typecheck
+
+      - name: eslint strict-type-checked --max-warnings=0
+        run: npm run lint
+
       - name: claude plugin validate --strict (plugin and marketplace)
         env:
           DISABLE_AUTOUPDATER: "1"
         run: npm run validate
+
+      - name: Mods API calls allowlist (design D7)
+        env:
+          DISABLE_AUTOUPDATER: "1"
+        run: npm run calls
+
+      - name: claude plugin test
+        env:
+          DISABLE_AUTOUPDATER: "1"
+        run: npm run test
 
   # ── Go quality checks (vet + test + linux build) ─────────────────────────
   go-quality:

@@ -1,0 +1,4 @@
+{
+  "description": "Status band and /stagehand-view pane. Additive: the MCP server and skill work without it.",
+  "modules": ["./register.ts"]
+}
