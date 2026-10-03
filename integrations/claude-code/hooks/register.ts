@@ -280,7 +280,9 @@ export function register(on: On): void {
         // Only the terminal's element table has Image (the Desktop app has none).
         const { Image } = $.ui.resolve(e)
         const cells = imageCells(frame.width, frame.height, e.props.bodyColumns, Math.max(1, e.props.scroll.bodyRows - 4))
-        rows.push(Image({ key: 'frame', source: { png: frame.png }, ...cells, alt: summary }))
+        // The alt text stands in for the picture where the terminal cannot
+        // draw one (inside tmux, for example), right above the summary line.
+        rows.push(Image({ key: 'frame', source: { png: frame.png }, ...cells, alt: 'Last game frame' }))
         rows.push(Text({ dimColor: true, children: [summary] }))
       } else {
         const why = frame.bytes > IMAGE_LIMIT_BYTES ? 'too large to draw here' : 'this app cannot draw it'

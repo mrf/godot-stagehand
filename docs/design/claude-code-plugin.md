@@ -510,8 +510,12 @@ decided Q1 and Q3 on 2026-10-03.
      godot_launch) refused: Claude requested permissions to use
      mcp__plugin_godot-stagehand_stagehand__godot_launch, but you haven't
      granted it yet`. The same call from a command, outside a turn, ran
-     without a grant. What an interactive session shows instead is
-     unverified.
+     without a grant. Verified 2026-10-03 in an interactive 2.1.288 session:
+     each press of the pane's `r` or `s` button, outside a turn, raises a
+     dialog, "Tool use · from the godot-stagehand plugin … Do you want to
+     proceed? 1. Yes 2. No". It offers no "don't ask again" option, even
+     though Claude's own `godot_status` call in the same session did. Whether
+     an allow rule for the plugin's tool names silences it is untested.
 - **Q8.** Does `tool.call` fire for plugin MCP tools? What does `next(e)`
   resolve to for an MCP result carrying image content? The pane needs the PNG
   bytes from it.

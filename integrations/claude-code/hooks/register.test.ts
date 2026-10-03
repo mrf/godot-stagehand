@@ -158,6 +158,9 @@ test('the pane draws the last frame as an Image on the terminal', async ($, on) 
   const image = await ui.find({ type: 'Image' })
   expect(image).toBeDefined()
   expect(image?.props['source']).toEqual({ png: PNG_1X1 })
+  // A terminal that cannot draw pictures (tmux) shows the alt text in the
+  // Image's place, right above the summary line, so it must not repeat it.
+  expect(image?.props['alt']).not.toMatch(/1×1 frame/)
 })
 
 test('the pane describes the frame in text on desktop', async ($, on) => {
