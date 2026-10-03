@@ -45,6 +45,10 @@ jobs:
           cp "$BUILD/godot-stagehand-darwin-amd64"      godot-stagehand-darwin-amd64
           cp "$BUILD/godot-stagehand-darwin-arm64"      godot-stagehand-darwin-arm64
           cp "$BUILD/godot-stagehand-windows-amd64.exe" godot-stagehand-windows-amd64.exe
+          cp "$BUILD/SHA256SUMS"                        SHA256SUMS
+
+          # Refuse to publish binaries that disagree with the manifest.
+          sha256sum --strict -c SHA256SUMS
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
@@ -55,6 +59,7 @@ jobs:
             godot-stagehand-darwin-amd64
             godot-stagehand-darwin-arm64
             godot-stagehand-windows-amd64.exe
+            SHA256SUMS
 
   smoke-release:
     name: Smoke published ${{ matrix.asset }}
@@ -80,7 +85,31 @@ jobs:
         env:
           ASSET: ${{ matrix.asset }}
           GH_TOKEN: ${{ github.token }}
-        run: gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern "$ASSET"
+        run: gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern "$ASSET" --pattern SHA256SUMS
+
+      # Require the exact GNU sha256sum text line "<hex>  <asset>" — the format
+      # the Claude Code plugin launcher depends on — so a missing line, a wrong
+      # hash, or a malformed manifest all fail. The digest is computed in
+      # binary mode (-b) so Git Bash on Windows hashes the raw bytes. shasum
+      # (Perl's Digest::SHA, always present on macOS) is tried first so the
+      # flags mean the same thing everywhere; GNU sha256sum is the fallback.
+      - name: Verify published asset against SHA256SUMS
+        shell: bash
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: |
+          if command -v shasum >/dev/null 2>&1; then
+            digest=$(shasum -a 256 -b "$ASSET" | cut -d ' ' -f 1)
+          else
+            digest=$(sha256sum -b "$ASSET" | cut -d ' ' -f 1)
+          fi
+          line="$digest  $ASSET"
+          if ! grep -Fqx -- "$line" SHA256SUMS; then
+            echo "Error: SHA256SUMS has no line '$line'. It contains:" >&2
+            cat SHA256SUMS >&2
+            exit 1
+          fi
+          echo "Verified against SHA256SUMS: $line"
 
       - name: Execute published asset
         shell: bash

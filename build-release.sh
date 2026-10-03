@@ -85,12 +85,33 @@ mkdir -p "$BUILD_DIR"
 
 echo "Building Stagehand v$VERSION..."
 
+# Asset names built by this run, in build order. Only these go into SHA256SUMS,
+# never whatever else happens to be lying around in $BUILD_DIR.
+BUILT_ASSETS=()
+
 build_target() {
     local goos="$1"
     local goarch="$2"
     local asset_name="$3"
     echo "Building $asset_name..."
     CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -o "$BUILD_DIR/$asset_name" .
+    BUILT_ASSETS+=("$asset_name")
+}
+
+# SHA256SUMS is a published contract, not just a convenience: the Claude Code
+# plugin launcher verifies its download against it. The format is exactly GNU
+# coreutils `sha256sum` text output, "<hex>  <name>", one line per binary with
+# a bare name (hence hashing from inside $BUILD_DIR). shasum -a 256 emits the
+# identical format and keeps a local macOS build working.
+write_checksums() {
+    (
+        cd "$BUILD_DIR"
+        if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$@"
+        else
+            shasum -a 256 "$@"
+        fi
+    ) >"$BUILD_DIR/SHA256SUMS"
 }
 
 # Exact published asset matrix. Keep in sync with release.yml,
@@ -108,6 +129,9 @@ build_target linux   amd64 godot-stagehand-linux-amd64
 build_target darwin  amd64 godot-stagehand-darwin-amd64
 build_target darwin  arm64 godot-stagehand-darwin-arm64
 build_target windows amd64 godot-stagehand-windows-amd64.exe
+
+write_checksums "${BUILT_ASSETS[@]}"
+echo "Wrote $BUILD_DIR/SHA256SUMS"
 
 # The linux binary runs on the release runner, so its --version output is the
 # one artifact-level check we can actually execute here.
