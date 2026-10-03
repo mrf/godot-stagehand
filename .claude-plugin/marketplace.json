@@ -1,0 +1,17 @@
+{
+  "name": "godot-stagehand",
+  "owner": { "name": "mrf" },
+  "description": "Drive a running Godot game from Claude Code",
+  "plugins": [
+    {
+      "name": "godot-stagehand",
+      "description": "MCP server, agent skill and CLI for automating a running Godot game",
+      "source": {
+        "source": "git-subdir",
+        "url": "mrf/godot-stagehand",
+        "path": "integrations/claude-code",
+        "ref": "v0.4.1"
+      }
+    }
+  ]
+}

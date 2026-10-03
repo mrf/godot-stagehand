@@ -1,6 +1,7 @@
 package version_test
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -71,6 +72,56 @@ func TestAddonVersionScriptsMatchSource(t *testing.T) {
 		} else if match[1] != gwp.ProtocolID {
 			t.Errorf("%s: PROTOCOL_ID = %q, want %q", path, match[1], gwp.ProtocolID)
 		}
+	}
+}
+
+// TestClaudePluginVersionMirrorsMatchSource covers the three Claude Code
+// plugin mirrors (docs/design/claude-code-plugin.md, "Versioning and release
+// changes"). The launcher's VERSION picks which release binary it downloads and
+// the marketplace ref picks which plugin files users get, so either drifting
+// from the source would pair a skill with a binary from a different release.
+func TestClaudePluginVersionMirrorsMatchSource(t *testing.T) {
+	root := repoRoot(t)
+
+	var manifest struct {
+		Version string `json:"version"`
+	}
+	manifestPath := filepath.Join(root, "integrations", "claude-code", ".claude-plugin", "plugin.json")
+	if err := json.Unmarshal([]byte(readFile(t, manifestPath)), &manifest); err != nil {
+		t.Fatalf("%s: %v", manifestPath, err)
+	}
+	if manifest.Version != version.Version {
+		t.Errorf("%s: version = %q, want %q (run scripts/set-version.sh %s)",
+			manifestPath, manifest.Version, version.Version, version.Version)
+	}
+
+	launcherPath := filepath.Join(root, "integrations", "claude-code", "bin", "godot-stagehand")
+	launcherPattern := regexp.MustCompile(`(?m)^VERSION="([^"]*)"$`)
+	if match := launcherPattern.FindStringSubmatch(readFile(t, launcherPath)); match == nil {
+		t.Errorf("%s: no VERSION=\"...\" line", launcherPath)
+	} else if match[1] != version.Version {
+		t.Errorf("%s: VERSION = %q, want %q (run scripts/set-version.sh %s)",
+			launcherPath, match[1], version.Version, version.Version)
+	}
+
+	var marketplace struct {
+		Plugins []struct {
+			Name   string `json:"name"`
+			Source struct {
+				Ref string `json:"ref"`
+			} `json:"source"`
+		} `json:"plugins"`
+	}
+	marketplacePath := filepath.Join(root, ".claude-plugin", "marketplace.json")
+	if err := json.Unmarshal([]byte(readFile(t, marketplacePath)), &marketplace); err != nil {
+		t.Fatalf("%s: %v", marketplacePath, err)
+	}
+	if len(marketplace.Plugins) != 1 {
+		t.Fatalf("%s: %d plugin entries, want exactly 1", marketplacePath, len(marketplace.Plugins))
+	}
+	if ref, want := marketplace.Plugins[0].Source.Ref, "v"+version.Version; ref != want {
+		t.Errorf("%s: plugins[0].source.ref = %q, want %q (run scripts/set-version.sh %s)",
+			marketplacePath, ref, want, version.Version)
 	}
 }
 

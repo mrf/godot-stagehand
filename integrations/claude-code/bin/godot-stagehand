@@ -1,0 +1,216 @@
+#!/bin/sh
+# godot-stagehand launcher for the Claude Code plugin.
+#
+# One script, two jobs (docs/design/claude-code-plugin.md, D3):
+#   - the plugin's MCP server command (plugin.json -> mcpServers.stagehand)
+#   - the `godot-stagehand` CLI on the Bash tool's PATH, since a plugin's bin/
+#     is on that PATH while the plugin is enabled
+#
+# It runs the godot-stagehand release binary that matches VERSION. On first use
+# it downloads that binary and SHA256SUMS from the GitHub release, verifies the
+# checksum and the binary's --version, and caches it. Then it execs the binary
+# with the original arguments.
+#
+# Once the binary runs, stdout carries the MCP stdio stream, so this script
+# never writes to stdout. Every message goes to stderr.
+#
+# Plain POSIX sh with `set -eu`, deliberately without pipefail: the /bin/sh on
+# Debian and Ubuntu (dash) rejects `set -o pipefail`. The script uses no
+# pipelines, so pipefail would have nothing to catch.
+
+set -eu
+
+# Rewritten by scripts/set-version.sh; must match internal/version/version.go.
+VERSION="0.4.1"
+
+# STAGEHAND_RELEASE_BASE exists for the launcher's tests, which serve a fake
+# release locally.
+RELEASE_BASE="${STAGEHAND_RELEASE_BASE:-https://github.com/mrf/godot-stagehand/releases/download}"
+
+newline='
+'
+
+say() {
+    printf 'godot-stagehand launcher: %s\n' "$*" >&2
+}
+
+die() {
+    say "$*"
+    exit 1
+}
+
+# 1. The plugin's binary_path option reaches us as STAGEHAND_BINARY. It wins
+#    over everything else, so a local build works on any platform.
+if [ -n "${STAGEHAND_BINARY:-}" ]; then
+    if [ ! -f "$STAGEHAND_BINARY" ] || [ ! -x "$STAGEHAND_BINARY" ]; then
+        die "binary_path is '$STAGEHAND_BINARY', which is not an executable file. Fix or clear the plugin's binary_path option."
+    fi
+    exec "$STAGEHAND_BINARY" "$@"
+fi
+
+self_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
+
+is_plugin_id_part() {
+    case "$1" in
+        '' | *[!A-Za-z0-9_-]*) return 1 ;;
+    esac
+    return 0
+}
+
+# 2. Where the downloaded binary is cached.
+data_dir() {
+    # Set for the MCP server process.
+    if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
+        printf '%s\n' "$CLAUDE_PLUGIN_DATA"
+        return 0
+    fi
+
+    # Bash-tool commands get no plugin variables, so derive the data dir from
+    # where an installed plugin lives:
+    #   <config>/plugins/cache/<marketplace>/<plugin>/<version>/bin/<this script>
+    #   -> <config>/plugins/data/<plugin>-<marketplace>/
+    # That mapping is observed on a live install, not documented (design Q6).
+    plugin_root=$(dirname -- "$self_dir")
+    plugin_dir=$(dirname -- "$plugin_root")
+    marketplace_dir=$(dirname -- "$plugin_dir")
+    cache_dir=$(dirname -- "$marketplace_dir")
+    plugins_dir=$(dirname -- "$cache_dir")
+    plugin=$(basename -- "$plugin_dir")
+    marketplace=$(basename -- "$marketplace_dir")
+    if [ "$(basename -- "$self_dir")" = bin ] &&
+        [ "$(basename -- "$cache_dir")" = cache ] &&
+        [ "$(basename -- "$plugins_dir")" = plugins ] &&
+        is_plugin_id_part "$plugin" && is_plugin_id_part "$marketplace"; then
+        printf '%s\n' "$plugins_dir/data/$plugin-$marketplace"
+        return 0
+    fi
+
+    # Anything else, such as `claude --plugin-dir` on a checkout.
+    if [ -n "${XDG_CACHE_HOME:-}" ]; then
+        printf '%s\n' "$XDG_CACHE_HOME/godot-stagehand"
+        return 0
+    fi
+    if [ -z "${HOME:-}" ]; then
+        die "cannot choose a cache directory: neither CLAUDE_PLUGIN_DATA, XDG_CACHE_HOME nor HOME is set. Set the plugin's binary_path option instead."
+    fi
+    printf '%s\n' "$HOME/.cache/godot-stagehand"
+}
+
+# 3. The release asset for this platform. Same matrix as
+#    addons/stagehand/editor/release_assets.gd.
+os=$(uname -s)
+arch=$(uname -m)
+case "$os/$arch" in
+    Linux/x86_64 | Linux/amd64) asset=godot-stagehand-linux-amd64 ;;
+    Darwin/x86_64 | Darwin/amd64) asset=godot-stagehand-darwin-amd64 ;;
+    Darwin/arm64 | Darwin/aarch64) asset=godot-stagehand-darwin-arm64 ;;
+    MINGW*/x86_64 | MSYS*/x86_64 | CYGWIN*/x86_64) asset=godot-stagehand-windows-amd64.exe ;;
+    *)
+        die "there is no godot-stagehand release binary for $os/$arch (releases cover Linux x86_64, macOS x86_64 and arm64, Windows x86_64). Build one with 'go build' from the repository and set the plugin's binary_path option to it."
+        ;;
+esac
+
+cache=$(data_dir)
+bin_root="$cache/bin"
+target_dir="$bin_root/$VERSION"
+target="$target_dir/$asset"
+
+# 4. Already downloaded and verified.
+if [ -f "$target" ] && [ -x "$target" ]; then
+    exec "$target" "$@"
+fi
+
+# 5. Download, verify, install, run.
+fetch() {
+    url="$1"
+    dest="$2"
+    if command -v curl >/dev/null 2>&1; then
+        if ! status=$(curl --silent --show-error --location --retry 2 --output "$dest" --write-out '%{http_code}' "$url"); then
+            die "could not download $url (curl's message is above). Check the network, or set the plugin's binary_path option."
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        if ! wget --quiet --output-document="$dest" "$url"; then
+            die "could not download $url with wget. If v$VERSION was released minutes ago, its assets may not be published yet: retry in a few minutes, or set the plugin's binary_path option."
+        fi
+        status=200
+    else
+        die "downloading the godot-stagehand binary needs curl or wget. Install one, or set the plugin's binary_path option."
+    fi
+    case "$status" in
+        200) ;;
+        404)
+            die "release v$VERSION has no $(basename -- "$url") (HTTP 404 from $url). A release's assets are published a few minutes after its tag: retry in a few minutes, or set the plugin's binary_path option."
+            ;;
+        *)
+            die "downloading $url returned HTTP $status. Retry later, or set the plugin's binary_path option."
+            ;;
+    esac
+}
+
+sha256_of() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sum=$(sha256sum "$1")
+    elif command -v shasum >/dev/null 2>&1; then
+        sum=$(shasum -a 256 "$1")
+    else
+        die "verifying the download needs sha256sum or shasum. Install one, or set the plugin's binary_path option."
+    fi
+    printf '%s\n' "${sum%% *}"
+}
+
+mkdir -p -- "$target_dir"
+tmp_bin=$(mktemp "$target_dir/.download.XXXXXX")
+tmp_sums=$(mktemp "$target_dir/.sums.XXXXXX")
+cleanup() {
+    rm -f -- "$tmp_bin" "$tmp_sums"
+    rmdir -- "$target_dir" 2>/dev/null || true
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+say "downloading godot-stagehand v$VERSION ($asset)"
+fetch "$RELEASE_BASE/v$VERSION/SHA256SUMS" "$tmp_sums"
+fetch "$RELEASE_BASE/v$VERSION/$asset" "$tmp_bin"
+
+expected=""
+while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+        *"  $asset" | *" *$asset") expected="${line%% *}" ;;
+    esac
+done <"$tmp_sums"
+case "$expected" in
+    '' | *[!0-9a-f]*)
+        die "SHA256SUMS for v$VERSION has no valid entry for $asset. Refusing to run an unverified binary; set the plugin's binary_path option instead."
+        ;;
+esac
+if [ "${#expected}" -ne 64 ]; then
+    die "SHA256SUMS for v$VERSION has a malformed entry for $asset. Refusing to run an unverified binary; set the plugin's binary_path option instead."
+fi
+
+actual=$(sha256_of "$tmp_bin")
+if [ "$actual" != "$expected" ]; then
+    die "checksum mismatch for $asset v$VERSION: SHA256SUMS lists $expected but the download hashes to $actual. Refusing to run it. Retry, or set the plugin's binary_path option."
+fi
+
+chmod +x "$tmp_bin"
+if ! reported=$("$tmp_bin" --version 2>/dev/null); then
+    die "the downloaded $asset did not run ('--version' failed). Set the plugin's binary_path option to a binary built for this machine."
+fi
+reported="${reported%%"$newline"*}"
+if [ "$reported" != "godot-stagehand $VERSION" ]; then
+    die "the downloaded $asset reports '$reported', expected 'godot-stagehand $VERSION'. Refusing to run it."
+fi
+
+# A rename within one directory is atomic, so two sessions installing at once
+# both end up running a complete binary.
+mv -f -- "$tmp_bin" "$target"
+rm -f -- "$tmp_sums"
+trap - EXIT HUP INT TERM
+
+for old in "$bin_root"/*; do
+    if [ "$old" != "$target_dir" ] && [ -d "$old" ]; then
+        rm -rf -- "$old"
+    fi
+done
+
+exec "$target" "$@"

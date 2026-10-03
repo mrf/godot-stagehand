@@ -7,6 +7,9 @@
 #   internal/version/version.go               const Version
 #   addons/stagehand/plugin.cfg               version=
 #   addons/stagehand/stagehand_version.gd     const VERSION
+#   integrations/claude-code/.claude-plugin/plugin.json   "version"
+#   integrations/claude-code/bin/godot-stagehand          VERSION= (launcher)
+#   .claude-plugin/marketplace.json           plugins[0].source.ref ("vX.Y.Z")
 #
 # The addon fixtures under testdata/ and examples/ are then re-synced from
 # canonical by scripts/sync-addon-copies.sh, per docs/addon-sync-contract.md —
@@ -46,6 +49,17 @@ replace_in_place addons/stagehand/plugin.cfg \
     "s/^version=\"[^\"]*\"/version=\"$VERSION\"/"
 replace_in_place addons/stagehand/stagehand_version.gd \
     "s/^const VERSION: String = \"[^\"]*\"/const VERSION: String = \"$VERSION\"/"
+
+# Claude Code plugin mirrors (docs/design/claude-code-plugin.md). The
+# marketplace ref names the tag this bump commit will carry, so the plugin
+# files, plugin.json's version and the binary the launcher downloads are all
+# the same release.
+replace_in_place integrations/claude-code/.claude-plugin/plugin.json \
+    "s/^(  \"version\": )\"[^\"]*\"/\1\"$VERSION\"/"
+replace_in_place integrations/claude-code/bin/godot-stagehand \
+    "s/^VERSION=\"[^\"]*\"/VERSION=\"$VERSION\"/"
+replace_in_place .claude-plugin/marketplace.json \
+    "s/^( *\"ref\": )\"v[^\"]*\"/\1\"v$VERSION\"/"
 
 # Invoked through bash rather than as ./scripts/… because the checked-in file
 # mode is not executable.

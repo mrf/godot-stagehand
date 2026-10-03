@@ -1,0 +1,25 @@
+{
+  "name": "godot-stagehand",
+  "displayName": "Godot Stagehand",
+  "version": "0.4.1",
+  "description": "MCP server, agent skill and CLI for automating a running Godot game",
+  "author": { "name": "mrf" },
+  "homepage": "https://github.com/mrf/godot-stagehand",
+  "repository": "https://github.com/mrf/godot-stagehand",
+  "license": "MIT",
+  "keywords": ["godot", "game-testing", "automation", "mcp"],
+  "mcpServers": {
+    "stagehand": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/godot-stagehand",
+      "env": { "STAGEHAND_BINARY": "${user_config.binary_path}" }
+    }
+  },
+  "userConfig": {
+    "binary_path": {
+      "type": "file",
+      "title": "Stagehand binary (optional)",
+      "description": "Use this godot-stagehand binary instead of downloading the release that matches the plugin version. Leave empty for the default.",
+      "default": ""
+    }
+  }
+}

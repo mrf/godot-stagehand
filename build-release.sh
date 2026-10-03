@@ -20,7 +20,8 @@ BUILD_DIR="build"
 
 # ── Version contract ─────────────────────────────────────────────────────────
 # Every reported version must equal the tag: the Go constant, each addon
-# plugin.cfg, and each addon stagehand_version.gd.
+# plugin.cfg, each addon stagehand_version.gd, and the Claude Code plugin
+# mirrors.
 verify_versions() {
     local expected="$1"
     local failed=0
@@ -48,6 +49,21 @@ verify_versions() {
             failed=1
         fi
     done < <(git ls-files | grep -E '(^|/)addons/stagehand/stagehand_version\.gd$')
+
+    # Claude Code plugin mirrors (docs/design/claude-code-plugin.md).
+    check_mirror() {
+        local file="$1" want="$2" reported="$3"
+        if [ "$reported" != "$want" ]; then
+            echo "Error: $file reports '$reported' but the release needs '$want'." >&2
+            failed=1
+        fi
+    }
+    check_mirror integrations/claude-code/.claude-plugin/plugin.json "$expected" \
+        "$(sed -nE 's/^  "version": "([^"]*)",?$/\1/p' integrations/claude-code/.claude-plugin/plugin.json)"
+    check_mirror integrations/claude-code/bin/godot-stagehand "$expected" \
+        "$(sed -nE 's/^VERSION="([^"]*)"$/\1/p' integrations/claude-code/bin/godot-stagehand)"
+    check_mirror .claude-plugin/marketplace.json "v$expected" \
+        "$(sed -nE 's/^ *"ref": "([^"]*)",?$/\1/p' .claude-plugin/marketplace.json)"
 
     if [ "$failed" -ne 0 ]; then
         echo "" >&2
@@ -80,12 +96,14 @@ build_target() {
 # Exact published asset matrix. Keep in sync with release.yml,
 # docs/release-checklist.md, README.md, and editor/release_assets.gd.
 #
-# Deliberately NOT bundled: skills/stagehand.md and docs/. These are prompt
-# and documentation files a user reads from the source tree, not runtime
-# assets the binary needs (unlike addons/stagehand, which is go:embed'ed into
-# the binary so `setup` can install it standalone). Bundling them here would
-# mean maintaining a second, binary-release copy of files that already ship
-# for free with the repo. See release_assets_contract_test.go.
+# Deliberately NOT bundled: the agent skill
+# (integrations/claude-code/skills/stagehand/SKILL.md) and docs/. These are
+# prompt and documentation files a user reads from the source tree or gets
+# through the Claude Code plugin, not runtime assets the binary needs (unlike
+# addons/stagehand, which is go:embed'ed into the binary so `setup` can install
+# it standalone). Bundling them here would mean maintaining a second,
+# binary-release copy of files that already ship for free with the repo. See
+# release_assets_contract_test.go.
 build_target linux   amd64 godot-stagehand-linux-amd64
 build_target darwin  amd64 godot-stagehand-darwin-amd64
 build_target darwin  arm64 godot-stagehand-darwin-arm64

@@ -93,26 +93,30 @@ func TestReleaseWorkflowDownloadsAndRunsEveryPublishedAsset(t *testing.T) {
 }
 
 // TestSkillFileIsSourceOnlyNotABundledReleaseAsset guards the deliberate
-// decision (see build-release.sh) that skills/stagehand.md ships only in the
-// source tree, not as part of the binary release. It is a prompt file for an
-// AI agent, not a runtime asset the binary needs — unlike addons/stagehand,
-// which is go:embed'ed so `setup` can install it from a standalone binary.
-// If this ever needs to flip, update build-release.sh, release.yml, and this
-// test together rather than letting the artifact matrix drift silently.
+// decision (see build-release.sh) that the agent skill ships in the source
+// tree and the Claude Code plugin, not as part of the binary release. It is a
+// prompt file for an AI agent, not a runtime asset the binary needs — unlike
+// addons/stagehand, which is go:embed'ed so `setup` can install it from a
+// standalone binary. If this ever needs to flip, update build-release.sh,
+// release.yml, and this test together rather than letting the artifact matrix
+// drift silently.
 func TestSkillFileIsSourceOnlyNotABundledReleaseAsset(t *testing.T) {
 	repoRoot := releaseContractRepoRoot(t)
+	const skill = "integrations/claude-code/skills/stagehand/SKILL.md"
 
-	if _, err := os.Stat(filepath.Join(repoRoot, "skills", "stagehand.md")); err != nil {
-		t.Fatalf("skills/stagehand.md should exist in the source tree: %v", err)
+	if _, err := os.Stat(filepath.Join(repoRoot, filepath.FromSlash(skill))); err != nil {
+		t.Fatalf("%s should exist in the source tree: %v", skill, err)
 	}
 
 	for _, relativePath := range []string{
 		"build-release.sh",
 		filepath.Join(".github", "workflows", "release.yml"),
 	} {
-		content := releaseContractReadFile(t, filepath.Join(repoRoot, relativePath))
-		if strings.Contains(releaseContractStripComments(content), "skills/stagehand.md") {
-			t.Errorf("%s references skills/stagehand.md outside a comment; it is a source-only file, not a release asset (see build-release.sh's comment)", relativePath)
+		content := releaseContractStripComments(releaseContractReadFile(t, filepath.Join(repoRoot, relativePath)))
+		for _, ref := range []string{"SKILL.md", "skills/stagehand"} {
+			if strings.Contains(content, ref) {
+				t.Errorf("%s references %q outside a comment; the skill is a source-only file, not a release asset (see build-release.sh's comment)", relativePath, ref)
+			}
 		}
 	}
 }

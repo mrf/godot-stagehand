@@ -53,13 +53,88 @@ func TestBuildReleaseAcceptsMatchingVersion(t *testing.T) {
 func TestSetVersionScriptCoversEveryMirror(t *testing.T) {
 	repoRoot := releaseContractRepoRoot(t)
 	body := releaseContractReadFile(t, filepath.Join(repoRoot, "scripts", "set-version.sh"))
-	for _, mirror := range []string{
+	for _, mirror := range append([]string{
 		"internal/version/version.go",
 		"plugin.cfg",
 		"stagehand_version.gd",
-	} {
+	}, claudePluginVersionMirrors...) {
 		if !strings.Contains(body, mirror) {
 			t.Errorf("scripts/set-version.sh does not update %s", mirror)
+		}
+	}
+}
+
+// claudePluginVersionMirrors are the Claude Code plugin files that carry the
+// release version (docs/design/claude-code-plugin.md, "Versioning and release
+// changes"). internal/version's tests check their values; these tests check
+// that the bump script rewrites them and the release build re-verifies them.
+var claudePluginVersionMirrors = []string{
+	"integrations/claude-code/.claude-plugin/plugin.json",
+	"integrations/claude-code/bin/godot-stagehand",
+	".claude-plugin/marketplace.json",
+}
+
+// TestBuildReleaseVerifiesClaudePluginMirrors keeps the tag check in
+// build-release.sh covering the plugin mirrors, so a release whose plugin
+// files name another version fails before anything is published.
+func TestBuildReleaseVerifiesClaudePluginMirrors(t *testing.T) {
+	repoRoot := releaseContractRepoRoot(t)
+	body := releaseContractStripComments(releaseContractReadFile(t, filepath.Join(repoRoot, "build-release.sh")))
+	for _, mirror := range claudePluginVersionMirrors {
+		if !strings.Contains(body, mirror) {
+			t.Errorf("build-release.sh does not verify %s against the tag", mirror)
+		}
+	}
+}
+
+// TestSetVersionRewritesClaudePluginMirrors runs set-version.sh against a
+// scratch copy of the mirrors, so the sed expressions are proven to match the
+// real file formats rather than just being mentioned in the script.
+func TestSetVersionRewritesClaudePluginMirrors(t *testing.T) {
+	repoRoot := releaseContractRepoRoot(t)
+	scratch := t.TempDir()
+	for _, rel := range []string{
+		"scripts/set-version.sh",
+		"scripts/sync-addon-copies.sh",
+		"internal/version/version.go",
+		"addons/stagehand/plugin.cfg",
+		"addons/stagehand/stagehand_version.gd",
+		"integrations/claude-code/.claude-plugin/plugin.json",
+		"integrations/claude-code/bin/godot-stagehand",
+		".claude-plugin/marketplace.json",
+	} {
+		content := releaseContractReadFile(t, filepath.Join(repoRoot, rel))
+		dst := filepath.Join(scratch, rel)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(dst, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// sync-addon-copies.sh fans the canonical addon out to fixtures that are
+	// not part of this scratch tree; replace it with a no-op.
+	if err := os.WriteFile(filepath.Join(scratch, "scripts", "sync-addon-copies.sh"), []byte("#!/usr/bin/env bash\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("bash", filepath.Join(scratch, "scripts", "set-version.sh"), "9.8.7")
+	cmd.Dir = scratch
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("set-version.sh 9.8.7: %v\n%s", err, output)
+	}
+
+	for rel, want := range map[string]string{
+		"integrations/claude-code/.claude-plugin/plugin.json": `"version": "9.8.7"`,
+		"integrations/claude-code/bin/godot-stagehand":        `VERSION="9.8.7"`,
+		".claude-plugin/marketplace.json":                     `"ref": "v9.8.7"`,
+	} {
+		got := releaseContractReadFile(t, filepath.Join(scratch, rel))
+		if !strings.Contains(got, want) {
+			t.Errorf("after set-version.sh 9.8.7, %s does not contain %s", rel, want)
+		}
+		if strings.Contains(got, version.Version) {
+			t.Errorf("after set-version.sh 9.8.7, %s still contains the old version %s", rel, version.Version)
 		}
 	}
 }

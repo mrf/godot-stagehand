@@ -22,13 +22,23 @@ Claude --stdio--> godot-stagehand (Go MCP server) --WebSocket:26700--> Godot Gam
                                                                              └── JSON-RPC command router
 ```
 
-The MCP server runs as a child process of Claude Code (configured in `.mcp.json` or `~/.claude/.mcp.json`). It connects to the Godot game's WebSocket server on port 26700 (configurable). The Stagehand addon runs inside Godot as an autoload singleton.
+The MCP server runs as a child process of your agent client. With the Claude Code plugin, the plugin starts it for you; in other clients it is an `mcpServers` entry you configure. It connects to the Godot game's WebSocket server on port 26700 (configurable). The Stagehand addon runs inside Godot as an autoload singleton.
 
 ## Prerequisites
 
 - Godot game must have the `addons/stagehand/` addon installed and enabled
 - Game must be launched with `--stagehand` CLI flag OR `STAGEHAND_ENABLED=1` environment variable
-- The `godot-stagehand` MCP server must be configured in Claude Code's MCP settings
+- The `godot-stagehand` MCP server must be connected: the Claude Code plugin provides it, other clients configure it in their MCP settings
+
+## First-time setup
+
+If the project has no `addons/stagehand/` directory yet, install the addon from the Godot project's root:
+
+```bash
+godot-stagehand setup .
+```
+
+With the Claude Code plugin, `godot-stagehand` is already on the Bash tool's `PATH` (the plugin's launcher is `${CLAUDE_PLUGIN_ROOT}/bin/godot-stagehand`); it downloads the matching release binary on first use. `setup` copies the addon, enables the plugin, registers the `StagehandServer` autoload, and prints an MCP configuration snippet. Under the plugin, ignore that snippet: the plugin already connects the server, and adding a second entry makes every tool appear twice. Use `godot-stagehand setup --force .` to replace an older addon after an upgrade.
 
 ## Tool Reference
 
