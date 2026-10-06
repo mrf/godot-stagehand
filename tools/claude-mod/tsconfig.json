@@ -4,7 +4,7 @@
   // They are generated per CLI build and never committed (design Q10).
   "compilerOptions": {
     "target": "es2023",
-    "lib": ["es2023"],
+    "lib": ["es2023", "esnext.typedarrays"],
     "module": "esnext",
     "moduleResolution": "bundler",
     "noEmit": true,

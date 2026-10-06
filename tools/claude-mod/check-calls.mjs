@@ -9,7 +9,7 @@
 // on a report it cannot read.
 import { readFileSync } from 'node:fs'
 
-const ALLOWED = new Set(['command.register', 'ui.open', 'ui.resolve', 'ui.invalidate', 'mcp.call'])
+const ALLOWED = new Set(['command.register', 'ui.open', 'ui.resolve', 'ui.invalidate', 'ui.blit', 'mcp.call'])
 // D7 keeps the mod free of environment variables and $.state.
 const FORBIDDEN_NOTES = / (env reads|env writes|state reads|state writes): /
 

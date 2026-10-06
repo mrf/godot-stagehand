@@ -7,10 +7,14 @@
 // permission grant (design Q7). Only the pane's buttons call the server, from
 // outside a turn. The MCP server and the skill work without this mod.
 import type { EngineInterface, On } from 'claude-code'
+import { decodePng, type Pixels } from './png.js'
+import { encodeCells, halfBlockCells, rasterGrid, thumbnail } from './raster.js'
 
 const SERVER = 'plugin:godot-stagehand:stagehand'
 const TOOL_PREFIX = 'mcp__plugin_godot-stagehand_stagehand__'
 const PANE_ID = 'stagehand-view'
+// The pane's frame element, an Image or a Raster; the key the probe blits.
+const FRAME_KEY = 'frame'
 // The Image element takes PNGs of at most 2 MiB decoded.
 const IMAGE_LIMIT_BYTES = 2 * 1024 * 1024
 // godot_connect's defaults, for a successful call that left them out.
@@ -31,6 +35,13 @@ interface Frame {
   width: number
   height: number
   capturedAt: Date
+  // At most 512 px on the long side, for a Raster; the full decode is dropped.
+  // Undefined when the decoder rejected the frame or no Raster can need it.
+  thumbnail: Pixels | undefined
+  // The Raster last drawn from it, kept until the pane's size changes.
+  raster?: { columns: number; rows: number; cells: string }
+  // $.ui.blit probes made while it was the frame drawn.
+  probes: number
 }
 
 // State lives in module variables: the band rebuilds from the next Stagehand
@@ -38,6 +49,22 @@ interface Frame {
 const instances = new Map<string, Instance>()
 let frame: Frame | undefined
 let paneError: string | undefined
+
+// How the pane draws a frame on the terminal (design D7, "Frame fallback").
+// `Image` draws pixels only where the terminal can (kitty, Ghostty) and its alt
+// elsewhere, such as inside tmux. Which one it does is known only once the
+// Image is mounted: $.ui.blit with the same source then answers {} or a deny
+// naming the alt. So the pane starts `probing`, settles on `image` for the
+// session when a blit is taken, and on `raster` (half blocks) when one is
+// denied. A refused call leaves it on `image`, as the pane drew before.
+let frameMode: 'probing' | 'image' | 'raster' = 'probing'
+let probeInFlight = false
+// A blit made in the same pass as the drawing finds nothing mounted yet: on
+// 2.1.288 it answers 'no Image of its own is mounted under key "frame" in
+// stagehand-view', and a blit from the next drawing gets the real answer about
+// 25 ms later. That deny alone means "ask again".
+const NOT_MOUNTED = 'is mounted under key'
+const MAX_PROBES = 8
 
 // ── Reading tool results ────────────────────────────────────────────────────
 
@@ -129,6 +156,20 @@ function decodedLength(base64: string): number {
   return Math.floor((base64.length * 3) / 4) - padding
 }
 
+// Decodes a frame once, as it arrives, never while drawing. Not when it is
+// over the Image limit, which keeps the text summary, nor once the terminal
+// has drawn an Image, since no Raster will be drawn then.
+function thumbnailOf(png: string, bytes: number): Pixels | undefined {
+  if (bytes > IMAGE_LIMIT_BYTES || frameMode === 'image') return undefined
+  try {
+    const decoded = decodePng(Uint8Array.fromBase64(png))
+    return decoded.kind === 'decoded' ? thumbnail(decoded.pixels) : undefined
+  } catch {
+    // Not base64, or out of memory: the frame keeps its text summary.
+    return undefined
+  }
+}
+
 function frameFrom(blocks: readonly unknown[]): Frame | undefined {
   for (const entry of blocks) {
     const block = asRecord(entry)
@@ -139,7 +180,8 @@ function frameFrom(blocks: readonly unknown[]): Frame | undefined {
     const png = stringField(source, 'data') ?? stringField(block, 'data')
     const mime = stringField(source, 'media_type') ?? stringField(block, 'mimeType')
     if (png === undefined || mime !== 'image/png') continue
-    return { png, bytes: decodedLength(png), ...pngSize(png), capturedAt: new Date() }
+    const bytes = decodedLength(png)
+    return { png, bytes, ...pngSize(png), capturedAt: new Date(), thumbnail: thumbnailOf(png, bytes), probes: 0 }
   }
   return undefined
 }
@@ -225,6 +267,42 @@ function imageCells(width: number, height: number, maxColumns: number, maxRows: 
   return { columns, rows }
 }
 
+// The Raster cells for a frame in a columns × rows grid, from its thumbnail.
+function rasterOf(shown: Frame, small: Pixels, columns: number, rows: number): string {
+  if (shown.raster?.columns !== columns || shown.raster.rows !== rows) {
+    shown.raster = { columns, rows, cells: encodeCells(halfBlockCells(small, columns, rows)) }
+  }
+  return shown.raster.cells
+}
+
+// Asks whether the terminal drew the Image's pixels by blitting it the source
+// it already has. Started while drawing and not awaited there; a deny for an
+// Image not mounted yet asks again from the next drawing.
+async function probeImage($: EngineInterface, drawn: Frame): Promise<void> {
+  if (probeInFlight || drawn.probes >= MAX_PROBES) return
+  probeInFlight = true
+  drawn.probes++
+  let deny: string | undefined
+  try {
+    const answer = await $.ui.blit({ requestId: PANE_ID, key: FRAME_KEY, source: { png: drawn.png } })
+    deny = answer.deny
+  } catch {
+    // The call itself was refused (another mod, or no blit in this build):
+    // keep the Image for this frame.
+    drawn.probes = MAX_PROBES
+    return
+  } finally {
+    probeInFlight = false
+  }
+  if (deny === undefined) {
+    frameMode = 'image'
+    return
+  }
+  if (!deny.includes(NOT_MOUNTED)) frameMode = 'raster'
+  // Draw again: as a Raster, or as the Image with the next probe.
+  $.ui.invalidate('ui.render')
+}
+
 // ── Pane buttons: the only server calls, made outside a turn ────────────────
 
 async function callFromPane($: EngineInterface, tool: 'godot_screenshot' | 'godot_status'): Promise<void> {
@@ -276,17 +354,30 @@ export function register(on: On): void {
       rows.push(Text({ dimColor: true, children: ['No frame yet. Press r, or ask Claude for a screenshot.'] }))
     } else {
       const summary = `${String(frame.width)}×${String(frame.height)} frame, ${describeSize(frame.bytes)}, captured ${clock(frame.capturedAt)}`
-      if (e.surface === 'terminal' && frame.bytes <= IMAGE_LIMIT_BYTES) {
-        // Only the terminal's element table has Image (the Desktop app has none).
-        const { Image } = $.ui.resolve(e)
-        const cells = imageCells(frame.width, frame.height, e.props.bodyColumns, Math.max(1, e.props.scroll.bodyRows - 4))
-        // The alt text stands in for the picture where the terminal cannot
-        // draw one (inside tmux, for example), right above the summary line.
-        rows.push(Image({ key: 'frame', source: { png: frame.png }, ...cells, alt: 'Last game frame' }))
+      const maxRows = Math.max(1, e.props.scroll.bodyRows - 4)
+      const { thumbnail: small } = frame
+      if (e.surface !== 'terminal' || frame.bytes > IMAGE_LIMIT_BYTES || (frameMode === 'raster' && small === undefined)) {
+        const why =
+          e.surface !== 'terminal'
+            ? 'this app cannot draw it'
+            : frame.bytes > IMAGE_LIMIT_BYTES
+              ? 'too large to draw here'
+              : 'this terminal cannot draw it'
+        rows.push(Text({ children: [`Last ${summary}: ${why}; ask Claude for a screenshot to see it.`] }))
+      } else if (frameMode === 'raster' && small !== undefined) {
+        // Only the terminal's element table has Raster and Image (the Desktop app has neither).
+        const { Raster } = $.ui.resolve(e)
+        const grid = rasterGrid(small.width, small.height, e.props.bodyColumns, maxRows)
+        rows.push(Raster({ key: FRAME_KEY, ...grid, cells: rasterOf(frame, small, grid.columns, grid.rows) }))
         rows.push(Text({ dimColor: true, children: [summary] }))
       } else {
-        const why = frame.bytes > IMAGE_LIMIT_BYTES ? 'too large to draw here' : 'this app cannot draw it'
-        rows.push(Text({ children: [`Last ${summary}: ${why}; ask Claude for a screenshot to see it.`] }))
+        const { Image } = $.ui.resolve(e)
+        const cells = imageCells(frame.width, frame.height, e.props.bodyColumns, maxRows)
+        // The alt text stands in for the picture until the probe has switched
+        // a terminal that cannot draw one to the Raster, right above the summary.
+        rows.push(Image({ key: FRAME_KEY, source: { png: frame.png }, ...cells, alt: 'Last game frame' }))
+        rows.push(Text({ dimColor: true, children: [summary] }))
+        if (frameMode === 'probing') void probeImage($, frame)
       }
     }
     if (paneError !== undefined) rows.push(Text({ color: 'error', children: [paneError] }))

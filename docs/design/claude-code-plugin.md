@@ -597,6 +597,25 @@ decided Q1 and Q3 on 2026-10-03.
   Partly verified 2026-10-03: the `testdata/test_project` frame (1152×648) is
   16,872 base64 characters, about 12 KiB of PNG, far under 2 MiB. No real
   game was measured, so how often real games exceed the limit is still open.
+- **Q12.** When does the frame fallback's `$.ui.blit` probe get its answer?
+  Verified 2026-10-06 (CLI 2.1.288). A spike mod in an interactive session,
+  with no sign-in and a dead API endpoint, logged each answer to
+  `--debug-file`. Only once the Image is mounted does `blit` say whether it
+  draws its alt. A blit made after `$.ui.open` resolves, inside the render hook,
+  or 50 microtasks later all got `no Image of its own is mounted under key
+  "img" in spike`. A blit from a button press got `the Image draws its alt
+  here: the terminal draws no placeholder images (env: terminal=tmux, not
+  asked yet, no answer)`. When each "not mounted" deny triggered a redraw and
+  that drawing probed again, the second probe got the alt answer 24 to 29 ms
+  after the first drawing, in 4 runs out of 4. So the pane treats only that
+  "not mounted" deny as "ask again". It redraws and probes again, at most 8
+  times per frame. Any other deny switches to `Raster`, as D7 says. The match
+  is on the CLI's wording. If the wording changes, every terminal falls back
+  to `Raster`, which still shows the frame. Unverified: the kitty and Ghostty
+  path (`{}` from the probe), and whether a terminal that is asked lazily ("not
+  asked yet") can deny before it answers. Cost: decoding plus the thumbnail
+  took about 230 ms for a 1920×1080 frame and 170 ms for a 1280×720 one,
+  measured in the `claude plugin test` worker.
 
 ## Implementation order (after sign-off)
 

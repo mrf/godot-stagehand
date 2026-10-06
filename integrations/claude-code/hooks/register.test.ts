@@ -1,7 +1,7 @@
 // Tests for the godot-stagehand mod (docs/design/claude-code-plugin.md, D7).
 // Run with `claude plugin test integrations/claude-code`.
 import type { RenderElement } from 'claude-code'
-import { expect, test } from 'claude-code/testing'
+import { expect, test, type FoundElement } from 'claude-code/testing'
 
 const PLUGIN = 'godot-stagehand'
 const TOOL = 'mcp__plugin_godot-stagehand_stagehand__'
@@ -58,6 +58,37 @@ const PANE = {
 
 // Stands for what later mods and Claude Code draw at a site.
 const OTHERS: RenderElement = { type: 'Text', props: {}, children: ['drawn by others'] }
+
+// The deny reasons Claude Code 2.1.288 gives: before the Image is mounted, and
+// once it is mounted on a terminal that cannot draw pictures (design D7).
+const NOT_MOUNTED = 'no Image of its own is mounted under key "frame" in stagehand-view'
+const DRAWS_ALT =
+  'the Image draws its alt here: the terminal draws no placeholder images (env: terminal=tmux, not asked yet, no answer)'
+
+// PNG_1X1 with one byte of its image data changed, so its CRC check fails.
+const PNG_DAMAGED = (() => {
+  const png = Uint8Array.fromBase64(PNG_1X1)
+  png[45] = (png[45] ?? 0) ^ 0xff
+  return png.toBase64()
+})()
+
+// The pane probes with $.ui.blit after the drawing that made the Image, and
+// that answer lands after the mount resolves; draw again until it has.
+async function settle(ui: { redraw: () => Promise<void> }): Promise<void> {
+  for (let i = 0; i < 5; i++) await ui.redraw()
+}
+
+// A Raster's cells as [codePoint, foreground, background] triplets.
+function rasterCells(element: FoundElement | undefined): number[][] {
+  const cells = element?.props['cells']
+  const png = Uint8Array.fromBase64(typeof cells === 'string' ? cells : '')
+  const view = new DataView(png.buffer, png.byteOffset, png.byteLength)
+  const triplets: number[][] = []
+  for (let at = 0; at + 12 <= png.length; at += 12) {
+    triplets.push([view.getUint32(at, true), view.getUint32(at + 4, true), view.getUint32(at + 8, true)])
+  }
+  return triplets
+}
 
 test('the band draws nothing until an instance is connected', async ($, on) => {
   on('ui.render', () => OTHERS)
@@ -181,6 +212,122 @@ test('the pane describes a frame over 2 MiB in text', async ($, on) => {
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await ui.find({ type: 'Image' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /too large to draw here/ })).toBeDefined()
+})
+
+test('a blit that finds the Image drawing its alt switches the pane to a Raster for the session', async ($, on) => {
+  const blits: unknown[] = []
+  on('ui.blit', (_$, e) => {
+    blits.push(e)
+    return { value: { deny: DRAWS_ALT } }
+  })
+  on('tool.call', () => screenshotResult(PNG_1X1))
+
+  await $.tool.call({ tool: `${TOOL}godot_screenshot` })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await settle(ui)
+  // The probe swaps the drawn Image to the same source.
+  expect(blits).toEqual([
+    expect.objectContaining({ requestId: 'stagehand-view', key: 'frame', source: { png: PNG_1X1 } }),
+  ])
+  expect(await ui.find({ type: 'Image' })).toBeUndefined()
+  const raster = await ui.find({ type: 'Raster' })
+  expect(raster?.props).toMatchObject({ key: 'frame', columns: 80, rows: 26 })
+  // PNG_1X1 is one RGBA pixel (0, 0, 255, 127): blue at half alpha, over black.
+  const cells = rasterCells(raster)
+  expect(cells).toHaveLength(80 * 26)
+  expect(cells.filter(([glyph]) => glyph === 0x2580).every(([, top, bottom]) => top === 0x7f && bottom === 0x7f)).toBe(true)
+  expect(cells.every(([glyph]) => glyph === 0x2580 || glyph === 0x20)).toBe(true)
+  expect(await ui.find({ type: 'Text', text: /1×1 frame/ })).toBeDefined()
+
+  // The next frame is drawn as a Raster straight away, with no second probe.
+  await $.tool.call({ tool: `${TOOL}godot_screenshot` })
+  await settle(ui)
+  expect(await ui.find({ type: 'Raster' })).toBeDefined()
+  expect(blits).toHaveLength(1)
+})
+
+test('the Raster follows a resized pane from the kept thumbnail', async ($, on) => {
+  on('ui.blit', () => ({ value: { deny: DRAWS_ALT } }))
+  on('tool.call', () => screenshotResult(PNG_1X1))
+
+  await $.tool.call({ tool: `${TOOL}godot_screenshot` })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await settle(ui)
+  await ui.redraw({ ...PANE.props, bodyColumns: 40, scroll: { offset: 0, bodyRows: 12 } })
+  expect((await ui.find({ type: 'Raster' }))?.props).toMatchObject({ columns: 40, rows: 8 })
+})
+
+test('the terminal keeps the Image when the blit is taken', async ($, on) => {
+  const blits: unknown[] = []
+  on('ui.blit', (_$, e) => {
+    blits.push(e)
+    return { value: {} }
+  })
+  on('tool.call', () => screenshotResult(PNG_1X1))
+
+  await $.tool.call({ tool: `${TOOL}godot_screenshot` })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await settle(ui)
+  expect(await ui.find({ type: 'Image' })).toBeDefined()
+  expect(await ui.find({ type: 'Raster' })).toBeUndefined()
+
+  // Once the terminal has drawn a picture, it is not asked again.
+  await $.tool.call({ tool: `${TOOL}godot_screenshot` })
+  await settle(ui)
+  expect(await ui.find({ type: 'Image' })).toBeDefined()
+  expect(blits).toHaveLength(1)
+})
+
+test('a blit made before the Image is mounted asks again on the next drawing', async ($, on) => {
+  const answers = [NOT_MOUNTED, DRAWS_ALT]
+  let asked = 0
+  on('ui.blit', () => ({ value: { deny: answers[Math.min(asked++, answers.length - 1)] ?? DRAWS_ALT } }))
+  on('tool.call', () => screenshotResult(PNG_1X1))
+
+  await $.tool.call({ tool: `${TOOL}godot_screenshot` })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await settle(ui)
+  expect(asked).toBe(2)
+  expect(await ui.find({ type: 'Raster' })).toBeDefined()
+})
+
+test('a refused blit call keeps the Image', async ($, on) => {
+  on('ui.blit', () => ({ deny: 'refused by another mod' }))
+  on('tool.call', () => screenshotResult(PNG_1X1))
+
+  await $.tool.call({ tool: `${TOOL}godot_screenshot` })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await settle(ui)
+  expect(await ui.find({ type: 'Image' })).toBeDefined()
+  expect(await ui.find({ type: 'Raster' })).toBeUndefined()
+})
+
+test('a frame the decoder rejects keeps the text summary after the switch', async ($, on) => {
+  on('ui.blit', () => ({ value: { deny: DRAWS_ALT } }))
+  on('tool.call', () => screenshotResult(PNG_DAMAGED))
+
+  await $.tool.call({ tool: `${TOOL}godot_screenshot` })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await settle(ui)
+  expect(await ui.find({ type: 'Raster' })).toBeUndefined()
+  expect(await ui.find({ type: 'Image' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /1×1 frame.*cannot draw it.*ask Claude for a screenshot/ })).toBeDefined()
+})
+
+test('desktop never probes and keeps the text summary', async ($, on) => {
+  const blits: unknown[] = []
+  on('ui.blit', (_$, e) => {
+    blits.push(e)
+    return { value: { deny: DRAWS_ALT } }
+  })
+  on('tool.call', () => screenshotResult(PNG_1X1))
+
+  await $.tool.call({ tool: `${TOOL}godot_screenshot` })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await settle(ui)
+  expect(blits).toEqual([])
+  expect(await ui.find({ type: 'Raster' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /1×1 frame.*this app cannot draw it/ })).toBeDefined()
 })
 
 test('the pane says when there is no frame yet', async ($) => {
