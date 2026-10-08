@@ -611,9 +611,13 @@ decided Q1 and Q3 on 2026-10-03.
   "not mounted" deny as "ask again". It redraws and probes again, at most 8
   times per frame. Any other deny switches to `Raster`, as D7 says. The match
   is on the CLI's wording. If the wording changes, every terminal falls back
-  to `Raster`, which still shows the frame. Unverified: the kitty and Ghostty
-  path (`{}` from the probe), and whether a terminal that is asked lazily ("not
-  asked yet") can deny before it answers. Cost: decoding plus the thumbnail
+  to `Raster`, which still shows the frame. Verified 2026-10-08: the same spike
+  in kitty 0.32.2 under WSLg, run outside tmux. The debug log said
+  `kittyGraphics=yes (probe: graphics reply OK, terminal kitty(0.32.2))`. The
+  first probe got "not mounted" (+9 ms) and the second got `{}` (+38 ms). The
+  pane showed kitty's placeholder cells, not the alt text, so the pane keeps
+  `Image` there. Unverified: Ghostty, and whether a terminal that is asked
+  lazily ("not asked yet") can deny before it answers. Cost: decoding plus the thumbnail
   took about 230 ms for a 1920×1080 frame and 170 ms for a 1280×720 one,
   measured in the `claude plugin test` worker.
 
