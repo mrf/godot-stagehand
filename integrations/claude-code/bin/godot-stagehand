@@ -21,7 +21,7 @@
 set -eu
 
 # Rewritten by scripts/set-version.sh; must match internal/version/version.go.
-VERSION="0.5.0"
+VERSION="0.5.1"
 
 # STAGEHAND_RELEASE_BASE exists for the launcher's tests, which serve a fake
 # release locally.

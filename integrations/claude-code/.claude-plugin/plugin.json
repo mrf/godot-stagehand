@@ -1,7 +1,7 @@
 {
   "name": "godot-stagehand",
   "displayName": "Godot Stagehand",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "MCP server, agent skill and CLI for automating a running Godot game",
   "author": { "name": "mrf" },
   "homepage": "https://github.com/mrf/godot-stagehand",
