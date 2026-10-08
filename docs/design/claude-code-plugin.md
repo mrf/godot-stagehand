@@ -617,8 +617,8 @@ decided Q1 and Q3 on 2026-10-03.
   first probe got "not mounted" (+9 ms) and the second got `{}` (+38 ms). The
   pane showed kitty's placeholder cells, not the alt text, so the pane keeps
   `Image` there. Owner check, 2026-10-08: with a live game, `/stagehand-view`
-  from this plugin drew the frame in kitty 0.32.2 and in Ghostty 1.3.1 (the
-  snap). Unverified: a live check in Windows Terminal → tmux, and whether a
+  from this plugin drew the frame as a real picture (`Image`, not `Raster`)
+  in kitty 0.32.2 and in Ghostty 1.3.1 (the snap). Unverified: a live check in Windows Terminal → tmux, and whether a
   terminal that is asked lazily ("not asked yet") can deny before it
   answers. Cost: decoding plus the thumbnail
   took about 230 ms for a 1920×1080 frame and 170 ms for a 1280×720 one,
