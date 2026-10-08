@@ -62,6 +62,12 @@ Enable it in your Godot project's `.claude/settings.json` rather than user-wide,
 and remove any hand-written `godot-stagehand` MCP entry first, or every tool
 appears twice.
 
+In the terminal, `/stagehand-view` opens a pane with the last frame Claude
+captured. kitty and Ghostty show it as a full picture. Other terminals, and
+anything inside tmux, show a coarse grid of coloured blocks instead, because
+Claude Code draws pictures only where the terminal supports kitty-style
+images. The Desktop app shows the frame's size and capture time.
+
 ## Use it
 
 From an MCP client (Claude Code, Claude Desktop, Cursor, anything speaking MCP):

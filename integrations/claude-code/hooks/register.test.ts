@@ -65,6 +65,9 @@ const NOT_MOUNTED = 'no Image of its own is mounted under key "frame" in stageha
 const DRAWS_ALT =
   'the Image draws its alt here: the terminal draws no placeholder images (env: terminal=tmux, not asked yet, no answer)'
 
+// The line under a frame drawn as blocks.
+const BLOCKS_WHY = "Blocks, because this terminal can't show pictures here. kitty or Ghostty, outside tmux, show the full frame."
+
 // PNG_1X1 with one byte of its image data changed, so its CRC check fails.
 const PNG_DAMAGED = (() => {
   const png = Uint8Array.fromBase64(PNG_1X1)
@@ -238,6 +241,8 @@ test('a blit that finds the Image drawing its alt switches the pane to a Raster 
   expect(cells.filter(([glyph]) => glyph === 0x2580).every(([, top, bottom]) => top === 0x7f && bottom === 0x7f)).toBe(true)
   expect(cells.every(([glyph]) => glyph === 0x2580 || glyph === 0x20)).toBe(true)
   expect(await ui.find({ type: 'Text', text: /1×1 frame/ })).toBeDefined()
+  // Says why the frame is blocks, and where the full picture shows.
+  expect(await ui.find({ type: 'Text', text: BLOCKS_WHY })).toBeDefined()
 
   // The next frame is drawn as a Raster straight away, with no second probe.
   await $.tool.call({ tool: `${TOOL}godot_screenshot` })
@@ -270,6 +275,7 @@ test('the terminal keeps the Image when the blit is taken', async ($, on) => {
   await settle(ui)
   expect(await ui.find({ type: 'Image' })).toBeDefined()
   expect(await ui.find({ type: 'Raster' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: BLOCKS_WHY })).toBeUndefined()
 
   // Once the terminal has drawn a picture, it is not asked again.
   await $.tool.call({ tool: `${TOOL}godot_screenshot` })
@@ -327,6 +333,7 @@ test('desktop never probes and keeps the text summary', async ($, on) => {
   await settle(ui)
   expect(blits).toEqual([])
   expect(await ui.find({ type: 'Raster' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: BLOCKS_WHY })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /1×1 frame.*this app cannot draw it/ })).toBeDefined()
 })
 

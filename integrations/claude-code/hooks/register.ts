@@ -65,6 +65,10 @@ let probeInFlight = false
 // 25 ms later. That deny alone means "ask again".
 const NOT_MOUNTED = 'is mounted under key'
 const MAX_PROBES = 8
+// Under a frame drawn as blocks. Claude Code draws pictures in kitty and
+// Ghostty; inside tmux it never does (README, "Claude Code").
+const BLOCKS_WHY =
+  "Blocks, because this terminal can't show pictures here. kitty or Ghostty, outside tmux, show the full frame."
 
 // ── Reading tool results ────────────────────────────────────────────────────
 
@@ -370,6 +374,7 @@ export function register(on: On): void {
         const grid = rasterGrid(small.width, small.height, e.props.bodyColumns, maxRows)
         rows.push(Raster({ key: FRAME_KEY, ...grid, cells: rasterOf(frame, small, grid.columns, grid.rows) }))
         rows.push(Text({ dimColor: true, children: [summary] }))
+        rows.push(Text({ dimColor: true, children: [BLOCKS_WHY] }))
       } else {
         const { Image } = $.ui.resolve(e)
         const cells = imageCells(frame.width, frame.height, e.props.bodyColumns, maxRows)
