@@ -16,6 +16,20 @@ export default tseslint.config(
     },
   },
   {
+    // Deliberate relaxation, for the two files that call `on`. For each call,
+    // no-misused-promises' checksVoidReturn.arguments reads the callee's
+    // signatures unresolved. For the engine's generic `On` that means
+    // HookFor<Pattern>, the hook type of every event. Against Claude Code
+    // 2.1.296's declarations the rule took 819 s on register.ts alone (30 s
+    // against 2.1.288's), and register.test.ts is as slow. This turns off that
+    // one check for every call in these files. The rest of the rule stays on
+    // here, and the other hooks files keep all of it.
+    files: ['integrations/claude-code/hooks/register.ts', 'integrations/claude-code/hooks/register.test.ts'],
+    rules: {
+      '@typescript-eslint/no-misused-promises': ['error', { checksVoidReturn: { arguments: false } }],
+    },
+  },
+  {
     files: ['tools/claude-mod/**/*.mjs'],
     extends: [js.configs.recommended],
     languageOptions: {

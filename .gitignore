@@ -67,12 +67,15 @@ __pycache__/
 # Cross-compiled release binaries produced by build-release.sh
 /build/
 
-# Claude Code mod toolchain (tools/claude-mod, installed by `npm ci`), and the
-# private config dir its type generation and tests run under.
+# Claude Code mod toolchain (tools/claude-mod, installed by `npm ci`), the
+# private config dir its type generation and tests run under, and the
+# declarations `npm run types` copies out of the pinned CLI.
 node_modules/
 /tools/claude-mod/.cc-config/
-# Type declarations Claude Code regenerates inside a plugin each time it loads
-# it with --plugin-dir. They are per-machine: claude-code-mcp/index.d.ts lists
-# the MCP tools of whatever servers that session had connected.
+/tools/claude-mod/.cc-types/
+# Type declarations Claude Code regenerates inside a plugin each time an
+# interactive session hot-reloads it from --plugin-dir. They are per-machine:
+# claude-code-mcp/index.d.ts lists the MCP tools of whatever servers that
+# session had connected.
 /integrations/claude-code/.claude-plugin/types/
 /integrations/claude-code/tsconfig.json

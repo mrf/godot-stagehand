@@ -82,7 +82,7 @@ tools/claude-mod/                  # dev-only TS toolchain; never ships
   package-lock.json
   tsconfig.json
   eslint.config.mjs
-  gen-types.sh                     # writes the mod's types, no sign-in (Q10)
+  gen-types.sh                     # fetches the mod's types, no model call (Q10)
   check-calls.mjs                  # the D7 calls-allowlist gate
   go.mod                           # fences node_modules off `go test ./...`
 ```
@@ -589,6 +589,19 @@ decided Q1 and Q3 on 2026-10-03.
   `claude-code-mcp` lists whichever MCP servers the writing session had.
   The repo `.gitignore` covers the root `tsconfig.json`. CI generates them
   with that unauthenticated `-p` run before `tsc`. Not yet run in CI.
+  Re-verified 2026-10-14 (CLI 2.1.296): that `-p` run still loads the mod and
+  answers the command, but writes no `.claude-plugin/types/`. The 2.1.296
+  plugin-authoring reference says the engine writes there only for a folder an
+  interactive session hot-reloads. A `claude -p` or SDK host type-checks
+  against the plugin-authoring skill's own `types/claude-code.d.ts`, which
+  holds `claude-code`, `claude-code/testing` and this build's built-in tools in
+  one ambient file, using the tsconfig from its header. The engine writes that
+  file into `bundled-skills/` under `CLAUDE_CODE_TMPDIR` when the skill loads.
+  `claude -p /plugin-authoring` loads the skill before the prompt is
+  submitted, and a `UserPromptSubmit` hook that exits 2 (`--settings`) drops
+  the prompt, so the debug log shows no API dispatch. `gen-types.sh` now does
+  that, with no credentials and a dead endpoint as before, and copies the file
+  to `tools/claude-mod/.cc-types/`. 2.1.288 writes the same file the same way.
 - **Q11.** How often does a real game's full-resolution PNG exceed the 2 MiB
   `Image` limit? The addon's capture is unscaled
   (`core/screenshot_capture.gd`). If it happens often, a follow-up adds a
