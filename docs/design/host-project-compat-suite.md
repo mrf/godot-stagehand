@@ -12,10 +12,11 @@ Approval does not settle the two decisions recorded in Amendment 6 — the pin i
 not on a tag, and `content-scale` cannot be verified declaratively. Both gate
 *enabling* the Pixelorama manifest entry (epic step 3), not the earlier steps.
 
-**Project order set by Mark, 2026-10-14:** Pixelorama, then Tanks of Freedom
-II, then Source of Mana. This supersedes step 3's "Pixelorama, then
-OpenGamepadUI" ordering. Material Maker, GodSVG and OpenGamepadUI stay in the
-manifest, disabled, with no tickets until those three are running.
+**Project order set by Mark, 2026-10-14:** Pixelorama, then Source of Mana.
+This supersedes step 3's "Pixelorama, then OpenGamepadUI" ordering. Tanks of
+Freedom II was second in that order and has since been dropped as too old; see
+Amendment 8. Material Maker, GodSVG and OpenGamepadUI stay in the manifest,
+disabled, with no tickets until those two are running.
 
 **Read "Amendments — 2026-07-26 review pass" before the body.** Pixelorama has
 since been cloned and inspected at `93c0bef7`, and the 0.3.1 release reframed
@@ -525,8 +526,9 @@ additions are not free choices:
 - **At least one game must cover `paused-tree`.** `sprh` (a host that pauses its
   SceneTree at boot never completes the WebSocket handshake) cannot reproduce on
   any tool-app candidate — editors do not pause at boot. Before adding a new
-  game, run the capability probe (7a) against Tanks of Freedom II and Source of
-  Mana: if either pauses at boot, it owns the axis and no addition is needed.
+  game, run the capability probe (7a) against Source of Mana (Tanks of Freedom
+  II was dropped, Amendment 8): if it pauses at boot, it owns the axis and no
+  addition is needed.
   This is the axis most likely to hit real users, since real users are shipping
   games.
 - **At least one must run warnings-as-errors** (`gdscript/warnings/*=2`,
@@ -538,6 +540,32 @@ Add both axes to `knownAxes` so `MissingAxes()` reports them as gaps rather than
 letting them stay invisible. A candidate that covers an axis already held by two
 others earns nothing; the axis list is the admission criterion, and it should be
 allowed to reject popular projects.
+
+### 8. Pins and roster — 2026-10-14
+
+Mark's calls, with the facts each one rests on, read through the GitHub API at
+the pinned commits:
+
+- **Pin to recent release tags.** This settles Amendment 6's pin decision as
+  option (a), so the enable gate's no-branch-ref rule stands unchanged.
+  Pixelorama → `v1.2.3` (`da7b68f9`, released 2026-09-15). Source of Mana →
+  `v0.0.9` (`1e2d56c3`, released 2026-08-15).
+- **Stagehand does not support older Godot versions, so Tanks of Freedom II is
+  dropped.** Its newest tag, `1.0.8` (committed 2025-03-29), declares Godot 4.2.
+  The documented minimum is 4.3 (`docs/compatibility.md`). For the same reason,
+  epic step 6 ("fill the 4.0/4.1 gap") is withdrawn rather than deferred.
+- **Both pins declare Godot 4.7.** Running them locally needs a 4.7.x binary.
+  The CI compat matrix already has `4.7.1.stable`.
+- **The manifest was corrected to match.** Language, version and licence are now
+  verified for both projects. Pixelorama's axis evidence still dates from
+  `93c0bef7` and must be re-measured by the probe. Source of Mana declares only
+  4 autoloads, so it loses `heavy-autoloads`. That axis moves to Pixelorama,
+  which declares 12. Source of Mana's code is MIT and its artwork is licensed
+  separately, which is fine because CI clones it at run time and redistributes
+  nothing.
+- **Source of Mana is now the only game in the active set**, so it carries 7d's
+  `paused-tree` question alone. It is a networked MMORPG client and may boot to
+  a login screen. That is enough for connect, enumerate and deliver input.
 
 ## Open questions for review
 
