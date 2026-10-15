@@ -12,6 +12,11 @@ Approval does not settle the two decisions recorded in Amendment 6 — the pin i
 not on a tag, and `content-scale` cannot be verified declaratively. Both gate
 *enabling* the Pixelorama manifest entry (epic step 3), not the earlier steps.
 
+**Project order set by Mark, 2026-10-14:** Pixelorama, then Tanks of Freedom
+II, then Source of Mana. This supersedes step 3's "Pixelorama, then
+OpenGamepadUI" ordering. Material Maker, GodSVG and OpenGamepadUI stay in the
+manifest, disabled, with no tickets until those three are running.
+
 **Read "Amendments — 2026-07-26 review pass" before the body.** Pixelorama has
 since been cloned and inspected at `93c0bef7`, and the 0.3.1 release reframed
 what this suite is for; the amendments correct several facts and one priority
@@ -314,8 +319,9 @@ children only become independent after (2).
 3. **One child per project** — write `testdata/hostcompat/<id>/scenario.json`,
    run it locally, enable the entry. Independent of each other once (1) and (2)
    land. Each child's definition of done is a green local run plus a verified,
-   enabled manifest entry. Order by axis value: Pixelorama, then OpenGamepadUI
-   (custom-input, the least-covered axis), then the rest.
+   enabled manifest entry. ~~Order by axis value: Pixelorama, then OpenGamepadUI
+   (custom-input, the least-covered axis), then the rest.~~ Superseded — see the
+   project order under **Status**.
 4. **The CI workflow.** Nightly matrix + `workflow_dispatch` + the path-filtered
    PR canary, xvfb, the three caches, and the infrastructure-vs-compatibility
    failure split. Needs at least two children from (3) to be meaningful.
@@ -509,14 +515,20 @@ host is added and they start ignoring it. One project on one engine version, for
 good. Pixelorama is the right permanent canary: it covers the most axes and has
 already produced three real bugs.
 
-**d. Selection criteria for the next two or three.** The current six are *all
-tool applications* — editors and utilities. That is a systematic blind spot, and
-Amendment 5 names the two axes it costs us. So the additions are not free choices:
+**d. Selection criteria for the next two or three.** *Corrected 2026-10-14:*
+this paragraph originally claimed all six candidates are tool applications. They
+are not — Tanks of Freedom II (turn-based strategy) and Source of Mana (action
+RPG) are games. What the set actually lacks is *evidence*: both games carry only
+unverified claims, and neither is assigned the axes Amendment 5 names. So the
+additions are not free choices:
 
-- **At least one must be an actual game.** `sprh` (a host that pauses its
+- **At least one game must cover `paused-tree`.** `sprh` (a host that pauses its
   SceneTree at boot never completes the WebSocket handshake) cannot reproduce on
-  any current candidate. Games pause at boot; editors do not. This is the axis
-  most likely to hit real users, since real users are shipping games.
+  any tool-app candidate — editors do not pause at boot. Before adding a new
+  game, run the capability probe (7a) against Tanks of Freedom II and Source of
+  Mana: if either pauses at boot, it owns the axis and no addition is needed.
+  This is the axis most likely to hit real users, since real users are shipping
+  games.
 - **At least one must run warnings-as-errors** (`gdscript/warnings/*=2`,
   `exclude_addons=false`). Pixelorama cannot cover this. Failing that, the CI job
   overrides the host's warnings config to synthesise the axis — cheaper than
