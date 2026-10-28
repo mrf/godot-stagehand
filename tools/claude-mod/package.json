@@ -17,10 +17,10 @@
     "check": "npm run types && npm run typecheck && npm run lint && npm run validate && npm run calls && npm run test"
   },
   "devDependencies": {
-    "@anthropic-ai/claude-code": "2.1.288",
+    "@anthropic-ai/claude-code": "2.1.302",
     "@eslint/js": "10.0.1",
-    "eslint": "10.12.0",
+    "eslint": "10.13.0",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.71.0"
+    "typescript-eslint": "8.71.2"
   }
 }
