@@ -21,7 +21,8 @@ export default tseslint.config(
     // signatures unresolved. For the engine's generic `On` that means
     // HookFor<Pattern>, the hook type of every event. Against Claude Code
     // 2.1.296's declarations the rule took 819 s on register.ts alone (30 s
-    // against 2.1.288's), and register.test.ts is as slow. This turns off that
+    // against 2.1.288's), and register.test.ts is as slow. Against 2.1.302's
+    // the two files had not finished after 300 s. This turns off that
     // one check for every call in these files. The rest of the rule stays on
     // here, and the other hooks files keep all of it.
     files: ['integrations/claude-code/hooks/register.ts', 'integrations/claude-code/hooks/register.test.ts'],

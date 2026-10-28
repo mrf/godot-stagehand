@@ -8,11 +8,14 @@
 # as the skill loads (docs/design/claude-code-plugin.md, Q10). So this loads
 # the skill with `claude -p /plugin-authoring` and copies that file out.
 #
-# The skill loads before the prompt is submitted. A UserPromptSubmit hook then
-# holds the prompt back (exit 2), so no model request is made. The session
-# also gets a private config dir, no credentials and a dead API endpoint, so a
-# prompt that got past the hook could not reach a model either. This script
-# must never spend anyone's usage.
+# As of 2.1.302 the skill writes its files at skill.prompt, after the
+# UserPromptSubmit hooks have run, so the prompt has to get that far. A
+# throwaway mod then answers the model step itself (turn.step, without
+# next()), so no model request is made. The session also gets a private config
+# dir, no credentials and a dead API endpoint, so a step that got past the mod
+# could not reach a model either. This script must never spend anyone's usage.
+#
+# The previous declarations stay in place unless a new file is found.
 
 set -eu
 
@@ -21,16 +24,23 @@ out="$here/.cc-types"
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 
-mkdir -p "$here/.cc-config"
-rm -rf "$out"
+mkdir -p "$here/.cc-config" "$scratch/hold/.claude-plugin" "$scratch/hold/hooks"
 
-cat > "$scratch/hold.json" <<'EOF'
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      { "hooks": [{ "type": "command", "command": "touch \"$GEN_TYPES_HELD\"; exit 2" }] }
-    ]
-  }
+cat > "$scratch/hold/.claude-plugin/plugin.json" <<'EOF'
+{ "name": "gen-types-hold", "version": "0.0.0", "description": "Answers the model step itself, so gen-types makes no model request" }
+EOF
+cat > "$scratch/hold/hooks/hooks.json" <<'EOF'
+{ "description": "gen-types hold", "modules": ["./register.js"] }
+EOF
+cat > "$scratch/hold/hooks/register.js" <<'EOF'
+const answer = 'gen-types: held'
+
+export function register(on) {
+  on('turn.step', async function* ($, e) {
+    yield { kind: 'text', index: 0, text: answer }
+    yield { kind: 'stop', stopReason: 'end_turn', usage: null }
+    return { turnId: e.turnId, index: e.index, answer, toolUses: [], stopReason: 'end_turn', usage: null }
+  })
 }
 EOF
 
@@ -48,14 +58,13 @@ if ! (
         CLAUDE_CODE_TMPDIR="$scratch" \
         ANTHROPIC_BASE_URL=http://127.0.0.1:9 \
         DISABLE_AUTOUPDATER=1 \
-        GEN_TYPES_HELD="$scratch/held" \
-        "$here/node_modules/.bin/claude" -p /plugin-authoring --settings "$scratch/hold.json" \
-        >"$scratch/claude.log" 2>&1
+        "$here/node_modules/.bin/claude" -p /plugin-authoring --plugin-dir "$scratch/hold" \
+        </dev/null >"$scratch/claude.log" 2>&1
 ); then
     fail "claude -p /plugin-authoring failed"
 fi
-if [ ! -f "$scratch/held" ]; then
-    fail "the UserPromptSubmit hook did not hold the prompt back"
+if ! grep -Fqx 'gen-types: held' "$scratch/claude.log"; then
+    fail "the hold mod did not answer the model step"
 fi
 found=$(find "$scratch" -path '*/bundled-skills/*/plugin-authoring/types/claude-code.d.ts')
 if [ -z "$found" ] || [ "$(printf '%s\n' "$found" | grep -c .)" -ne 1 ]; then
@@ -63,5 +72,6 @@ if [ -z "$found" ] || [ "$(printf '%s\n' "$found" | grep -c .)" -ne 1 ]; then
 fi
 
 mkdir -p "$out"
-cp "$found" "$out/claude-code.d.ts"
+cp "$found" "$out/claude-code.d.ts.new"
+mv -f "$out/claude-code.d.ts.new" "$out/claude-code.d.ts"
 echo "gen-types: wrote $out/claude-code.d.ts ($(head -n 1 "$out/claude-code.d.ts" | sed 's|^// ||'))"

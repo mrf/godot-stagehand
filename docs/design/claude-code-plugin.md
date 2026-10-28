@@ -602,6 +602,23 @@ decided Q1 and Q3 on 2026-10-03.
   the prompt, so the debug log shows no API dispatch. `gen-types.sh` now does
   that, with no credentials and a dead endpoint as before, and copies the file
   to `tools/claude-mod/.cc-types/`. 2.1.288 writes the same file the same way.
+  Re-verified 2026-10-28 (CLI 2.1.302): plugin-authoring is now a built-in
+  plugin whose hooks module writes the skill's files at `skill.prompt`, which
+  runs after the `UserPromptSubmit` and `UserPromptExpansion` hooks. With
+  either hook exiting 2 the debug log shows the prompt dropped and no file is
+  written. `gen-types.sh` instead loads a throwaway mod from its scratch dir
+  with `--plugin-dir` that answers `turn.step` without `next()`. The debug log
+  shows the skill's `skill.prompt` settled, the mod "answered turn.step
+  without next() … nothing beneath it ran", and no `[API:timing] dispatching`
+  line, and the file lands under `bundled-skills/2.1.302/`. It holds, unchanged,
+  everything below the header of the `claude-code/index.d.ts` an interactive
+  `--plugin-dir` session writes. Two
+  other sources were ruled out. `mods/types/claude-code.d.ts` in the
+  `anthropics/claude-code` repo at tag `v2.1.302` is headed "Written by Claude
+  Code 2.1.277", so it is not regenerated each release. The `/plugin-types`
+  command its README names is not in the shipped CLI. The declarations are
+  Anthropic's ("All rights reserved"), so they are copied out of the pinned
+  package at check time and never committed.
 - **Q11.** How often does a real game's full-resolution PNG exceed the 2 MiB
   `Image` limit? The addon's capture is unscaled
   (`core/screenshot_capture.gd`). If it happens often, a follow-up adds a
