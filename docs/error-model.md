@@ -48,6 +48,7 @@ next tool call, so every failure that has an obvious remedy should state it.
 | `evaluation_failed` | An expression failed to parse or raised |
 | `timeout` | A wait or poll gave up |
 | `renderer_unavailable` | The renderer produced no pixels (headless / no GPU) |
+| `stale_frame` | The viewport was not redrawn for this capture (minimized window, render loop off) |
 | `recorder_state` | The recorder was asked to do what its state forbids |
 | `io_error` | A file could not be opened, read, written, or parsed |
 | `internal` | An aborted handler, or a condition with no better kind |
@@ -57,6 +58,9 @@ message and `details`; the kind exists so a client can branch without parsing
 prose. Add a kind only when a client would genuinely act differently on it —
 `renderer_unavailable` is separate from `timeout` for exactly that reason: a
 visual check skips on a GPU-less session but fails on a real capture timeout.
+`stale_frame` is separate from `renderer_unavailable` for the same reason: a
+check must not skip on it, because the caller can restore the window and capture
+again.
 
 ## 2. Dispatch — envelope to JSON-RPC error
 

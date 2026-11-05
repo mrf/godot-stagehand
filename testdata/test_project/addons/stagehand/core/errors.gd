@@ -49,6 +49,11 @@ const TIMEOUT: String = "timeout"
 ## cannot render a viewport, so a visual check skips rather than fails, whereas a
 ## real capture timeout is a fault worth reporting.
 const RENDERER_UNAVAILABLE: String = "renderer_unavailable"
+## A renderer exists, but it did not redraw the viewport for this capture (a
+## minimized window, a disabled render loop), so the only image available
+## predates the request. Distinct from [constant RENDERER_UNAVAILABLE] because a
+## visual check must not skip on it: the caller can fix it and capture again.
+const STALE_FRAME: String = "stale_frame"
 ## The recorder/replayer was asked to do something its current state forbids.
 const RECORDER_STATE: String = "recorder_state"
 ## A file could not be opened, read, written, or parsed.

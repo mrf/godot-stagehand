@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -770,6 +771,42 @@ func TestScreenshotRejectsInvalidPNGData(t *testing.T) {
 	}
 	if !strings.Contains(text.Text, "failed to decode screenshot PNG") {
 		t.Fatalf("expected PNG decode diagnostic, got: %s", text.Text)
+	}
+}
+
+func TestScreenshotReportsCapturedFrameBesideTheImage(t *testing.T) {
+	rawResult := fmt.Sprintf(`{"data":%q,"mime_type":"image/png","width":1,"height":1,"frame":3551,"fresh_draws":2}`, testPNG1x1Base64)
+	s, cleanup := newRawResultGodotServer(t, rawResult)
+	defer cleanup()
+
+	result, err := s.handleScreenshot(context.Background(), mcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError || len(result.Content) != 2 {
+		t.Fatalf("expected image + text, got %+v", result)
+	}
+	if _, ok := mcp.AsImageContent(result.Content[0]); !ok {
+		t.Fatalf("content[0] is not the image: %+v", result.Content[0])
+	}
+	text, ok := mcp.AsTextContent(result.Content[1])
+	if !ok || !strings.Contains(text.Text, "3551") {
+		t.Fatalf("content[1] does not name the frame: %+v", result.Content[1])
+	}
+}
+
+func TestScreenshotWarnsWhenTheImageSurvivedACameraMove(t *testing.T) {
+	rawResult := fmt.Sprintf(`{"data":%q,"mime_type":"image/png","width":1,"height":1,"frame":3551,"fresh_draws":8,"unchanged_after_camera_move":true}`, testPNG1x1Base64)
+	s, cleanup := newRawResultGodotServer(t, rawResult)
+	defer cleanup()
+
+	result, err := s.handleScreenshot(context.Background(), mcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text, ok := mcp.AsTextContent(result.Content[len(result.Content)-1])
+	if !ok || !strings.Contains(text.Text, "WARNING") {
+		t.Fatalf("tool result does not warn: %+v", result.Content)
 	}
 }
 

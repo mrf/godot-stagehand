@@ -5,6 +5,227 @@ extends GdUnitTestSuite
 ## Tests for StagehandScreenshotCapture error diagnostics.
 
 
+## A scripted renderer. --headless never draws, so everything that decides
+## whether a capture is fresh is driven from here. Every engine frame advances
+## the draw count by [member draws_per_frame], and the render target only takes
+## the new pose when [member root_redraws] is true.
+class ScriptedRender:
+	extends StagehandScreenshotCapture.RenderView
+
+	var frames_drawn_now: int = 100
+	var draws_per_frame: int = 1
+	var root_redraws: bool = true
+	var drawable: bool = true
+	var idle_and_current: bool = false
+	var window_mode: int = DisplayServer.WINDOW_MODE_MAXIMIZED
+	var empty_images: bool = false
+	var pose: int = 0
+	var shown_pose: int = 0
+	var draws_holding_old_image: int = 0
+
+	func tick() -> void:
+		frames_drawn_now += draws_per_frame
+		if draws_holding_old_image > 0:
+			draws_holding_old_image -= 1
+			return
+		if root_redraws:
+			shown_pose = pose
+
+	func read_image(_viewport: Viewport) -> Image:
+		if empty_images:
+			return null
+		var img: Image = Image.create(4, 4, false, Image.FORMAT_RGB8)
+		img.fill(Color8(shown_pose, 0, 0))
+		return img
+
+	func frames_drawn() -> int:
+		return frames_drawn_now
+
+	func can_draw(_window: Window) -> bool:
+		return drawable
+
+	func window_mode_of(_window: Window) -> int:
+		return window_mode
+
+	func is_idle_and_current() -> bool:
+		return idle_and_current
+
+	func camera_pose(_viewport: Viewport) -> PackedByteArray:
+		return var_to_bytes(pose)
+
+
+func before_test() -> void:
+	StagehandScreenshotCapture._previous_capture = {}
+
+
+## A capture's red channel names the pose its render target was showing.
+func _shown_pose(result: Dictionary) -> int:
+	var raw: String = result["data"]
+	var png: PackedByteArray = Marshalls.base64_to_raw(raw)
+	var img: Image = Image.new()
+	var err: Error = img.load_png_from_buffer(png)
+	assert_int(err).is_equal(OK)
+	return roundi(img.get_pixel(0, 0).r * 255.0)
+
+
+func _capture(render: ScriptedRender) -> Dictionary:
+	var tree: SceneTree = get_tree()
+	var err: int = tree.process_frame.connect(render.tick)
+	assert_int(err).is_equal(OK)
+	var result: Dictionary = await StagehandScreenshotCapture.capture(tree, {}, render)
+	tree.process_frame.disconnect(render.tick)
+	return result
+
+
+func test_one_draw_after_the_request_is_not_enough() -> void:
+	var render: ScriptedRender = ScriptedRender.new()
+	render.pose = 9
+	render.draws_holding_old_image = 1
+
+	var result: Dictionary = await _capture(render)
+
+	assert_int(_shown_pose(result)).is_equal(9)
+
+
+func test_capture_reports_the_frame_it_read_and_the_draws_it_waited_for() -> void:
+	var render: ScriptedRender = ScriptedRender.new()
+
+	var result: Dictionary = await _capture(render)
+
+	assert_bool(result.has("error")).is_false()
+	assert_int(result.get("fresh_draws", 0)).is_greater_equal(
+		StagehandScreenshotCapture.FRESH_DRAWS_REQUIRED
+	)
+	assert_int(result.get("frame", 0)).is_equal(render.frames_drawn_now)
+
+
+func test_camera_move_is_not_answered_with_the_previous_image() -> void:
+	var render: ScriptedRender = ScriptedRender.new()
+	var first: Dictionary = await _capture(render)
+	assert_int(_shown_pose(first)).is_equal(0)
+
+	# The ticket's shape: the camera moves, draws keep landing, and the render
+	# target still holds the previous image for a few more reads.
+	render.pose = 9
+	render.draws_holding_old_image = 3
+	var second: Dictionary = await _capture(render)
+
+	assert_int(_shown_pose(second)).is_equal(9)
+	assert_bool(second.has("unchanged_after_camera_move")).is_false()
+
+
+func test_image_that_never_changes_across_a_camera_move_is_flagged() -> void:
+	var render: ScriptedRender = ScriptedRender.new()
+	var _first: Dictionary = await _capture(render)
+
+	# A full-screen menu over a moving 3D camera looks exactly like this, so the
+	# image still comes back, but the caller is told.
+	render.pose = 9
+	render.root_redraws = false
+	var second: Dictionary = await _capture(render)
+
+	assert_bool(second.has("error")).is_false()
+	assert_bool(second.get("unchanged_after_camera_move", false)).is_true()
+
+
+func test_retry_of_a_flagged_capture_stays_flagged_while_the_image_is_stuck() -> void:
+	var render: ScriptedRender = ScriptedRender.new()
+	var _first: Dictionary = await _capture(render)
+	render.pose = 9
+	render.root_redraws = false
+	var flagged: Dictionary = await _capture(render)
+	assert_bool(flagged.get("unchanged_after_camera_move", false)).is_true()
+
+	# The warning tells the caller to capture again, so that retry must not
+	# launder the same image into an unflagged result.
+	var retry: Dictionary = await _capture(render)
+
+	assert_bool(retry.get("unchanged_after_camera_move", false)).is_true()
+
+
+func test_identical_image_without_a_camera_move_is_not_flagged() -> void:
+	var render: ScriptedRender = ScriptedRender.new()
+	var _first: Dictionary = await _capture(render)
+
+	var second: Dictionary = await _capture(render)
+
+	assert_bool(second.has("error")).is_false()
+	assert_bool(second.has("unchanged_after_camera_move")).is_false()
+
+
+func test_undrawable_window_is_an_error_even_while_frames_drawn_advances() -> void:
+	# Measured on the Windows GUI build: a minimized game crept ~127 frames in
+	# two minutes while every capture came back byte-identical.
+	var render: ScriptedRender = ScriptedRender.new()
+	render.drawable = false
+	render.window_mode = DisplayServer.WINDOW_MODE_MINIMIZED
+
+	var result: Dictionary = await _capture(render)
+
+	assert_that(result.get("error_code")).is_equal("stale_frame")
+	assert_bool(result.has("data")).is_false()
+	var details: Dictionary = result["details"]
+	assert_that(details.get("window_mode")).is_equal(DisplayServer.WINDOW_MODE_MINIMIZED)
+	assert_bool(details.has("next_action")).is_true()
+
+
+func test_no_draw_at_all_is_an_error_rather_than_the_held_image() -> void:
+	var render: ScriptedRender = ScriptedRender.new()
+	render.draws_per_frame = 0
+
+	var result: Dictionary = await _capture(render)
+
+	assert_that(result.get("error_code")).is_equal("stale_frame")
+	var details: Dictionary = result["details"]
+	assert_that(details.get("frames_drawn")).is_equal(0)
+
+
+func test_idle_low_processor_game_returns_its_current_image() -> void:
+	# low_processor_usage_mode stops drawing when nothing changed, so a missing
+	# draw there means the held image IS the current one.
+	var render: ScriptedRender = ScriptedRender.new()
+	render.draws_per_frame = 0
+	render.idle_and_current = true
+
+	var result: Dictionary = await _capture(render)
+
+	assert_bool(result.has("error")).is_false()
+	assert_int(result.get("fresh_draws", -1)).is_equal(0)
+
+
+func test_no_pixels_stays_renderer_unavailable_so_visual_checks_skip() -> void:
+	var render: ScriptedRender = ScriptedRender.new()
+	render.drawable = false
+	render.draws_per_frame = 0
+	render.empty_images = true
+
+	var result: Dictionary = await _capture(render)
+
+	assert_that(result.get("error_code")).is_equal("renderer_unavailable")
+
+
+func test_stale_read_does_not_become_the_previous_capture() -> void:
+	var render: ScriptedRender = ScriptedRender.new()
+	var _first: Dictionary = await _capture(render)
+
+	render.drawable = false
+	render.root_redraws = false
+	render.pose = 9
+	var refused: Dictionary = await _capture(render)
+	assert_that(refused.get("error_code")).is_equal("stale_frame")
+
+	render.drawable = true
+	var third: Dictionary = await _capture(render)
+
+	assert_bool(third.get("unchanged_after_camera_move", false)).is_true()
+
+
+func test_real_headless_capture_is_still_renderer_unavailable() -> void:
+	var result: Dictionary = await StagehandScreenshotCapture.capture(get_tree(), {})
+
+	assert_that(result.get("error_code")).is_equal("renderer_unavailable")
+
+
 func test_crop_rect_outside_viewport_returns_structured_error() -> void:
 	var result: Dictionary = StagehandScreenshotCapture._validate_crop_rect(
 		Rect2i(Vector2i(1280, 0), Vector2i(100, 100)),

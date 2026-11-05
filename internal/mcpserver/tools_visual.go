@@ -9,7 +9,10 @@ import (
 )
 
 var screenshotTool = mcp.NewTool("godot_screenshot",
-	mcp.WithDescription("Capture a screenshot of the Godot game viewport"),
+	mcp.WithDescription("Capture a screenshot of the Godot game viewport. Waits for frames drawn after the call, so a "+
+		"preceding camera move is in the image, and names the frame it read in a text block beside the image. "+
+		"Fails with stale_frame when the viewport was not redrawn (e.g. a minimized window) rather than return the held image. "+
+		"A WARNING in the text means the image still matched the previous capture although the camera moved."),
 	mcp.WithReadOnlyHintAnnotation(true),
 	mcp.WithString("selector",
 		mcp.Description("Crop the screenshot to this node's bounding rect"),
@@ -110,11 +113,11 @@ func (s *Server) handleScreenshot(ctx context.Context, req mcp.CallToolRequest) 
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			mcp.NewImageContent(shot.Base64(), shot.MimeType),
-		},
-	}, nil
+	content := []mcp.Content{mcp.NewImageContent(shot.Base64(), shot.MimeType)}
+	if summary := shot.Summary(); summary != "" {
+		content = append(content, mcp.NewTextContent(summary))
+	}
+	return &mcp.CallToolResult{Content: content}, nil
 }
 
 func (s *Server) captureScreenshot(ctx context.Context, instanceID string, req mcp.CallToolRequest) (visual.Shot, error) {
@@ -155,6 +158,9 @@ func (s *Server) handleSaveBaseline(ctx context.Context, req mcp.CallToolRequest
 	}
 
 	text := fmt.Sprintf("Baseline %q (%dx%d) saved to %s", name, outcome.Width, outcome.Height, outcome.Path)
+	if summary := shot.Summary(); summary != "" {
+		text += "\n" + summary
+	}
 	return mcp.NewToolResultStructured(outcome, text), nil
 }
 

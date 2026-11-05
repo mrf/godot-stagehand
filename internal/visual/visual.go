@@ -30,14 +30,42 @@ type Response struct {
 	Details   map[string]any `json:"details"`
 	Width     int            `json:"width"`
 	Height    int            `json:"height"`
+	// Frame is Engine.get_frames_drawn() at the read and FreshDraws how many of
+	// those landed after the request. Both are absent from an older addon.
+	Frame      int64 `json:"frame"`
+	FreshDraws int   `json:"fresh_draws"`
+	// UnchangedAfterCameraMove means the addon's wait ran out with the image
+	// still byte-identical to its previous capture from a different camera pose.
+	UnchangedAfterCameraMove bool `json:"unchanged_after_camera_move"`
 }
 
 // Shot is a validated, decoded screenshot frame.
 type Shot struct {
-	PNG      []byte
-	MimeType string
-	Width    int
-	Height   int
+	PNG        []byte
+	MimeType   string
+	Width      int
+	Height     int
+	Frame      int64
+	FreshDraws int
+	// Warning is non-empty when the frame may not show the current state.
+	Warning string
+}
+
+// unchangedWarning is worded as "may" because a full-screen UI over a moving
+// camera repeats its pixels legitimately.
+const unchangedWarning = "WARNING: this image is byte-identical to the previous capture although the camera moved, so it may be stale. Capture again before trusting it."
+
+// Summary says which frame this is, for a caller that only sees the image. It
+// is empty for an older addon that reports no frame.
+func (s Shot) Summary() string {
+	if s.Frame == 0 {
+		return s.Warning
+	}
+	summary := fmt.Sprintf("Captured frame %d (%d draw(s) after the request).", s.Frame, s.FreshDraws)
+	if s.Warning != "" {
+		summary += " " + s.Warning
+	}
+	return summary
 }
 
 // Base64 re-encodes the frame for transports that carry images inline.
@@ -104,7 +132,14 @@ func (r Response) Shot() (Shot, error) {
 	if mime == "" {
 		mime = "image/png"
 	}
-	return Shot{PNG: imgBytes, MimeType: mime, Width: width, Height: height}, nil
+	shot := Shot{
+		PNG: imgBytes, MimeType: mime, Width: width, Height: height,
+		Frame: r.Frame, FreshDraws: r.FreshDraws,
+	}
+	if r.UnchangedAfterCameraMove {
+		shot.Warning = unchangedWarning
+	}
+	return shot, nil
 }
 
 // BaselineOutcome is the machine-readable result of saving a baseline.
@@ -114,6 +149,8 @@ type BaselineOutcome struct {
 	Width    int    `json:"width"`
 	Height   int    `json:"height"`
 	Selector string `json:"selector,omitempty"`
+	Frame    int64  `json:"frame,omitempty"`
+	Warning  string `json:"warning,omitempty"`
 }
 
 // DiffOutcome is the machine-readable result of a baseline comparison. Callers
@@ -136,6 +173,8 @@ type DiffOutcome struct {
 	// ArtifactError records a failure to persist the failure artifacts. The
 	// diff verdict itself still stands; only the evidence is missing.
 	ArtifactError string `json:"artifact_error,omitempty"`
+	Frame         int64  `json:"frame,omitempty"`
+	Warning       string `json:"warning,omitempty"`
 }
 
 // DiffConfig parameterises a baseline comparison.
@@ -175,6 +214,8 @@ func SaveBaseline(dir, name, selector string, shot Shot) (BaselineOutcome, error
 		Width:    shot.Width,
 		Height:   shot.Height,
 		Selector: selector,
+		Frame:    shot.Frame,
+		Warning:  shot.Warning,
 	}, nil
 }
 
@@ -219,6 +260,8 @@ func CompareBaseline(cfg DiffConfig, shot Shot) (DiffOutcome, error) {
 		Height:           bounds.Dy(),
 		BaselinePath:     baselinePath,
 		Selector:         cfg.Selector,
+		Frame:            shot.Frame,
+		Warning:          shot.Warning,
 	}
 	if outcome.Pass {
 		return outcome, nil
@@ -244,6 +287,9 @@ func (d DiffOutcome) Report() string {
 	}
 	if d.ArtifactError != "" {
 		report += fmt.Sprintf("\nWARNING: failed to write diff artifacts: %s", d.ArtifactError)
+	}
+	if d.Warning != "" {
+		report += "\n" + d.Warning
 	}
 	return report
 }

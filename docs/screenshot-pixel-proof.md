@@ -65,6 +65,24 @@ the normal `go test ./...` and self-skips where a real frame cannot exist:
   A frame was produced and is expected to be meaningful; a blank one is the
   regression this proof exists to catch.
 
+## Frame freshness
+
+This proof shows a capture holds real pixels, not that they are current. The
+freshness contract is separate, and only GdUnit's scripted renderer covers it
+(`test_screenshot_capture.gd`), because `--headless` never draws:
+
+- A capture reads only after `FRESH_DRAWS_REQUIRED` draws land after the request,
+  and reports them as `frame` and `fresh_draws`.
+- A viewport that was not redrawn (minimized window, render loop off) fails with
+  `stale_frame`. The frame counter alone cannot show this: a minimized game was
+  measured advancing it while its image stayed byte-identical. A
+  `low_processor_usage_mode` game with nothing changed is the exception, because
+  its held image is current.
+- A read matching the previous capture from a different camera pose keeps
+  retrying until the frame budget runs out, then comes back with
+  `unchanged_after_camera_move` and a WARNING in the tool text. It stays a warning
+  because a full-screen UI over a moving camera repeats its pixels legitimately.
+
 ## Related fix
 
 This proof surfaced a real addon bug: `StagehandCommandRouter.dispatch()` was
