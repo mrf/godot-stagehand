@@ -64,6 +64,10 @@ type Config struct {
 	// other's saves and settings. Opt out only when persistence across launches
 	// matters more than isolation. See userdata.go for the mechanism.
 	ShareUserData bool
+	// KeepAliveOnDisconnect sets STAGEHAND_QUIT_ON_DISCONNECT=0, the addon's
+	// opt-out from quitting once no client is attached. The zero value leaves
+	// the watchdog armed, so an abandoned launch cannot linger.
+	KeepAliveOnDisconnect bool
 	// UserDataDir pins the per-instance user data root instead of allocating a
 	// fresh temporary directory. Ignored when ShareUserData is true. A caller
 	// supplied directory is never deleted by Kill.
@@ -245,6 +249,9 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		fmt.Sprintf("STAGEHAND_AUTH_TOKEN=%s", authToken),
 		fmt.Sprintf("STAGEHAND_ALLOW_UNSAFE=%s", unsafeSetting),
 	)
+	if cfg.KeepAliveOnDisconnect {
+		cmd.Env = append(cmd.Env, "STAGEHAND_QUIT_ON_DISCONNECT=0")
+	}
 	// The addon defaults its WebSocket bind address to loopback. A caller that
 	// asked for a non-loopback host (e.g. the WSL NAT gateway IP) needs the
 	// addon to actually bind there, or dialGodotWhenReady's dial to that host
