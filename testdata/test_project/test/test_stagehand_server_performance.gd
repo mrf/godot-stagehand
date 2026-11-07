@@ -20,6 +20,7 @@ const WARMUP_MS: int = 40
 const INTERVAL_MS: int = 10
 
 var _server: TestableStagehandServer
+var _call_finished: bool = false
 
 
 func before_test() -> void:
@@ -81,24 +82,40 @@ func test_duration_ms_without_a_positive_interval_is_invalid_params() -> void:
 
 # ── warmup ───────────────────────────────────────────────────────────────
 
-func test_warmup_delays_sampling_relative_to_no_warmup() -> void:
-	# Wall-clock timer precision under the test runner is not reliable enough
-	# to assert a tight floor against WARMUP_MS (see docs/gdscript-testing.md
-	# and test_waiter.gd's own note on this) — assert the warmup path takes
-	# measurably longer than the no-warmup path instead of a fixed amount.
-	var start_without: int = Time.get_ticks_msec()
-	var _no_warmup: Dictionary = await _server._handle_assert_performance({
-		"monitor": "OBJECT_COUNT", "threshold": 0, "op": "gte",
-	})
-	var elapsed_without: int = Time.get_ticks_msec() - start_without
+## Runs the handler to completion and records that it finished. Called WITHOUT
+## await by the warmup test, so the test can observe — synchronously, with no
+## clock involved — whether the handler suspended.
+func _run_assert_performance(params: Dictionary) -> void:
+	var _result: Dictionary = await _server._handle_assert_performance(params)
+	_call_finished = true
 
-	var start_with: int = Time.get_ticks_msec()
-	var _with_warmup: Dictionary = await _server._handle_assert_performance({
+
+func test_warmup_delays_sampling_relative_to_no_warmup() -> void:
+	# Do not assert on elapsed wall-clock time. A SceneTreeTimer is ticked by
+	# the frame delta, and a timer created mid-frame is ticked by the full delta
+	# of a frame that began before it existed — so under load a stalled frame
+	# can complete a 40ms warmup after ~0ms of wall clock (ks-hy2jq: probe saw
+	# a 40ms warmup return in 290us right after a 95ms frame delta; the old
+	# `elapsed_with > elapsed_without` check then read 0 > 0). Assert the
+	# behaviour instead: with no warmup the handler finishes synchronously;
+	# with a warmup it must still be pending when the call returns, and only
+	# finish once the warmup timer fires.
+	_call_finished = false
+	_run_assert_performance({"monitor": "OBJECT_COUNT", "threshold": 0, "op": "gte"})
+	assert_bool(_call_finished).is_true()
+
+	_call_finished = false
+	_run_assert_performance({
 		"monitor": "OBJECT_COUNT", "threshold": 0, "op": "gte", "warmup_ms": WARMUP_MS,
 	})
-	var elapsed_with: int = Time.get_ticks_msec() - start_with
+	assert_bool(_call_finished).is_false()
 
-	assert_int(elapsed_with).is_greater(elapsed_without)
+	# The warmup must end rather than hang: wait on frames, bounded by wall
+	# clock so a regression fails instead of stalling the suite.
+	var deadline_ms: int = Time.get_ticks_msec() + 5000
+	while not _call_finished and Time.get_ticks_msec() < deadline_ms:
+		await get_tree().process_frame
+	assert_bool(_call_finished).is_true()
 
 
 func test_negative_warmup_is_invalid_params() -> void:
