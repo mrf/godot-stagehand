@@ -47,7 +47,10 @@ func test_handler_runtime_error_sends_json_rpc_error_not_bogus_success() -> void
 		var missing: Node = null
 		# Deliberately trips a GDScript runtime error (null-instance call) to
 		# abort this Callable partway through, the same way a bad evaluate/
-		# call_method/set_property does in production.
+		# call_method/set_property does in production. The engine still logs this
+		# as a SCRIPT ERROR line in the run output even though assert_error()
+		# below catches it — expected, see docs/gdscript-testing.md "Expected
+		# engine output".
 		var _unreachable: Variant = missing.get_name()
 		return {"should": "never be reached"}
 	)
@@ -97,6 +100,7 @@ func test_handler_success_still_sends_normal_result() -> void:
 func test_notification_with_no_id_sends_nothing_even_on_abort() -> void:
 	_server._router.register("boom", func(_p: Variant) -> Dictionary:
 		var missing: Node = null
+		# Expected SCRIPT ERROR in the run output; see the note in the test above.
 		var _unreachable: Variant = missing.get_name()
 		return {}
 	)

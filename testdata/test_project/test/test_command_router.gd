@@ -155,6 +155,9 @@ func test_dispatch_checked_converts_an_aborted_handler_into_an_internal_error() 
 		# partway through, exactly as a bad evaluate/call_method does in
 		# production. GDScript has no try/catch: the abort resumes the awaiter
 		# with the declared return type's default value, an empty Dictionary.
+		# The engine still logs this as a SCRIPT ERROR line in the run output even
+		# though assert_error() below catches it — expected, see
+		# docs/gdscript-testing.md "Expected engine output".
 		var _unreachable: Variant = missing.get_name()
 		return {"should": "never be reached"}
 	)

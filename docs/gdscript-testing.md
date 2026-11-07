@@ -23,6 +23,15 @@ the suite contract is that every test passes or fails, nothing is pending. It
 also asserts every module's suite actually ran, so deleting one is a test
 failure rather than a silent coverage loss.
 
+**Expected engine output.** A passing run prints exactly three
+`SCRIPT ERROR: Cannot call method 'get_name' on a null value.` blocks.
+They are deliberate: `test_command_router.gd` and `test_stagehand_server_dispatch.gd`
+register a handler that dereferences null to prove `dispatch_checked` turns a
+real GDScript abort into an `INTERNAL` error, and wrap the dispatch in
+`assert_error(...).is_runtime_error(...)`. GdUnit4 catches the error, but the
+engine still logs it; the backtrace shows `GdUnitGodotErrorAssertImpl.gd` under
+each. A fourth `SCRIPT ERROR`, or one outside those three tests, is a real defect.
+
 The `gdscript` build tag keeps a plain `go test ./...` free of any Godot
 dependency. CI runs the suite in its own `gdscript-tests` job.
 
