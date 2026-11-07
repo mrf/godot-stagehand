@@ -20,9 +20,11 @@ import (
 func TestOrdinaryGodotCallUsesDefaultDeadline(t *testing.T) {
 	host, port, respond := deadlineStubGodot(t)
 	srv := New()
-	srv.callTimeout = 50 * time.Millisecond
 	t.Cleanup(srv.clearConn)
 	connectDeadlineStub(t, srv, host, port)
+	// Shorten only after connecting: handleConnect uses callTimeout for its
+	// dial/auth/ping handshake, which a tiny budget makes load-sensitive.
+	srv.callTimeout = 50 * time.Millisecond
 
 	resultCh := make(chan *mcp.CallToolResult, 1)
 	started := time.Now()
@@ -56,9 +58,10 @@ func TestOrdinaryGodotCallUsesDefaultDeadline(t *testing.T) {
 func TestCallerDeadlineOverridesOrdinaryCallDefault(t *testing.T) {
 	host, port, _ := deadlineStubGodot(t)
 	srv := New()
-	srv.callTimeout = 20 * time.Millisecond
 	t.Cleanup(srv.clearConn)
 	connectDeadlineStub(t, srv, host, port)
+	// Shorten only after connecting (see TestOrdinaryGodotCallUsesDefaultDeadline).
+	srv.callTimeout = 20 * time.Millisecond
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
