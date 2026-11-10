@@ -7,6 +7,7 @@ extends RefCounted
 
 const ERRORS := preload("res://addons/stagehand/core/errors.gd")
 const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
+const SELF_PROTECTION := preload("res://addons/stagehand/core/self_protection.gd")
 const TREE_SERIALIZER := preload("res://addons/stagehand/core/tree_serializer.gd")
 
 ## Methods that are always blocked regardless of context.
@@ -49,6 +50,13 @@ static func call_method(tree: SceneTree, params: Dictionary) -> Dictionary:
 
 	var args: Array = params.get("args", [])
 	var allow_multiple: bool = params.get("allow_multiple", false)
+
+	var targets: Array[Node] = nodes
+	if not allow_multiple:
+		targets = [nodes[0]]
+	var protected_node: Node = SELF_PROTECTION.first_protected(targets)
+	if protected_node != null:
+		return SELF_PROTECTION.protected_node_error(selector, protected_node)
 
 	if not allow_multiple:
 		var node: Node = nodes[0]

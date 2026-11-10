@@ -273,3 +273,28 @@ func test_set_rejected_by_guarded_setter_reports_failure() -> void:
 	var result: Dictionary = _set_on_target("guarded_flag", false)
 	assert_bool(result.get("success", true)).is_false()
 	assert_bool(_target.get("guarded_flag")).is_true()
+
+
+# ── private members and script are off limits (327t.1) ───────────────────
+
+func test_get_private_property_is_refused() -> void:
+	var result: Dictionary = _get_on_target("_private_prop")
+	assert_str(str(result.get("error_code", ""))).is_equal(StagehandErrors.NOT_SUPPORTED)
+	assert_bool(result.has("value")).is_false()
+
+
+func test_set_private_property_is_refused() -> void:
+	var result: Dictionary = _set_on_target("_private_prop", 2)
+	assert_str(str(result.get("error_code", ""))).is_equal(StagehandErrors.NOT_SUPPORTED)
+	assert_int(_target.call("private_prop_value")).is_equal(1)
+
+
+func test_get_script_property_is_refused() -> void:
+	var result: Dictionary = _get_on_target("script")
+	assert_str(str(result.get("error_code", ""))).is_equal(StagehandErrors.NOT_SUPPORTED)
+
+
+func test_set_script_property_is_refused() -> void:
+	var result: Dictionary = _set_on_target("script", null)
+	assert_str(str(result.get("error_code", ""))).is_equal(StagehandErrors.NOT_SUPPORTED)
+	assert_object(_target.get_script()).is_same(PropertyTarget)

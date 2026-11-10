@@ -70,6 +70,7 @@ const PERFORMANCE_SAMPLER := preload("res://addons/stagehand/core/performance_sa
 const PROPERTY_HANDLER := preload("res://addons/stagehand/core/property_handler.gd")
 const SCENE_HANDLER := preload("res://addons/stagehand/core/scene_handler.gd")
 const SCREENSHOT_CAPTURE := preload("res://addons/stagehand/core/screenshot_capture.gd")
+const SELF_PROTECTION := preload("res://addons/stagehand/core/self_protection.gd")
 const STAGEHAND_VERSION := preload("res://addons/stagehand/stagehand_version.gd")
 const TREE_SERIALIZER := preload("res://addons/stagehand/core/tree_serializer.gd")
 const WAITER := preload("res://addons/stagehand/core/waiter.gd")
@@ -108,6 +109,9 @@ func _ready() -> void:
 	# gate below, since a disabled server already stops processing via
 	# set_process(false) regardless of process_mode.
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	# Puts this node, its auth token and its safe-mode flag beyond the reach of
+	# the remote property/method surface (godot-stagehand-ext-review-2026-11-327t.1).
+	add_to_group(SELF_PROTECTION.PROTECTED_GROUP)
 
 	if not _is_enabled():
 		set_process(false)

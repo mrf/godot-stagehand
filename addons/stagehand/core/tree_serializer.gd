@@ -3,6 +3,7 @@ extends RefCounted
 ## Serializes the scene tree and node properties into JSON-safe dictionaries.
 
 const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
+const SELF_PROTECTION := preload("res://addons/stagehand/core/self_protection.gd")
 
 
 ## Serialize a snapshot of the scene tree starting at [param root_node].
@@ -21,6 +22,10 @@ static func query_nodes(tree: SceneTree, selector: String, properties: Array[Str
 	var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, selector)
 	var results: Array[Dictionary] = []
 	var count: int = mini(nodes.size(), limit)
+	if properties.size() > 0:
+		var protected_node: Node = SELF_PROTECTION.first_protected(nodes)
+		if protected_node != null:
+			return SELF_PROTECTION.protected_node_error(selector, protected_node)
 	for i: int in range(count):
 		results.append(_serialize_node_basic(nodes[i], properties))
 	return {
@@ -31,7 +36,9 @@ static func query_nodes(tree: SceneTree, selector: String, properties: Array[Str
 
 static func _serialize_node(node: Node, depth: int, max_depth: int, include_properties: Array[String]) -> Dictionary:
 	var data: Dictionary = _node_info(node)
-	if include_properties.size() > 0:
+	# Stagehand's own nodes stay in the tree listing but never expose property
+	# values (godot-stagehand-ext-review-2026-11-327t.1).
+	if include_properties.size() > 0 and not SELF_PROTECTION.is_protected(node):
 		data["properties"] = _get_properties(node, include_properties)
 	if depth < max_depth:
 		var children: Array[Dictionary] = []

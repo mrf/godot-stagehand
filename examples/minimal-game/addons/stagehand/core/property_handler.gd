@@ -4,6 +4,7 @@ extends RefCounted
 
 const ERRORS := preload("res://addons/stagehand/core/errors.gd")
 const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
+const SELF_PROTECTION := preload("res://addons/stagehand/core/self_protection.gd")
 const TREE_SERIALIZER := preload("res://addons/stagehand/core/tree_serializer.gd")
 
 
@@ -13,14 +14,10 @@ static func get_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var selector: String = params.get("selector", "")
 	var property: String = params.get("property", "")
 
-	if selector.is_empty():
-		return ERRORS.missing_param("selector")
-	if property.is_empty():
-		return ERRORS.missing_param("property")
-
-	var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, selector)
-	if nodes.is_empty():
-		return ERRORS.node_not_found(selector)
+	var nodes: Array[Node] = []
+	var refusal: Dictionary = _resolve_target(tree, selector, property, nodes)
+	if not refusal.is_empty():
+		return refusal
 
 	var node: Node = nodes[0]
 	var value: Variant = TREE_SERIALIZER._get_property_deep(node, property)
@@ -42,14 +39,10 @@ static func set_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var selector: String = params.get("selector", "")
 	var property: String = params.get("property", "")
 
-	if selector.is_empty():
-		return ERRORS.missing_param("selector")
-	if property.is_empty():
-		return ERRORS.missing_param("property")
-
-	var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, selector)
-	if nodes.is_empty():
-		return ERRORS.node_not_found(selector)
+	var nodes: Array[Node] = []
+	var refusal: Dictionary = _resolve_target(tree, selector, property, nodes)
+	if not refusal.is_empty():
+		return refusal
 
 	var node: Node = nodes[0]
 	var previous: Variant = _get_property_at_level(node, property)
@@ -83,6 +76,28 @@ static func set_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 		"success": success,
 		"previous_value": TREE_SERIALIZER._to_json_safe(previous),
 	}
+
+
+## Shared front half of get_property/set_property: validates the params, applies
+## the self-protection rules (a forbidden name is refused before node lookup),
+## and fills [param out_nodes] with the selector's matches. Returns the failure
+## envelope, or {} when out_nodes[0] is a node the request may touch.
+static func _resolve_target(
+	tree: SceneTree, selector: String, property: String, out_nodes: Array[Node]
+) -> Dictionary:
+	if selector.is_empty():
+		return ERRORS.missing_param("selector")
+	if property.is_empty():
+		return ERRORS.missing_param("property")
+	if SELF_PROTECTION.is_forbidden_property(property):
+		return SELF_PROTECTION.forbidden_property_error(selector, property)
+
+	out_nodes.assign(SELECTOR_ENGINE.query(tree, selector))
+	if out_nodes.is_empty():
+		return ERRORS.node_not_found(selector)
+	if SELF_PROTECTION.is_protected(out_nodes[0]):
+		return SELF_PROTECTION.protected_node_error(selector, out_nodes[0])
+	return {}
 
 
 ## The canonical failure for a property that the matched node does not expose.
