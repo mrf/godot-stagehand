@@ -3,6 +3,7 @@ extends Node
 
 const ERRORS := preload("res://addons/stagehand/core/errors.gd")
 const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
+const SELF_PROTECTION := preload("res://addons/stagehand/core/self_protection.gd")
 
 
 ## Polling mechanism that waits for a condition to become true.
@@ -196,9 +197,16 @@ func wait_for_signal(selector: String, signal_name: String, timeout_ms: int = 50
 
 ## Wait for a node's property to satisfy a condition.
 func wait_for_property(selector: String, property: String, operator: String, expected_value: Variant, timeout_ms: int = 10000, poll_interval_ms: int = 100) -> Dictionary:
+	# A condition on Stagehand's own node is a read oracle for its private state
+	# (godot-stagehand-ext-review-2026-11-327t.1): refuse it up front, and never
+	# let a match that only resolves to one later satisfy the wait.
+	var initial: Array[Node] = SELECTOR_ENGINE.query(get_tree(), selector)
+	if not initial.is_empty() and SELF_PROTECTION.is_protected(initial[0]):
+		return SELF_PROTECTION.protected_node_error(selector, initial[0])
+
 	var condition: Callable = func() -> bool:
 		var results: Array[Node] = SELECTOR_ENGINE.query(get_tree(), selector)
-		if results.is_empty():
+		if results.is_empty() or SELF_PROTECTION.is_protected(results[0]):
 			return false
 		return evaluate_property_condition(results[0], property, operator, expected_value)
 

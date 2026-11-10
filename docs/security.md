@@ -18,6 +18,15 @@ Expression evaluation and arbitrary method calls are disabled unless the
 session separately opts into unsafe capabilities. Authentication limits who can
 reach automation; unsafe opt-in controls what an authenticated peer may execute.
 
+**Self-protection.** The session token and the unsafe opt-in live on the
+`StagehandServer` node, so the remote surface is kept off it: `get_property`,
+`set_property`, `wait_for_property`, `call_method`, and `query_nodes` with
+`properties` refuse (`not_supported`) any selector that resolves to
+`/root/StagehandServer` or any node under it, and `get_tree` lists those nodes
+without their property values. Separately, `get_property` and `set_property`
+refuse private (`_`-prefixed) members and `script` on every node. Unsafe mode can
+only be enabled by relaunching with `STAGEHAND_ALLOW_UNSAFE=1`.
+
 **Read this before running setup.** Once a game is running with
 Stagehand enabled, anyone who has the session token can inspect and mutate its
 state, including calling arbitrary methods if unsafe capabilities are opted

@@ -115,6 +115,35 @@ func TestStagehandAuthenticationBoundary(t *testing.T) {
 	}
 }
 
+// Safe mode must not be one set_property away from unsafe mode: the server's
+// own node and private (`_`-prefixed) members are off limits to the property
+// surface (godot-stagehand-ext-review-2026-11-327t.1).
+func TestStagehandSafeModeCannotBeDisabledRemotely(t *testing.T) {
+	conn, _, _ := startSecurityGodot(t, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	authenticateSecurityConnection(t, ctx, conn)
+
+	_, err := conn.Call(ctx, "set_property", map[string]any{
+		"selector": "/root/StagehandServer",
+		"property": "_allow_unsafe",
+		"value":    true,
+	})
+	if err == nil {
+		t.Error("set_property _allow_unsafe on /root/StagehandServer succeeded; want it refused")
+	}
+	_, err = conn.Call(ctx, "get_property", map[string]any{
+		"selector": "/root/StagehandServer",
+		"property": "_auth_token",
+	})
+	if err == nil {
+		t.Error("get_property _auth_token on /root/StagehandServer succeeded; want it refused")
+	}
+
+	_, err = conn.Call(ctx, "evaluate", map[string]any{"expression": "1 + 1"})
+	requireSecurityRPCCode(t, err, testCodeUnsafeCapability)
+}
+
 func TestStagehandUnsafeMethodsCanBeEnabledExplicitly(t *testing.T) {
 	conn, _, _ := startSecurityGodot(t, []string{"STAGEHAND_ALLOW_UNSAFE=1"})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
