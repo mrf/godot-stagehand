@@ -300,6 +300,8 @@ static func serialize_event(event: InputEvent) -> Dictionary:
 		return {
 			"type": "key",
 			"keycode": e.keycode,
+			"physical_keycode": e.physical_keycode,
+			"key_label": e.key_label,
 			"unicode": e.unicode,
 			"pressed": e.pressed,
 			"shift": e.shift_pressed,
@@ -356,6 +358,8 @@ static func deserialize_event(entry: Dictionary) -> InputEvent:
 		"key":
 			var ev: InputEventKey = InputEventKey.new()
 			ev.keycode = _variant_to_int(entry.get("keycode", 0)) as Key
+			ev.physical_keycode = _variant_to_int(entry.get("physical_keycode", 0)) as Key
+			ev.key_label = _variant_to_int(entry.get("key_label", 0)) as Key
 			ev.unicode = _variant_to_int(entry.get("unicode", 0))
 			ev.pressed = _variant_to_bool(entry.get("pressed", false))
 			ev.shift_pressed = _variant_to_bool(entry.get("shift", false))

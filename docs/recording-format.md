@@ -43,7 +43,7 @@ keeps its relative timing instead of accumulating per-event drift.
 
 | `type` | InputEvent | Fields beyond `t_ms`/`type` |
 | --- | --- | --- |
-| `key` | `InputEventKey` | `keycode`, `unicode`, `pressed`, `shift`, `ctrl`, `alt`, `meta` |
+| `key` | `InputEventKey` | `keycode`, `physical_keycode`, `key_label`, `unicode`, `pressed`, `shift`, `ctrl`, `alt`, `meta` |
 | `mouse_button` | `InputEventMouseButton` | `position {x,y}`, `button_index`, `pressed`, `double_click` |
 | `mouse_motion` | `InputEventMouseMotion` | `position {x,y}`, `relative {x,y}` |
 | `action` | `InputEventAction` | `action`, `strength`, `pressed` |
@@ -74,6 +74,14 @@ error naming both versions — a newer recording is not silently mis-read.
 Bump `FORMAT_VERSION` only for a change that an older reader would
 misinterpret. Adding a new optional field, or a new event `type`, does not
 qualify: unknown fields are ignored and unknown types are skipped.
+
+### Key events without `physical_keycode` / `key_label`
+
+`physical_keycode` and `key_label` were added to `key` events after the format
+was first written. They are optional and, being additive, did not bump
+`FORMAT_VERSION`. A `key` entry that lacks them replays with both set to `0`
+(exactly as before), so an old recording still replays but will not trigger an
+action bound by physical key — re-record it to get that.
 
 ### Legacy key names
 

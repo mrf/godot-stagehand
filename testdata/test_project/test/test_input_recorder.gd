@@ -96,6 +96,38 @@ func test_round_trip_preserves_key_event() -> void:
 	assert_bool(key_event.ctrl_pressed).is_true()
 
 
+func test_serialize_key_event_captures_physical_keycode_and_key_label() -> void:
+	var event: InputEventKey = InputEventKey.new()
+	event.keycode = KEY_W
+	event.physical_keycode = KEY_Z
+	event.key_label = KEY_Q
+	var out: Dictionary = RECORDER.serialize_event(event)
+	assert_int(out.get("physical_keycode")).is_equal(KEY_Z)
+	assert_int(out.get("key_label")).is_equal(KEY_Q)
+
+
+func test_round_trip_preserves_physical_keycode_and_key_label() -> void:
+	var event: InputEventKey = InputEventKey.new()
+	event.keycode = KEY_W
+	event.physical_keycode = KEY_Z
+	event.key_label = KEY_Q
+	event.pressed = true
+	var restored: InputEvent = RECORDER.deserialize_event(RECORDER.serialize_event(event))
+	var key_event: InputEventKey = restored
+	assert_int(key_event.physical_keycode).is_equal(KEY_Z)
+	assert_int(key_event.key_label).is_equal(KEY_Q)
+
+
+func test_deserialize_legacy_key_entry_without_physical_fields() -> void:
+	var restored: InputEvent = RECORDER.deserialize_event(
+		{"type": "key", "keycode": KEY_A, "pressed": true}
+	)
+	var key_event: InputEventKey = restored
+	assert_int(key_event.keycode).is_equal(KEY_A)
+	assert_int(key_event.physical_keycode).is_equal(0)
+	assert_int(key_event.key_label).is_equal(0)
+
+
 func test_round_trip_preserves_mouse_button_event() -> void:
 	var event: InputEventMouseButton = InputEventMouseButton.new()
 	event.position = Vector2(64, 128)

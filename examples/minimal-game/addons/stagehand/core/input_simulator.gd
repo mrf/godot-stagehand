@@ -423,28 +423,47 @@ static func _release_action_after(tree: SceneTree, action: String, delay_sec: fl
 
 
 static func _press_key(keycode: int, mod_mask: int) -> void:
-	var ev: InputEventKey = InputEventKey.new()
-	ev.keycode = keycode as Key
-	ev.pressed = true
-	ev.shift_pressed = (mod_mask & KEY_MASK_SHIFT) != 0
-	ev.ctrl_pressed = (mod_mask & KEY_MASK_CTRL) != 0
-	ev.alt_pressed = (mod_mask & KEY_MASK_ALT) != 0
-	ev.meta_pressed = (mod_mask & KEY_MASK_META) != 0
-	Input.parse_input_event(ev)
+	Input.parse_input_event(_make_key_event(keycode, mod_mask, true))
 
 
 static func _release_key_after(tree: SceneTree, keycode: int, mod_mask: int, delay_sec: float) -> void:
 	var timer: SceneTreeTimer = tree.create_timer(delay_sec)
 	var _err: int = timer.timeout.connect(func() -> void:
-		var ev: InputEventKey = InputEventKey.new()
-		ev.keycode = keycode as Key
-		ev.pressed = false
-		ev.shift_pressed = (mod_mask & KEY_MASK_SHIFT) != 0
-		ev.ctrl_pressed = (mod_mask & KEY_MASK_CTRL) != 0
-		ev.alt_pressed = (mod_mask & KEY_MASK_ALT) != 0
-		ev.meta_pressed = (mod_mask & KEY_MASK_META) != 0
-		Input.parse_input_event(ev)
+		Input.parse_input_event(_make_key_event(keycode, mod_mask, false))
 	)
+
+
+## Build a key event the way a real keyboard would: [param keycode] is also the
+## physical key and the label, so actions bound by physical_keycode match, and
+## a printable key carries its character in [member InputEventKey.unicode] so
+## text controls receive it. The simulator has no keyboard layout, so the
+## physical key is identical to the logical one.
+static func _make_key_event(keycode: int, mod_mask: int, pressed: bool) -> InputEventKey:
+	var ev: InputEventKey = InputEventKey.new()
+	ev.keycode = keycode as Key
+	ev.physical_keycode = keycode as Key
+	ev.key_label = keycode as Key
+	ev.pressed = pressed
+	ev.shift_pressed = (mod_mask & KEY_MASK_SHIFT) != 0
+	ev.ctrl_pressed = (mod_mask & KEY_MASK_CTRL) != 0
+	ev.alt_pressed = (mod_mask & KEY_MASK_ALT) != 0
+	ev.meta_pressed = (mod_mask & KEY_MASK_META) != 0
+	ev.unicode = _key_unicode(keycode, mod_mask)
+	return ev
+
+
+## Character a printable [param keycode] types, or 0. Letters follow Shift;
+## other keys give their unshifted ASCII character. Ctrl/Alt/Meta chords are
+## shortcuts, not text, so they carry no character.
+static func _key_unicode(keycode: int, mod_mask: int) -> int:
+	if (mod_mask & (KEY_MASK_CTRL | KEY_MASK_ALT | KEY_MASK_META)) != 0:
+		return 0
+	if keycode < KEY_SPACE or keycode > KEY_ASCIITILDE:
+		return 0
+	var is_letter: bool = keycode >= KEY_A and keycode <= KEY_Z
+	if is_letter and (mod_mask & KEY_MASK_SHIFT) == 0:
+		return keycode + 32
+	return keycode
 
 
 static func _parse_modifiers(modifiers: Array) -> int:

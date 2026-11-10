@@ -290,6 +290,79 @@ func test_key_unknown_key_name_returns_error() -> void:
 	assert_str(str(result.get("error", ""))).contains("Unknown key")
 
 
+func test_key_press_triggers_physical_key_bound_action() -> void:
+	var action: StringName = &"stagehand_test_physical_a"
+	var bound: InputEventKey = InputEventKey.new()
+	bound.physical_keycode = KEY_A
+	InputMap.add_action(action)
+	InputMap.action_add_event(action, bound)
+
+	StagehandInputSimulator.input_key(get_tree(), {"key": "a", "hold_ms": 500})
+	await get_tree().process_frame
+
+	var pressed: bool = Input.is_action_pressed(action)
+	InputMap.erase_action(action)
+	assert_bool(pressed).is_true()
+
+
+func test_key_press_sets_physical_keycode_key_label_and_unicode() -> void:
+	StagehandInputSimulator.input_key(get_tree(), {"key": "a"})
+	await get_tree().process_frame
+
+	var event: InputEventKey = _recorder.first_of_type("InputEventKey")
+	assert_object(event).is_not_null()
+	assert_int(event.physical_keycode).is_equal(KEY_A)
+	assert_int(event.key_label).is_equal(KEY_A)
+	assert_int(event.unicode).is_equal(int("a".unicode_at(0)))
+
+
+func test_key_press_unicode_respects_shift() -> void:
+	StagehandInputSimulator.input_key(get_tree(), {"key": "a", "modifiers": ["shift"]})
+	await get_tree().process_frame
+
+	var event: InputEventKey = _recorder.first_of_type("InputEventKey")
+	assert_object(event).is_not_null()
+	assert_int(event.unicode).is_equal(int("A".unicode_at(0)))
+
+
+func test_key_press_leaves_unicode_zero_for_non_printable_key() -> void:
+	StagehandInputSimulator.input_key(get_tree(), {"key": "escape"})
+	await get_tree().process_frame
+
+	var event: InputEventKey = _recorder.first_of_type("InputEventKey")
+	assert_object(event).is_not_null()
+	assert_int(event.physical_keycode).is_equal(KEY_ESCAPE)
+	assert_int(event.unicode).is_equal(0)
+
+
+func test_key_release_sets_physical_keycode() -> void:
+	StagehandInputSimulator.input_key(get_tree(), {"key": "a", "hold_ms": 0})
+	await get_tree().create_timer(0.1).timeout
+
+	var released: InputEventKey = null
+	for event: InputEvent in _recorder.of_type("InputEventKey"):
+		var key_event: InputEventKey = event
+		# Filter by key: a prior test's hold timer can still release into this recorder.
+		if not key_event.pressed and key_event.keycode == KEY_A:
+			released = key_event
+	assert_object(released).is_not_null()
+	assert_int(released.physical_keycode).is_equal(KEY_A)
+	assert_int(released.key_label).is_equal(KEY_A)
+
+
+func test_key_press_types_character_into_focused_line_edit() -> void:
+	var line_edit: LineEdit = auto_free(LineEdit.new())
+	add_child(line_edit)
+	line_edit.grab_focus()
+	await get_tree().process_frame
+
+	StagehandInputSimulator.input_key(get_tree(), {"key": "a"})
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	assert_str(line_edit.text).is_equal("a")
+
+
 # ── input_action ─────────────────────────────────────────────────────────
 
 func test_action_press_pushes_action_event() -> void:
