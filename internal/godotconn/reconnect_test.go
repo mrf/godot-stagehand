@@ -1,8 +1,15 @@
 package godotconn
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 func TestBackoffDuration(t *testing.T) {
@@ -72,4 +79,166 @@ func TestConfiguredMaxReconnectAttempts(t *testing.T) {
 			}
 		})
 	}
+}
+
+// reauthBehavior is how reauthServer answers the authenticate call on a
+// reconnect (every connection after the first).
+type reauthBehavior int
+
+const (
+	reauthOK     reauthBehavior = iota // confirm the token
+	reauthReject                       // AUTHENTICATION_FAILED, then close — what the addon does
+	reauthStall                        // never answer: a scene load / shader compile stall
+	reauthDrop                         // close the socket without answering
+)
+
+// reauthServer accepts the initial connection's authenticate and drops it on
+// demand; each later connection n (2, 3, ...) answers authenticate as
+// behavior(n) says. It counts connections so a test can tell one reconnect
+// loop from several racing ones.
+type reauthServer struct {
+	*httptest.Server
+	connections atomic.Int32
+	first       chan *websocket.Conn
+}
+
+func newReauthServer(t *testing.T, behavior func(n int32) reauthBehavior) *reauthServer {
+	t.Helper()
+	s := &reauthServer{first: make(chan *websocket.Conn, 1)}
+	s.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := testUpgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+		n := s.connections.Add(1)
+		if n == 1 {
+			s.first <- ws
+		}
+		for {
+			var req Request
+			if err := ws.ReadJSON(&req); err != nil {
+				return
+			}
+			if req.Method == "authenticate" && n > 1 {
+				switch behavior(n) {
+				case reauthReject:
+					_ = ws.WriteJSON(Response{
+						JSONRPC: "2.0",
+						ID:      req.ID,
+						Error:   &RPCError{Code: CodeAuthenticationFailed, Message: "Authentication failed"},
+					})
+					return
+				case reauthStall:
+					continue
+				case reauthDrop:
+					return
+				case reauthOK:
+				}
+			}
+			result, _ := json.Marshal(map[string]bool{"authenticated": true})
+			if err := ws.WriteJSON(Response{JSONRPC: "2.0", ID: req.ID, Result: result}); err != nil {
+				return
+			}
+		}
+	}))
+	t.Cleanup(s.Close)
+	return s
+}
+
+// dialAuthenticatedThenDrop dials s, authenticates, then has the server drop
+// the initial socket so the client enters its reconnect loop.
+func dialAuthenticatedThenDrop(t *testing.T, s *reauthServer) *Connection {
+	t.Helper()
+	host, port := serverHostPort(t, s.Server)
+	conn, err := dialWithLimits(context.Background(), host, port, defaultLiveness, 5)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := conn.Authenticate(context.Background(), testConnectionAuthToken); err != nil {
+		t.Fatalf("authenticate initial connection: %v", err)
+	}
+	if err := (<-s.first).Close(); err != nil {
+		t.Fatalf("drop first connection: %v", err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for conn.State() == Connected && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if conn.State() == Connected {
+		t.Fatal("connection never noticed the dropped socket")
+	}
+	return conn
+}
+
+func waitForState(t *testing.T, conn *Connection, want State, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if conn.State() == want {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("state = %v after %v, want %v", conn.State(), timeout, want)
+}
+
+// assertSettled checks that, once the reconnect has resolved, nothing is still
+// dialling behind it: a racing second loop shows up as extra connections.
+func assertSettled(t *testing.T, conn *Connection, s *reauthServer, wantState State, wantConnections int32) {
+	t.Helper()
+	time.Sleep(time.Second) // several 100ms-backoff dial cycles, were a stray loop running
+	if got := conn.State(); got != wantState {
+		t.Errorf("state settled at %v, want %v", got, wantState)
+	}
+	if got := s.connections.Load(); got != wantConnections {
+		t.Errorf("server saw %d connections, want %d (a stray reconnect loop kept dialling)", got, wantConnections)
+	}
+}
+
+func TestReconnectSurvivesReauthTimeout(t *testing.T) {
+	s := newReauthServer(t, func(n int32) reauthBehavior {
+		if n == 2 {
+			return reauthStall
+		}
+		return reauthOK
+	})
+	conn := dialAuthenticatedThenDrop(t, s)
+
+	waitForState(t, conn, Connected, queueTimeout+3*time.Second)
+	if conn.ReconnectExhausted() {
+		t.Error("ReconnectExhausted() = true: a re-auth timeout gave up instead of retrying")
+	}
+	if _, err := conn.Call(context.Background(), "ping", nil); err != nil {
+		t.Errorf("call after recovered reconnect: %v", err)
+	}
+	assertSettled(t, conn, s, Connected, 3)
+}
+
+func TestReconnectSurvivesDropDuringReauth(t *testing.T) {
+	s := newReauthServer(t, func(n int32) reauthBehavior {
+		if n == 2 {
+			return reauthDrop
+		}
+		return reauthOK
+	})
+	conn := dialAuthenticatedThenDrop(t, s)
+
+	waitForState(t, conn, Connected, 3*time.Second)
+	if conn.ReconnectExhausted() {
+		t.Error("ReconnectExhausted() = true: a mid-handshake drop gave up instead of retrying")
+	}
+	assertSettled(t, conn, s, Connected, 3)
+}
+
+func TestReconnectGivesUpOnTokenRejection(t *testing.T) {
+	s := newReauthServer(t, func(int32) reauthBehavior { return reauthReject })
+	conn := dialAuthenticatedThenDrop(t, s)
+
+	waitForState(t, conn, Disconnected, 3*time.Second)
+	if !conn.ReconnectExhausted() {
+		t.Error("ReconnectExhausted() = false after the token was rejected")
+	}
+	assertSettled(t, conn, s, Disconnected, 2)
 }

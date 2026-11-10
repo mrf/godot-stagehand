@@ -2,6 +2,7 @@ package godotconn
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -83,8 +84,12 @@ func backoffDuration(attempt int) time.Duration {
 	return d
 }
 
-// handleDisconnect transitions to Reconnecting, cancels pending calls,
-// and starts the reconnect loop in a goroutine.
+// handleDisconnect reacts to a read failure on a socket. Only the loss of the
+// live, Connected socket starts a reconnect loop. A socket the loop has
+// already retired (or replaced) is stale and ignored. A socket the loop is
+// still re-authenticating is the loop's to retry: it is retired here, which
+// fails the in-flight handshake call promptly, but no second loop is started —
+// two loops would race each other's channels and keep dialling forever.
 func (c *Connection) handleDisconnect(disconnected *websocket.Conn) {
 	c.mu.Lock()
 	if c.ws != disconnected || c.state == Disconnected {
@@ -92,6 +97,12 @@ func (c *Connection) handleDisconnect(disconnected *websocket.Conn) {
 		return
 	}
 	c.cancelPendingLocked()
+	if c.state == Reconnecting {
+		c.ws = nil
+		c.mu.Unlock()
+		_ = disconnected.Close()
+		return
+	}
 	c.state = Reconnecting
 	c.reconnected = make(chan struct{})
 	c.reconnectFailed = make(chan struct{})
@@ -100,6 +111,24 @@ func (c *Connection) handleDisconnect(disconnected *websocket.Conn) {
 	_ = disconnected.Close()
 
 	go c.reconnectLoop()
+}
+
+// retireSocket abandons a reconnect attempt's socket. Clearing c.ws first
+// makes its read loop's handleDisconnect a stale no-op.
+func (c *Connection) retireSocket(ws *websocket.Conn) {
+	c.mu.Lock()
+	if c.ws == ws {
+		c.ws = nil
+	}
+	c.mu.Unlock()
+	_ = ws.Close()
+}
+
+// isTokenRejection reports whether err is the server explicitly refusing the
+// token, as opposed to a timeout or a dropped socket mid-handshake.
+func isTokenRejection(err error) bool {
+	var rpcErr *RPCError
+	return errors.As(err, &rpcErr) && rpcErr.Code == CodeAuthenticationFailed
 }
 
 // reconnectLoop retries the dial with exponential backoff until it either
@@ -164,24 +193,27 @@ func (c *Connection) reconnectLoop() {
 				authErr = validateAuthenticationResponse(resp)
 			}
 			if authErr != nil {
-				// A rejected token will never start succeeding on its own
-				// (unlike a transient dial failure), so retrying is pointless:
-				// give up immediately rather than leaving the connection
-				// stuck reporting Reconnecting with nothing left running to
-				// ever change it.
-				c.mu.Lock()
-				ws := c.ws
-				c.mu.Unlock()
-				if ws != nil {
-					_ = ws.Close()
+				c.retireSocket(ws)
+				// A rejected token will never start succeeding on its own, so
+				// give up rather than retry. Anything else — the handshake timed
+				// out during a scene load or shader compile, or the socket
+				// dropped mid-handshake — is an ordinary failed attempt.
+				if isTokenRejection(authErr) {
+					c.giveUp()
+					return
 				}
-				c.giveUp()
-				return
+				continue
 			}
 		}
 
-		// Signal waiters that reconnection succeeded.
+		// Signal waiters that reconnection succeeded — unless the socket was
+		// lost during the handshake, which handleDisconnect records by
+		// clearing c.ws.
 		c.mu.Lock()
+		if c.ws != ws {
+			c.mu.Unlock()
+			continue
+		}
 		c.state = Connected
 		ch := c.reconnected
 		c.mu.Unlock()
