@@ -691,14 +691,14 @@ func _handle_assert_performance(params: Variant) -> Dictionary:
 		return ERRORS.make(ERRORS.INVALID_PARAMS, "sample_count must be at least 1", {"sample_count": sample_count})
 
 	if warmup_ms > 0:
-		await get_tree().create_timer(warmup_ms * 0.001).timeout
+		await get_tree().create_timer(warmup_ms * 0.001, true, false, true).timeout
 
 	var monitor_enum: Performance.Monitor = PERFORMANCE_SAMPLER.MONITORS[monitor]
 	var samples: Array[float] = []
 	for i: int in range(sample_count):
 		samples.append(Performance.get_monitor(monitor_enum))
 		if i < sample_count - 1 and sample_interval_ms > 0:
-			await get_tree().create_timer(sample_interval_ms * 0.001).timeout
+			await get_tree().create_timer(sample_interval_ms * 0.001, true, false, true).timeout
 
 	var stats: Dictionary = PERFORMANCE_SAMPLER.compute_statistics(samples)
 	var value: float = _to_float(stats[statistic])

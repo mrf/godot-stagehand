@@ -440,3 +440,37 @@ func test_text_unmatched_selector_returns_error() -> void:
 		get_tree(), {"text": "abc", "selector": "group:no_such_group_at_all"}
 	)
 	assert_str(str(result.get("error", ""))).contains("Node not found")
+
+
+# ── Engine.time_scale = 0 ────────────────────────────────────────────────
+# A pause menu commonly freezes the game with Engine.time_scale = 0. Every
+# simulator timer must keep running on wall-clock time then, or a held key is
+# never released and input_text never returns.
+
+func after_test() -> void:
+	Engine.time_scale = 1.0
+
+
+func test_key_release_arrives_when_time_scale_is_zero() -> void:
+	Engine.time_scale = 0.0
+	StagehandInputSimulator.input_key(get_tree(), {"key": "a", "hold_ms": 50})
+	# Wall-clock wait that the time_scale override above cannot stall.
+	await get_tree().create_timer(0.3, true, false, true).timeout
+
+	var released: bool = false
+	for event: InputEvent in _recorder.of_type("InputEventKey"):
+		var key_event: InputEventKey = event
+		if not key_event.pressed and key_event.keycode == KEY_A:
+			released = true
+	assert_bool(released).is_true()
+
+
+func test_text_returns_when_time_scale_is_zero() -> void:
+	Engine.time_scale = 0.0
+	var state: Dictionary = {"done": false}
+	var run: Callable = func() -> void:
+		await StagehandInputSimulator.input_text(get_tree(), {"text": "ab", "delay_ms": 20})
+		state["done"] = true
+	run.call()
+	await get_tree().create_timer(0.5, true, false, true).timeout
+	assert_bool(state["done"]).is_true()

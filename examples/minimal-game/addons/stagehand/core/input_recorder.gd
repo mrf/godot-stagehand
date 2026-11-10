@@ -215,14 +215,14 @@ func start_replay(input_path: String, speed: float = 1.0, wait_for_ready: bool =
 			Input.parse_input_event(event)
 			continue
 		@warning_ignore("return_value_discarded")
-		tree.create_timer(delay_sec).timeout.connect(func() -> void:
+		tree.create_timer(delay_sec, true, false, true).timeout.connect(func() -> void:
 			Input.parse_input_event(event)
 		)
 
 	if last_delay_sec > 0.0:
 		var tree: SceneTree = get_tree()
 		if tree != null:
-			await tree.create_timer(last_delay_sec + REPLAY_TAIL_SEC).timeout
+			await tree.create_timer(last_delay_sec + REPLAY_TAIL_SEC, true, false, true).timeout
 
 	return {
 		"success": true,

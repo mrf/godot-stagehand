@@ -344,3 +344,33 @@ func test_wait_for_unknown_signal_returns_error() -> void:
 	)
 	assert_str(str(result.get("error_code", ""))).is_equal("invalid_params")
 	assert_str(str(result.get("error", ""))).contains("not found on node")
+
+
+# ── Engine.time_scale = 0 ────────────────────────────────────────────────
+# Deadlines are wall-clock, so the poll sleeps must be too: a scaled timer at
+# time_scale 0 never wakes the loop to notice its own deadline.
+
+func after_test() -> void:
+	Engine.time_scale = 1.0
+
+
+func test_wait_for_node_times_out_when_time_scale_is_zero() -> void:
+	Engine.time_scale = 0.0
+	var state: Dictionary = {"done": false}
+	var run: Callable = func() -> void:
+		await _waiter.wait_for_node("group:no_such_group_at_all", "exists", TIMEOUT_MS, POLL_MS)
+		state["done"] = true
+	run.call()
+	await get_tree().create_timer(0.6, true, false, true).timeout
+	assert_bool(state["done"]).is_true()
+
+
+func test_wait_for_signal_times_out_when_time_scale_is_zero() -> void:
+	Engine.time_scale = 0.0
+	var state: Dictionary = {"done": false}
+	var run: Callable = func() -> void:
+		await _waiter.wait_for_signal("group:waiter_probe", "renamed", TIMEOUT_MS)
+		state["done"] = true
+	run.call()
+	await get_tree().create_timer(0.6, true, false, true).timeout
+	assert_bool(state["done"]).is_true()

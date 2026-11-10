@@ -15,7 +15,7 @@ func wait_condition(condition_func: Callable, timeout_ms: int = 10000, poll_inte
 	while Time.get_ticks_msec() < end_time:
 		if condition_func.call():
 			return true
-		await get_tree().create_timer(poll_interval_ms * 0.001).timeout
+		await get_tree().create_timer(poll_interval_ms * 0.001, true, false, true).timeout
 
 	if condition_func.call():
 		return true
@@ -168,7 +168,7 @@ func wait_for_signal(selector: String, signal_name: String, timeout_ms: int = 50
 	while not state[0] and Time.get_ticks_msec() < end_time:
 		if not is_instance_valid(node):
 			return _node_freed(selector, "while waiting for signal", Time.get_ticks_msec() - start_time)
-		await get_tree().create_timer(0.01).timeout
+		await get_tree().create_timer(0.01, true, false, true).timeout
 
 	var elapsed: int = Time.get_ticks_msec() - start_time
 

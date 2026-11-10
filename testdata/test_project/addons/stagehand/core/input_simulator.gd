@@ -397,7 +397,7 @@ static func _gui_delivery_confirmed(target: ClickTarget, expected_node: Node) ->
 
 
 static func _release_mouse_after(tree: SceneTree, viewport: Viewport, pos: Vector2, btn: int, delay_sec: float) -> void:
-	var timer: SceneTreeTimer = tree.create_timer(delay_sec)
+	var timer: SceneTreeTimer = tree.create_timer(delay_sec, true, false, true)
 	var _err: int = timer.timeout.connect(func() -> void:
 		_push_mouse_button(viewport, pos, btn, false, false)
 	)
@@ -412,7 +412,7 @@ static func _press_action(action: String, strength: float) -> void:
 
 
 static func _release_action_after(tree: SceneTree, action: String, delay_sec: float) -> void:
-	var timer: SceneTreeTimer = tree.create_timer(delay_sec)
+	var timer: SceneTreeTimer = tree.create_timer(delay_sec, true, false, true)
 	var _err: int = timer.timeout.connect(func() -> void:
 		var ev: InputEventAction = InputEventAction.new()
 		ev.action = action
@@ -427,7 +427,7 @@ static func _press_key(keycode: int, mod_mask: int) -> void:
 
 
 static func _release_key_after(tree: SceneTree, keycode: int, mod_mask: int, delay_sec: float) -> void:
-	var timer: SceneTreeTimer = tree.create_timer(delay_sec)
+	var timer: SceneTreeTimer = tree.create_timer(delay_sec, true, false, true)
 	var _err: int = timer.timeout.connect(func() -> void:
 		Input.parse_input_event(_make_key_event(keycode, mod_mask, false))
 	)
@@ -522,7 +522,7 @@ static func input_text(tree: SceneTree, params: Dictionary) -> Dictionary:
 		Input.parse_input_event(release_event)
 
 		if delay_ms > 0:
-			await tree.create_timer(delay_ms / 1000.0).timeout
+			await tree.create_timer(delay_ms / 1000.0, true, false, true).timeout
 			total_delay += delay_ms / 1000.0
 
 	return {"success": true, "typed_text": text, "chars_count": chars.size(), "total_delay": total_delay}
@@ -606,7 +606,7 @@ static func _touch_release(viewport: Viewport, pos: Vector2, index: int) -> void
 
 
 static func _touch_release_after(tree: SceneTree, viewport: Viewport, pos: Vector2, index: int, delay_sec: float) -> void:
-	var timer: SceneTreeTimer = tree.create_timer(delay_sec)
+	var timer: SceneTreeTimer = tree.create_timer(delay_sec, true, false, true)
 	var _err: int = timer.timeout.connect(func() -> void:
 		_touch_release(viewport, pos, index)
 	)
