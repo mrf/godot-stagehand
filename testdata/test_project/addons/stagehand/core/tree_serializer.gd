@@ -42,7 +42,7 @@ static func _serialize_node(node: Node, depth: int, max_depth: int, include_prop
 		data["properties"] = _get_properties(node, include_properties)
 	if depth < max_depth:
 		var children: Array[Dictionary] = []
-		for child: Node in node.get_children():
+		for child: Node in node.get_children(true):
 			children.append(_serialize_node(child, depth + 1, max_depth, include_properties))
 		data["children"] = children
 	return data
@@ -173,6 +173,6 @@ static func _to_json_safe(value: Variant) -> Variant:
 
 static func _count_nodes(root: Node) -> int:
 	var count: int = 1
-	for child: Node in root.get_children():
+	for child: Node in root.get_children(true):
 		count += _count_nodes(child)
 	return count

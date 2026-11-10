@@ -182,7 +182,7 @@ static func _build_entry(node: Node, depth: int, max_depth: int) -> Dictionary:
 	}
 	if depth < max_depth:
 		var children: Array[Dictionary] = []
-		for child: Node in node.get_children():
+		for child: Node in node.get_children(true):
 			children.append(_build_entry(child, depth + 1, max_depth))
 		entry["children"] = children
 	else:
@@ -301,6 +301,6 @@ static func _variant_to_string(value: Variant) -> String:
 
 static func _count_nodes(root: Node) -> int:
 	var count: int = 1
-	for child: Node in root.get_children():
+	for child: Node in root.get_children(true):
 		count += _count_nodes(child)
 	return count

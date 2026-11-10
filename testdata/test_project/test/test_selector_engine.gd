@@ -363,3 +363,59 @@ func test_query_role_chained_scopes_to_parent() -> void:
 	var results: Array[Node] = _query("name:%sPanel >> role:button" % FIXTURE_TAG)
 	assert_array(results).contains([_button])
 	assert_array(results).not_contains([_label])
+
+
+# ── internal children of dialogs (godot-stagehand-ext-review-2026-11-327t.13) ──
+# AcceptDialog's OK button and message label are internal children, which
+# Node.get_children() hides by default. Every selector type must agree on them.
+
+func _make_dialog() -> AcceptDialog:
+	var dialog: AcceptDialog = auto_free(AcceptDialog.new())
+	dialog.name = "%sDialog" % FIXTURE_TAG
+	dialog.dialog_text = "SelFixture dialog body"
+	_root.add_child(dialog)
+	return dialog
+
+
+func test_dialog_ok_button_is_internal_child() -> void:
+	# Pins the premise: the dialog's whole body (panel, label, button row that
+	# holds the OK button) is internal, so a default get_children() walk sees none of it.
+	var dialog: AcceptDialog = _make_dialog()
+	assert_bool(dialog.is_ancestor_of(dialog.get_ok_button())).is_true()
+	assert_int(dialog.get_children().size()).is_equal(0)
+	assert_int(dialog.get_children(true).size()).is_greater(0)
+
+
+func test_query_name_finds_dialog_ok_button() -> void:
+	var dialog: AcceptDialog = _make_dialog()
+	var ok: Button = dialog.get_ok_button()
+	assert_array(_query("name:%s" % ok.name)).contains([ok])
+
+
+func test_query_text_finds_dialog_ok_button() -> void:
+	var dialog: AcceptDialog = _make_dialog()
+	assert_array(_query("text=%s" % dialog.get_ok_button().text)).contains([dialog.get_ok_button()])
+
+
+func test_query_class_finds_dialog_ok_button() -> void:
+	var dialog: AcceptDialog = _make_dialog()
+	assert_array(_query("class:Button")).contains([dialog.get_ok_button()])
+
+
+func test_query_role_finds_dialog_ok_button() -> void:
+	var dialog: AcceptDialog = _make_dialog()
+	assert_array(_query("role:button")).contains([dialog.get_ok_button()])
+
+
+func test_query_chained_dialog_name_then_role_button() -> void:
+	# The documented `name:SettingsDialog >> role:button` example shape.
+	var dialog: AcceptDialog = _make_dialog()
+	var results: Array[Node] = _query("name:%sDialog >> role:button" % FIXTURE_TAG)
+	assert_array(results).contains([dialog.get_ok_button()])
+
+
+func test_query_chained_dialog_finds_label_text() -> void:
+	var dialog: AcceptDialog = _make_dialog()
+	var results: Array[Node] = _query("name:%sDialog >> text:*dialog body*" % FIXTURE_TAG)
+	assert_int(results.size()).is_greater(0)
+	assert_bool(dialog.is_ancestor_of(results[0])).is_true()

@@ -486,8 +486,10 @@ static func _node_matches_meta(node: Node, meta_key: String, expected_value: Str
 	return false
 
 
-## Depth-first walk of the scene tree, calling visitor on every node.
+## Depth-first walk of the scene tree, calling visitor on every node,
+## including internal children (AcceptDialog's OK button and label, scroll
+## bars, tab bars). Matches `name:`, whose find_children() already includes them.
 static func _walk(root: Node, visitor: Callable) -> void:
 	visitor.call(root)
-	for child: Node in root.get_children():
+	for child: Node in root.get_children(true):
 		_walk(child, visitor)

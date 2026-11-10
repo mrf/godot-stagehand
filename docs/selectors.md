@@ -219,6 +219,7 @@ Example chain breakdown:
 1. Chained selectors support all the individual selector types mixed together
 2. Path selectors in chains are interpreted relative to the parent selection when not absolute (not starting with "/")
 3. The chain produces the final set of matched nodes after applying all constraints in sequence
+4. Every selector type, `get_tree` and `get_accessibility_tree` include *internal* children, such as an `AcceptDialog`'s OK button and message label. `name:SettingsDialog >> role:button` therefore finds the dialog's built-in buttons.
 
 ## Backwards Compatibility
 
