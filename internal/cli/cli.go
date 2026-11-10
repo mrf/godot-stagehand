@@ -123,7 +123,7 @@ Connection flags (every command except run and actions):
 
 Exit codes:
   0 success   1 internal   2 usage   3 connection   4 godot error
-  5 assertion failed   6 timeout
+  5 assertion failed   6 timeout   7 cancelled (SIGINT/SIGTERM)
 
 Run 'godot-stagehand <command> --help' for command flags.
 `)

@@ -591,3 +591,138 @@ func TestSleepStepDoesNotCallGodot(t *testing.T) {
 		t.Errorf("sleep issued RPCs: %v", godot.called())
 	}
 }
+
+// blockingGodot blocks one RPC method until its context ends, standing in for
+// a step that is in flight when SIGTERM arrives or --timeout expires. Every
+// other call is recorded with whether its context was still live, then
+// answered by the inner stub — and refused if the context is dead, as a real
+// connection would.
+type blockingGodot struct {
+	inner   *stubGodot
+	method  string
+	started chan struct{}
+	once    sync.Once
+
+	mu       sync.Mutex
+	liveCall []bool
+}
+
+func (b *blockingGodot) Call(ctx context.Context, method string, params any) (*godotconn.Response, error) {
+	if method == b.method {
+		b.once.Do(func() { close(b.started) })
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	b.mu.Lock()
+	b.liveCall = append(b.liveCall, ctx.Err() == nil)
+	b.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return b.inner.Call(ctx, method, params)
+}
+
+func (b *blockingGodot) allLive() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, live := range b.liveCall {
+		if !live {
+			return false
+		}
+	}
+	return len(b.liveCall) > 0
+}
+
+func blockingOptions(t *testing.T, godot *blockingGodot) Options {
+	t.Helper()
+	opts := stubOptions(t, godot.inner)
+	opts.dial = func(context.Context, *Scenario, Options, io.Writer) (*Session, error) {
+		return &Session{Caller: godot, Host: "127.0.0.1", Port: 26999}, nil
+	}
+	return opts
+}
+
+const teardownAfterBlockedStep = `{
+	"name": "interrupted",
+	"target": {"mode": "launch", "project_path": "proj"},
+	"steps": [
+		{"action": "wait_for_node", "with": {"selector": "name:Never", "timeout_ms": 60000}},
+		{"action": "change_scene", "with": {"scene_path": "res://never.tscn"}}
+	],
+	"teardown": [{"action": "change_scene", "with": {"scene_path": "res://menu.tscn"}}]
+}`
+
+// TestRunCancelledStillRunsTeardownAndWritesArtifacts pins
+// godot-stagehand-ext-review-2026-11-327t.11: a cancelled run (SIGINT/SIGTERM)
+// must still run teardown on a live context and leave report.json, junit.xml
+// and rpc-trace.json, with a cancelled failure kind.
+func TestRunCancelledStillRunsTeardownAndWritesArtifacts(t *testing.T) {
+	inner := &stubGodot{}
+	godot := &blockingGodot{inner: inner, method: "wait_for_node", started: make(chan struct{})}
+	sc := mustParse(t, teardownAfterBlockedStep)
+	opts := blockingOptions(t, godot)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-godot.started
+		cancel()
+	}()
+
+	report, err := Run(ctx, sc, opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if report.Status != StatusFailed || report.Failure == nil || report.Failure.Kind != KindCancelled {
+		t.Fatalf("status/failure = %s / %+v, want failed with kind %q", report.Status, report.Failure, KindCancelled)
+	}
+	if len(report.Teardown) != 1 || report.Teardown[0].Status != StatusPassed {
+		t.Fatalf("teardown = %+v, want one passing step", report.Teardown)
+	}
+	if !godot.allLive() {
+		t.Error("teardown ran under the cancelled context")
+	}
+	// Exactly one change_scene: the teardown's. The second step is skipped.
+	scenes := 0
+	for _, method := range inner.called() {
+		if method == "change_scene" {
+			scenes++
+		}
+	}
+	if scenes != 1 {
+		t.Errorf("change_scene calls = %d, want 1 (teardown only)", scenes)
+	}
+	if len(report.Steps) != 2 || report.Steps[1].Status != StatusSkipped {
+		t.Errorf("steps = %+v, want the step after the interrupted one skipped", report.Steps)
+	}
+	for _, name := range []string{reportFile, junitFile, traceFile} {
+		if _, statErr := os.Stat(filepath.Join(opts.OutDir, name)); statErr != nil {
+			t.Errorf("artifact %s missing after cancel: %v", name, statErr)
+		}
+	}
+}
+
+// TestRunTimeoutStillRunsTeardown is the --timeout half of the same ticket:
+// the run deadline expiring must not starve teardown, and stays a timeout
+// rather than becoming a cancellation.
+func TestRunTimeoutStillRunsTeardown(t *testing.T) {
+	inner := &stubGodot{}
+	godot := &blockingGodot{inner: inner, method: "wait_for_node", started: make(chan struct{})}
+	sc := mustParse(t, teardownAfterBlockedStep)
+	opts := blockingOptions(t, godot)
+	opts.Timeout = 50 * time.Millisecond
+
+	report, err := Run(context.Background(), sc, opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if report.Failure == nil || report.Failure.Kind != KindTimeout {
+		t.Fatalf("failure = %+v, want a timeout", report.Failure)
+	}
+	if len(report.Teardown) != 1 || report.Teardown[0].Status != StatusPassed {
+		t.Fatalf("teardown = %+v, want one passing step after the deadline", report.Teardown)
+	}
+	if !godot.allLive() {
+		t.Error("teardown ran under the expired context")
+	}
+}

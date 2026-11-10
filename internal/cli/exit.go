@@ -32,6 +32,10 @@ const (
 	ExitAssertion = 5
 	// ExitTimeout means a wait or a deadline expired before Godot answered.
 	ExitTimeout = 6
+	// ExitCancelled means the run was interrupted from outside (SIGINT or
+	// SIGTERM, e.g. a cancelled CI job). Artifacts and teardown still ran. It
+	// is not ExitTimeout: that is the run's own --timeout expiring.
+	ExitCancelled = 7
 )
 
 // usageError marks a caller mistake so dispatch can map it to ExitUsage and
@@ -83,6 +87,9 @@ func exitCodeFor(err error) int {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return ExitTimeout
 	}
+	if errors.Is(err, context.Canceled) {
+		return ExitCancelled
+	}
 	return ExitInternal
 }
 
@@ -100,6 +107,8 @@ func exitCodeForFailure(failure *scenario.Failure) int {
 		return ExitRemote
 	case scenario.KindTimeout:
 		return ExitTimeout
+	case scenario.KindCancelled:
+		return ExitCancelled
 	case scenario.KindAssertion:
 		return ExitAssertion
 	default:

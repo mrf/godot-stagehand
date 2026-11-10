@@ -30,6 +30,9 @@ const (
 	KindAssertion = "assertion"
 	// KindInternal covers runner-side failures, e.g. artifact I/O.
 	KindInternal = "internal"
+	// KindCancelled covers a run interrupted from outside (SIGINT/SIGTERM), as
+	// opposed to KindTimeout, which is the run's own --timeout expiring.
+	KindCancelled = "cancelled"
 )
 
 // Report is the machine-readable result of a scenario run.
