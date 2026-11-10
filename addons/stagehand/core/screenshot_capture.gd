@@ -33,7 +33,7 @@ static func capture(tree: SceneTree, params: Dictionary) -> Dictionary:
 				"selector": selector_str,
 				"next_action": "Verify the selector matches a visible node before requesting a cropped screenshot.",
 			})
-		var rect_result: Dictionary = _get_node_rect(nodes[0])
+		var rect_result: Dictionary = _get_node_rect(nodes[0], viewport.get_final_transform())
 		if ERRORS.is_error(rect_result):
 			return rect_result
 		crop_rect = rect_result["rect"]
@@ -138,6 +138,29 @@ static func _rect_details(rect: Rect2i) -> Dictionary:
 	}
 
 
+## Bounding box, in captured-image pixels, of [param local_rect] (in the node's
+## own space) after [param canvas_xform] — the node's
+## [method CanvasItem.get_global_transform_with_canvas], which carries
+## CanvasLayer and Camera2D — and then [param stretch_xform] — the root
+## viewport's [method Viewport.get_final_transform], which carries window
+## content-scale stretch. Same composition [code]input_simulator.gd[/code]
+## uses to aim clicks. Rotation widens the box; it is not masked.
+static func _screen_rect(local_rect: Rect2, canvas_xform: Transform2D, stretch_xform: Transform2D) -> Rect2i:
+	var xform: Transform2D = stretch_xform * canvas_xform
+	var corners: Array[Vector2] = [
+		xform * local_rect.position,
+		xform * Vector2(local_rect.end.x, local_rect.position.y),
+		xform * Vector2(local_rect.position.x, local_rect.end.y),
+		xform * local_rect.end,
+	]
+	var lo: Vector2 = corners[0]
+	var hi: Vector2 = corners[0]
+	for corner: Vector2 in corners:
+		lo = lo.min(corner)
+		hi = hi.max(corner)
+	return Rect2i(Vector2i(lo.round()), Vector2i((hi - lo).round()))
+
+
 
 ## Compute the screen-space bounding rect for a node.
 ##
@@ -146,11 +169,11 @@ static func _rect_details(rect: Rect2i) -> Dictionary:
 ## defined on-screen rect (anything but [Control]/[Node2D]) or when the
 ## computed rect is degenerate (zero width or height) — both are explicit
 ## failures, never a silent full-page fallback.
-static func _get_node_rect(node: Node) -> Dictionary:
+static func _get_node_rect(node: Node, stretch_xform: Transform2D = Transform2D.IDENTITY) -> Dictionary:
 	var rect: Rect2i
 	if node is Control:
 		var ctrl: Control = node
-		rect = Rect2i(ctrl.global_position, ctrl.size)
+		rect = _screen_rect(Rect2(Vector2.ZERO, ctrl.size), ctrl.get_global_transform_with_canvas(), stretch_xform)
 	elif node is Node2D:
 		var n2d: Node2D = node
 		var resolved: bool = false
@@ -160,22 +183,18 @@ static func _get_node_rect(node: Node) -> Dictionary:
 			var shape: Shape2D = shape_node.shape
 			if shape is RectangleShape2D:
 				var rs: RectangleShape2D = shape
-				var half: Vector2 = rs.size / 2.0
-				var global_pos: Vector2 = shape_node.global_position
-				rect = Rect2i(global_pos - half, rs.size)
+				rect = _screen_rect(Rect2(-rs.size / 2.0, rs.size), shape_node.get_global_transform_with_canvas(), stretch_xform)
 				resolved = true
 		if not resolved and node.has_node("Sprite2D"):
 			var sprite: Sprite2D = node.get_node("Sprite2D")
 			if sprite.texture != null:
-				var size: Vector2 = sprite.texture.get_size() * sprite.global_scale
-				rect = Rect2i(
-					Vector2i(sprite.global_position - size / 2.0),
-					Vector2i(size)
-				)
+				var tex_size: Vector2 = sprite.texture.get_size()
+				rect = _screen_rect(Rect2(-tex_size / 2.0, tex_size), sprite.get_global_transform_with_canvas(), stretch_xform)
 				resolved = true
 		if not resolved:
-			# Fallback: a single-pixel point at the global position.
-			rect = Rect2i(Vector2i(n2d.global_position), Vector2i(1, 1))
+			# Fallback: a single-pixel point at the node's on-screen origin.
+			var origin: Vector2 = stretch_xform * n2d.get_global_transform_with_canvas().origin
+			rect = Rect2i(Vector2i(origin), Vector2i(1, 1))
 	else:
 		return ERRORS.make(ERRORS.INVALID_PARAMS, "Cannot compute an on-screen rect for node type %s; cropped screenshots support Control and Node2D nodes only" % node.get_class(), {
 			"node_class": node.get_class(),
