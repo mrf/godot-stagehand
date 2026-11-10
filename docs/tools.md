@@ -50,6 +50,25 @@ MCP — at the binary and it gets a live connection to your running game:
 
 Nodes are targeted with selectors — see the [selector guide](selectors.md).
 
+## Derived call deadlines
+
+Most calls get the ordinary 30-second deadline (see
+[Configuration → timeouts](configuration.md#timeouts-and-concurrency)). Three
+tools do work whose length is known up front, so their deadline is that work
+plus a 2-second buffer, never below the ordinary deadline and capped at 24 hours:
+
+| Tool | Expected work |
+| --- | --- |
+| `godot_type_text` | characters × `delay_ms` |
+| `godot_assert_performance` | `warmup_ms` + `duration_ms`, or `sample_count` × `sample_interval_ms` (16 ms default) |
+| `godot_replay` | recording duration ÷ `speed` (+ one ordinary deadline when `wait_for_ready` is true) |
+
+`godot_replay` only knows a recording's duration if `godot_record_stop` in the
+same MCP server session wrote it, because the file lives in the game's `user://`.
+Any other recording keeps the ordinary deadline; raise `STAGEHAND_CALL_TIMEOUT_MS`
+for a long one. `godot_get_performance` is a single read and stays on the
+ordinary deadline.
+
 ## What you can build with them
 
 - **AI-assisted playtesting.** Let Claude explore your game, find bugs, and verify fixes without manual clicking.

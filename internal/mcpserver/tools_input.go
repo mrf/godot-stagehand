@@ -2,6 +2,8 @@ package mcpserver
 
 import (
 	"context"
+	"time"
+	"unicode/utf8"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -216,6 +218,12 @@ var typeTextTool = mcp.NewTool("godot_type_text",
 	instanceIDOpt,
 )
 
+// typeTextWork is how long the addon spends typing: one delay_ms pause per
+// character.
+func typeTextWork(text string, delayMs int) time.Duration {
+	return msToDuration(float64(utf8.RuneCountInString(text)) * float64(delayMs))
+}
+
 func (s *Server) handleTypeText(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	instanceID := req.GetString("instance_id", "default")
 	text, err := req.RequireString("text")
@@ -236,7 +244,9 @@ func (s *Server) handleTypeText(ctx context.Context, req mcp.CallToolRequest) (*
 		return errResult, nil
 	}
 
-	result, errResult := s.callGodotInstance(ctx, instanceID, "input_text", params)
+	typeCtx, cancel := s.withExpectedWorkDeadline(ctx, typeTextWork(text, delayMs))
+	defer cancel()
+	result, errResult := s.callGodotInstance(typeCtx, instanceID, "input_text", params)
 	if errResult != nil {
 		return errResult, nil
 	}
