@@ -128,6 +128,9 @@ type Spec struct {
 	// whose own emptiness check ("selector is empty") already covers this
 	// class of bug for those params.
 	Selectors []string
+	// RecordingPaths names the parameters resolved with ResolveRecordingPath;
+	// the resolved path, not the supplied one, goes on the wire.
+	RecordingPaths []string
 	// RequiredNonEmpty names Required string parameters that are identifiers
 	// (a path, name, or expression) rather than a data payload — an empty
 	// string is meaningless and a usage error, unlike e.g. set_property's
@@ -268,12 +271,14 @@ func buildSpecs() map[string]Spec {
 		{Action: "record_start", Method: "record_start", Capability: gwp.CapabilityRecording,
 			Required:         []string{"output_path"},
 			RequiredNonEmpty: []string{"output_path"},
+			RecordingPaths:   []string{"output_path"},
 			Summary:          "Start recording input"},
 		{Action: "record_stop", Method: "record_stop", Capability: gwp.CapabilityRecording,
 			Summary: "Stop the active recording"},
 		{Action: "replay", Method: "replay", Capability: gwp.CapabilityRecording,
 			Required:         []string{"input_path"},
 			RequiredNonEmpty: []string{"input_path"},
+			RecordingPaths:   []string{"input_path"},
 			Summary:          "Replay a recorded input session"},
 	}
 	byName := make(map[string]Spec, len(list))
@@ -434,6 +439,21 @@ func (s Spec) Params(supplied map[string]any) (map[string]any, error) {
 		if _, err := selector.ParseChain(text); err != nil {
 			return nil, newError(KindUsage, s.Action, "invalid selector %q: %v", text, err)
 		}
+	}
+	for _, name := range s.RecordingPaths {
+		raw, ok := out[name]
+		if !ok {
+			continue
+		}
+		text, ok := raw.(string)
+		if !ok {
+			return nil, newError(KindUsage, s.Action, "parameter %q must be a string path", name)
+		}
+		resolved, err := ResolveRecordingPath(text)
+		if err != nil {
+			return nil, newError(KindUsage, s.Action, "%v", err)
+		}
+		out[name] = resolved
 	}
 	if s.Action == "call_method" {
 		name, ok := out["method"].(string)

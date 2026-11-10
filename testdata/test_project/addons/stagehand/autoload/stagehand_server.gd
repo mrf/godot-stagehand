@@ -813,6 +813,7 @@ func _handle_replay(params: Variant) -> Dictionary:
 func _ensure_recorder() -> void:
 	if _recorder == null:
 		_recorder = INPUT_RECORDER.new()
+		_recorder.allow_unsafe_paths = _allow_unsafe
 		add_child(_recorder)
 
 

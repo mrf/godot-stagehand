@@ -265,9 +265,9 @@ func (s *stubGodot) handleReq(req godotconn.Request) godotconn.Response {
 		b, _ := json.Marshal(assertResult)
 		resp.Result = b
 	case "record_start":
-		resp.Result = rawJSON(`{"success":true,"recording":true,"session_id":"sess-1","output_path":"res://recordings/run1.json"}`)
+		resp.Result = rawJSON(`{"success":true,"recording":true,"session_id":"sess-1","output_path":"user://stagehand_recordings/run1.json"}`)
 	case "record_stop":
-		resp.Result = rawJSON(`{"success":true,"session_id":"sess-1","events_count":42,"duration_ms":1500,"path":"res://recordings/run1.json"}`)
+		resp.Result = rawJSON(`{"success":true,"session_id":"sess-1","events_count":42,"duration_ms":1500,"path":"user://stagehand_recordings/run1.json"}`)
 	case "replay":
 		resp.Result = rawJSON(`{"success":true,"replayed":true,"events_count":42,"duration_ms":750}`)
 	default:
@@ -1772,7 +1772,7 @@ func TestE2E_RecordStart(t *testing.T) {
 	ctx := context.Background()
 
 	result, err := srv.handleRecordStart(ctx, toolReq(map[string]any{
-		"output_path": "res://recordings/run1.json",
+		"output_path": "user://stagehand_recordings/run1.json",
 	}))
 	if err != nil {
 		t.Fatalf("handleRecordStart: %v", err)
@@ -1791,8 +1791,8 @@ func TestE2E_RecordStart(t *testing.T) {
 		t.Errorf("expected 1 record_start call, got %d", n)
 	}
 	p := stubParams(t, stub, "record_start")
-	if p["output_path"] != "res://recordings/run1.json" {
-		t.Errorf("record_start output_path = %v, want res://recordings/run1.json", p["output_path"])
+	if p["output_path"] != "user://stagehand_recordings/run1.json" {
+		t.Errorf("record_start output_path = %v, want user://stagehand_recordings/run1.json", p["output_path"])
 	}
 	if p["include_mouse_move"] != false {
 		t.Errorf("record_start include_mouse_move = %v, want false (default)", p["include_mouse_move"])
@@ -1823,7 +1823,7 @@ func TestE2E_RecordStartIncludeMouseMove(t *testing.T) {
 	ctx := context.Background()
 
 	result, err := srv.handleRecordStart(ctx, toolReq(map[string]any{
-		"output_path":        "res://recordings/run1.json",
+		"output_path":        "user://stagehand_recordings/run1.json",
 		"include_mouse_move": true,
 	}))
 	if err != nil {
@@ -1866,7 +1866,7 @@ func TestE2E_Replay(t *testing.T) {
 	ctx := context.Background()
 
 	result, err := srv.handleReplay(ctx, toolReq(map[string]any{
-		"recording_path": "res://recordings/run1.json",
+		"recording_path": "user://stagehand_recordings/run1.json",
 	}))
 	if err != nil {
 		t.Fatalf("handleReplay: %v", err)
@@ -1885,8 +1885,8 @@ func TestE2E_Replay(t *testing.T) {
 		t.Errorf("expected 1 replay call, got %d", n)
 	}
 	p := stubParams(t, stub, "replay")
-	if p["input_path"] != "res://recordings/run1.json" {
-		t.Errorf("replay input_path = %v, want res://recordings/run1.json", p["input_path"])
+	if p["input_path"] != "user://stagehand_recordings/run1.json" {
+		t.Errorf("replay input_path = %v, want user://stagehand_recordings/run1.json", p["input_path"])
 	}
 	if p["speed"] != 1.0 {
 		t.Errorf("replay speed = %v, want 1.0 (default)", p["speed"])
@@ -1904,7 +1904,7 @@ func TestE2E_ReplayInputPathAlias(t *testing.T) {
 	ctx := context.Background()
 
 	result, err := srv.handleReplay(ctx, toolReq(map[string]any{
-		"input_path": "res://recordings/legacy.json",
+		"input_path": "user://stagehand_recordings/legacy.json",
 	}))
 	if err != nil {
 		t.Fatalf("handleReplay: %v", err)
@@ -1913,8 +1913,8 @@ func TestE2E_ReplayInputPathAlias(t *testing.T) {
 		t.Fatalf("replay via input_path alias errored: %+v", result)
 	}
 	p := stubParams(t, stub, "replay")
-	if p["input_path"] != "res://recordings/legacy.json" {
-		t.Errorf("replay input_path = %v, want res://recordings/legacy.json", p["input_path"])
+	if p["input_path"] != "user://stagehand_recordings/legacy.json" {
+		t.Errorf("replay input_path = %v, want user://stagehand_recordings/legacy.json", p["input_path"])
 	}
 }
 
@@ -1923,7 +1923,7 @@ func TestE2E_ReplaySpeed(t *testing.T) {
 	ctx := context.Background()
 
 	result, err := srv.handleReplay(ctx, toolReq(map[string]any{
-		"recording_path": "res://recordings/run1.json",
+		"recording_path": "user://stagehand_recordings/run1.json",
 		"speed":          4.0,
 		"wait_for_ready": false,
 	}))
@@ -1950,8 +1950,8 @@ func TestE2E_ReplayRejectsBadInput(t *testing.T) {
 		args map[string]any
 	}{
 		{"missing_path", map[string]any{}},
-		{"zero_speed", map[string]any{"recording_path": "res://r.json", "speed": 0.0}},
-		{"negative_speed", map[string]any{"recording_path": "res://r.json", "speed": -1.0}},
+		{"zero_speed", map[string]any{"recording_path": "r.json", "speed": 0.0}},
+		{"negative_speed", map[string]any{"recording_path": "r.json", "speed": -1.0}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1967,6 +1967,61 @@ func TestE2E_ReplayRejectsBadInput(t *testing.T) {
 				t.Errorf("expected no replay RPC for %s, got %d", tt.name, n)
 			}
 		})
+	}
+}
+
+// TestE2E_RecordPathsOutsideTheRecordingDirAreRejected pins that record_start
+// and replay refuse a path that escapes user://stagehand_recordings/ before
+// anything reaches the wire — res://, absolute, and `..` paths would otherwise
+// let a caller truncate project scripts or probe arbitrary files.
+func TestE2E_RecordPathsOutsideTheRecordingDirAreRejected(t *testing.T) {
+	tests := []struct {
+		method string
+		args   map[string]any
+	}{
+		{"record_start", map[string]any{"output_path": "res://overwrite_me.gd"}},
+		{"record_start", map[string]any{"output_path": "user://../x.json"}},
+		{"record_start", map[string]any{"output_path": "/tmp/x.json"}},
+		{"replay", map[string]any{"recording_path": "/etc/passwd"}},
+		{"replay", map[string]any{"input_path": "res://project.godot"}},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%s %v", tt.method, tt.args), func(t *testing.T) {
+			srv, stub := setupE2ETest(t)
+			handler := srv.handleRecordStart
+			if tt.method == "replay" {
+				handler = srv.handleReplay
+			}
+			result, err := handler(context.Background(), toolReq(tt.args))
+			if err != nil {
+				t.Fatalf("handler: %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("expected an error result, got %s", mustText(t, result))
+			}
+			if text := mustText(t, result); !strings.Contains(text, "user://stagehand_recordings") {
+				t.Errorf("error does not name the recording dir: %s", text)
+			}
+			if n := stub.callCount(tt.method); n != 0 {
+				t.Errorf("%s reached the wire %d time(s)", tt.method, n)
+			}
+		})
+	}
+}
+
+// TestE2E_RecordStartResolvesABareFileName pins that a bare file name lands in
+// the recording dir, and that the resolved path is what goes on the wire.
+func TestE2E_RecordStartResolvesABareFileName(t *testing.T) {
+	srv, stub := setupE2ETest(t)
+	result, err := srv.handleRecordStart(context.Background(), toolReq(map[string]any{"output_path": "ok.json"}))
+	if err != nil {
+		t.Fatalf("handleRecordStart: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("record_start error: %+v", result)
+	}
+	if p := stubParams(t, stub, "record_start"); p["output_path"] != "user://stagehand_recordings/ok.json" {
+		t.Errorf("record_start output_path = %v, want user://stagehand_recordings/ok.json", p["output_path"])
 	}
 }
 
