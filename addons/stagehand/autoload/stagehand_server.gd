@@ -46,6 +46,19 @@ const MAX_CONCURRENT_CLIENTS: int = 32
 ## force-closed and reaped after this many milliseconds, so it can't hold a
 ## client slot and its buffers forever.
 const HANDSHAKE_TIMEOUT_MS: int = 10000
+## A peer that completed the WebSocket upgrade but has not authenticated is
+## closed and reaped this many milliseconds after the upgrade, so a client
+## that never authenticates (e.g. a local web page — Godot exposes no Origin
+## header to check, see docs/security.md) can't hold a client slot, its
+## buffers and the quit-on-disconnect timer hostage. Every Go caller
+## authenticates immediately after dialing.
+const AUTH_DEADLINE_MS: int = 5000
+## WebSocket close code (RFC 6455 §7.4.1 "policy violation") sent to a peer
+## that fails authentication or misses AUTH_DEADLINE_MS.
+const POLICY_VIOLATION_CLOSE_CODE: int = 1008
+## A configured STAGEHAND_AUTH_TOKEN shorter than this draws a warning; the
+## generated token is 64 hex characters.
+const MIN_AUTH_TOKEN_LENGTH: int = 32
 
 # These scripts are preloaded into SCREAMING_SNAKE_CASE constants rather than
 # referenced by their global `class_name`. Two constraints force this:
@@ -79,6 +92,7 @@ var _tcp_server: TCPServer
 var _clients: Dictionary = {}  # int -> WebSocketPeer
 var _authenticated_peers: Dictionary = {}  # int -> true
 var _peer_connected_at_msec: Dictionary = {}  # int -> int
+var _peer_opened_at_msec: Dictionary = {}  # int -> int (first seen STATE_OPEN)
 var _next_peer_id: int = 0
 var _router: COMMAND_ROUTER
 var _port: int = DEFAULT_PORT
@@ -127,6 +141,11 @@ func _ready() -> void:
 	_quit_on_disconnect = OS.get_environment("STAGEHAND_QUIT_ON_DISCONNECT") != "0"
 	if OS.get_environment("STAGEHAND_AUTH_TOKEN").is_empty():
 		print("Stagehand: Authentication token: %s" % _auth_token)
+	var weak_token_warning: String = _weak_auth_token_warning(
+		OS.get_environment("STAGEHAND_AUTH_TOKEN")
+	)
+	if not weak_token_warning.is_empty():
+		push_warning(weak_token_warning)
 	if _allow_unsafe:
 		push_warning("Stagehand: WARNING: unsafe evaluate and call_method capabilities are enabled")
 	_tcp_server = TCPServer.new()
@@ -220,10 +239,11 @@ func _accept_new_connections() -> void:
 
 
 ## Polls every connected peer, dispatches messages from open peers, and reaps
-## peers that are closed or that never completed the WebSocket handshake
-## within HANDSHAKE_TIMEOUT_MS. `now_msec` defaults to the real clock; callers
-## (namely tests) may inject a synthetic value to exercise the handshake
-## deadline without sleeping in wall-clock time.
+## peers that are closed, that never completed the WebSocket handshake within
+## HANDSHAKE_TIMEOUT_MS, or that did not authenticate within AUTH_DEADLINE_MS
+## of the upgrade. `now_msec` defaults to the real clock; callers (namely
+## tests) may inject a synthetic value to exercise the deadlines without
+## sleeping in wall-clock time.
 func _poll_clients(now_msec: int = -1) -> void:
 	if now_msec < 0:
 		now_msec = Time.get_ticks_msec()
@@ -245,15 +265,35 @@ func _poll_clients(now_msec: int = -1) -> void:
 				ws.close()
 				disconnected.append(peer_id)
 			continue
-		if state == WebSocketPeer.STATE_OPEN:
-			while ws.get_available_packet_count() > 0:
-				var packet: PackedByteArray = ws.get_packet()
-				var text: String = packet.get_string_from_utf8()
-				_handle_message(peer_id, text)
+		# STATE_OPEN or STATE_CLOSING. A peer closed for failing authentication
+		# stays here until its close handshake finishes; one whose client never
+		# acknowledges the close is caught by the same deadline below.
+		if not _peer_opened_at_msec.has(peer_id):
+			_peer_opened_at_msec[peer_id] = now_msec
+		if not _authenticated_peers.has(peer_id):
+			var opened_at_msec: int = _peer_opened_at_msec[peer_id]
+			if now_msec - opened_at_msec >= AUTH_DEADLINE_MS:
+				push_warning(
+					"Stagehand: Closing peer %d — not authenticated within %dms of the upgrade"
+					% [peer_id, AUTH_DEADLINE_MS]
+				)
+				ws.close(POLICY_VIOLATION_CLOSE_CODE, "Authentication required")
+				disconnected.append(peer_id)
+				continue
+		# Re-checked per packet: a failed authenticate closes the peer, and
+		# nothing it queued after that may be processed.
+		while (
+			ws.get_ready_state() == WebSocketPeer.STATE_OPEN
+			and ws.get_available_packet_count() > 0
+		):
+			var packet: PackedByteArray = ws.get_packet()
+			var text: String = packet.get_string_from_utf8()
+			_handle_message(peer_id, text)
 	for peer_id: int in disconnected:
 		var _erased: bool = _clients.erase(peer_id)
 		var _auth_erased: bool = _authenticated_peers.erase(peer_id)
 		var _time_erased: bool = _peer_connected_at_msec.erase(peer_id)
+		var _opened_erased: bool = _peer_opened_at_msec.erase(peer_id)
 	if (
 		_had_client and _clients.is_empty() and _quit_on_disconnect
 		and _pending_quit_at_msec < 0
@@ -333,17 +373,29 @@ func _authenticate_peer(peer_id: int, id: Variant, params: Variant) -> void:
 	var p: Dictionary = _params(params)
 	var supplied: Variant = p.get("token")
 	if supplied is not String:
-		_send_rpc_error(peer_id, id, AUTHENTICATION_FAILED, "Authentication failed")
+		_reject_authentication(peer_id, id)
 		return
 	var supplied_token: String = supplied
 	if supplied_token != _auth_token:
-		_send_rpc_error(peer_id, id, AUTHENTICATION_FAILED, "Authentication failed")
+		_reject_authentication(peer_id, id)
 		return
 	_authenticated_peers[peer_id] = true
 	if id != null:
 		var _auth_send_error: Error = _send_to_peer(peer_id, JSON_RPC.make_response(
 			id, {"authenticated": true}
 		))
+
+
+## Answers a failed `authenticate`, then closes the peer: one wrong guess per
+## connection, so a short token can't be brute-forced over a single socket.
+## The peer also loses any earlier authentication, which leaves it to the
+## AUTH_DEADLINE_MS reaper if its client never completes the close handshake.
+func _reject_authentication(peer_id: int, id: Variant) -> void:
+	_send_rpc_error(peer_id, id, AUTHENTICATION_FAILED, "Authentication failed")
+	var _auth_erased: bool = _authenticated_peers.erase(peer_id)
+	if _clients.has(peer_id):
+		var ws: WebSocketPeer = _clients[peer_id]
+		ws.close(POLICY_VIOLATION_CLOSE_CODE, "Authentication failed")
 
 
 func _send_rpc_error(peer_id: int, id: Variant, code: int, message: String) -> void:
@@ -831,6 +883,7 @@ func _stop() -> void:
 	_clients.clear()
 	_authenticated_peers.clear()
 	_peer_connected_at_msec.clear()
+	_peer_opened_at_msec.clear()
 	if _tcp_server:
 		_tcp_server.stop()
 	_active = false
@@ -950,6 +1003,18 @@ static func _get_bind_address() -> String:
 		+ "binding to %s" % DEFAULT_BIND_ADDRESS
 	)
 	return DEFAULT_BIND_ADDRESS
+
+
+## The warning for a configured STAGEHAND_AUTH_TOKEN short enough to
+## brute-force, or "" when none is due (unset means a generated 64-hex token).
+static func _weak_auth_token_warning(configured: String) -> String:
+	if configured.is_empty() or configured.length() >= MIN_AUTH_TOKEN_LENGTH:
+		return ""
+	return (
+		"Stagehand: WARNING: STAGEHAND_AUTH_TOKEN is only %d characters; use at least %d "
+		% [configured.length(), MIN_AUTH_TOKEN_LENGTH]
+		+ "random characters, or unset it to get a generated token"
+	)
 
 
 static func _get_auth_token() -> String:

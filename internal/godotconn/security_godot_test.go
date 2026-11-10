@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 const (
@@ -51,9 +53,6 @@ func TestStagehandAuthenticationBoundary(t *testing.T) {
 			requireSecurityRPCCode(t, err, testCodeAuthenticationRequired)
 		})
 	}
-
-	_, err := conn.Call(ctx, "authenticate", map[string]any{"token": "wrong-token"})
-	requireSecurityRPCCode(t, err, testCodeAuthenticationFailed)
 
 	authenticateSecurityConnection(t, ctx, conn)
 
@@ -112,6 +111,82 @@ func TestStagehandAuthenticationBoundary(t *testing.T) {
 	}
 	if getResult.Value {
 		t.Fatal("unauthenticated second peer changed flag_prop")
+	}
+}
+
+// One wrong token per connection: the server answers the failed authenticate
+// and then closes the socket, so a short token can't be brute-forced over a
+// single peer (godot-stagehand-ext-review-2026-11-327t.5). A raw socket is used
+// because Connection would transparently redial after the close.
+func TestStagehandFailedAuthenticationClosesPeer(t *testing.T) {
+	_, port, _ := startSecurityGodot(t, nil)
+	ws := dialRawSecurityWebSocket(t, port)
+
+	request := `{"jsonrpc":"2.0","id":1,"method":"authenticate","params":{"token":"wrong-token"}}`
+	if err := ws.WriteMessage(websocket.TextMessage, []byte(request)); err != nil {
+		t.Fatalf("send authenticate: %v", err)
+	}
+	_ = ws.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_, payload, err := ws.ReadMessage()
+	if err != nil {
+		t.Fatalf("read authenticate response: %v", err)
+	}
+	var response struct {
+		Error *RPCError `json:"error"`
+	}
+	if err := json.Unmarshal(payload, &response); err != nil {
+		t.Fatalf("decode authenticate response %q: %v", payload, err)
+	}
+	if response.Error == nil || response.Error.Code != testCodeAuthenticationFailed {
+		t.Fatalf("authenticate response = %s, want error code %d", payload, testCodeAuthenticationFailed)
+	}
+	requireSecurityPeerClosed(t, ws, 3*time.Second)
+}
+
+// A peer that upgrades but never authenticates is closed after the addon's
+// AUTH_DEADLINE_MS (5s), so idle sockets can't hold the 32 client slots or keep
+// quit-on-disconnect from firing (godot-stagehand-ext-review-2026-11-327t.5).
+func TestStagehandUnauthenticatedPeerIsClosedAfterDeadline(t *testing.T) {
+	_, port, _ := startSecurityGodot(t, nil)
+	ws := dialRawSecurityWebSocket(t, port)
+	opened := time.Now()
+
+	requireSecurityPeerClosed(t, ws, 15*time.Second)
+	if elapsed := time.Since(opened); elapsed < 4*time.Second {
+		t.Fatalf("unauthenticated peer closed after %s, want ~5s (the auth deadline)", elapsed)
+	}
+}
+
+func dialRawSecurityWebSocket(t *testing.T, port int) *websocket.Conn {
+	t.Helper()
+	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+	ws, _, err := websocket.DefaultDialer.Dial("ws://"+address, nil)
+	if err != nil {
+		t.Fatalf("dial raw WebSocket: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+	return ws
+}
+
+// requireSecurityPeerClosed reads until the server closes the socket, failing
+// if it is still open after within.
+func requireSecurityPeerClosed(t *testing.T, ws *websocket.Conn, within time.Duration) {
+	t.Helper()
+	_ = ws.SetReadDeadline(time.Now().Add(within))
+	for {
+		_, payload, err := ws.ReadMessage()
+		if err == nil {
+			t.Logf("message before close: %s", payload)
+			continue
+		}
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			t.Fatalf("peer still open %s later", within)
+		}
+		if !websocket.IsCloseError(err, websocket.ClosePolicyViolation) {
+			t.Fatalf("peer closed with %v, want close code %d", err, websocket.ClosePolicyViolation)
+		}
+		return
 	}
 }
 
