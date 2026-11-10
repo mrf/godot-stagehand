@@ -182,7 +182,7 @@ func (c *Connection) callCurrent(
 	ch := make(chan *Response, 1)
 
 	c.mu.Lock()
-	if c.state != Connected && !(allowReconnecting && c.state == Reconnecting) {
+	if c.ws == nil || (c.state != Connected && !(allowReconnecting && c.state == Reconnecting)) {
 		c.mu.Unlock()
 		return nil, ErrNotConnected
 	}
