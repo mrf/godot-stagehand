@@ -1,7 +1,9 @@
 package launch
 
 import (
+	"fmt"
 	"net"
+	"os"
 	"strings"
 )
 
@@ -27,6 +29,50 @@ func isLoopbackHost(host string) bool {
 		return ip.IsLoopback()
 	}
 	return false
+}
+
+// RemoteLaunchOptInEnv is the environment variable that must be "1" on the
+// launching process (the MCP server or CLI) before a launch may bind the game
+// off-loopback. The host comes from the caller; whether the game may be
+// exposed to the network is the operator's decision, not the caller's.
+const RemoteLaunchOptInEnv = "STAGEHAND_LAUNCH_ALLOW_REMOTE"
+
+// remoteLaunchOptedIn reports whether the operator set RemoteLaunchOptInEnv.
+func remoteLaunchOptedIn() bool {
+	return os.Getenv(RemoteLaunchOptInEnv) == "1"
+}
+
+// bindPlan is the extra environment a launch passes to the addon so it binds
+// where the launcher will dial, plus the warning to surface when that is off
+// loopback.
+type bindPlan struct {
+	env     []string
+	warning string
+}
+
+// planBind decides where the launched addon listens for host. Loopback hosts
+// keep the addon's own loopback default. Any other host must be an IP literal
+// (there is no address to bind a hostname to) and requires optIn; the addon is
+// then bound to exactly that IP — never every interface.
+func planBind(host string, optIn bool) (bindPlan, error) {
+	if isLoopbackHost(host) {
+		return bindPlan{}, nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return bindPlan{}, fmt.Errorf("host %q is neither loopback nor an IP literal: the launched game binds the address it is dialed on, so pass 127.0.0.1, localhost, or a numeric IP such as the WSL gateway", host)
+	}
+	if !optIn {
+		return bindPlan{}, fmt.Errorf("host %s is not loopback: binding the game off-loopback exposes it to the network over unencrypted ws://, so it requires %s=1 on the launching (MCP server) process — see docs/security.md", host, RemoteLaunchOptInEnv)
+	}
+	addr := ip.String()
+	return bindPlan{
+		env: []string{
+			"STAGEHAND_BIND_ADDRESS=" + addr,
+			"STAGEHAND_ALLOW_REMOTE=1",
+		},
+		warning: fmt.Sprintf("Godot is listening on non-loopback address %s (%s=1): any peer that can reach it is stopped only by the session token, which crosses the network over unencrypted ws://. Firewall the port to trusted hosts.", addr, RemoteLaunchOptInEnv),
+	}, nil
 }
 
 // stagehandEnvNames returns the variable names (not values) of every

@@ -37,12 +37,16 @@ func TestEnsureProjectImportedTranslatesUNCPathForStampDir(t *testing.T) {
 
 // TestLaunchSetsRemoteBindEnvForNonLoopbackHost is the regression test for
 // Failure B: when the caller passes a non-loopback host (e.g. the WSL NAT
-// gateway IP), the launched process must be told to bind that broadly, or the
+// gateway IP), the launched process must be told to bind that address, or the
 // addon defaults to loopback and the caller's dial to the non-loopback host
-// times out.
+// times out. It binds the requested IP only — never 0.0.0.0. Binding the
+// gateway IP is valid because, under WSL NAT networking, it is the IPv4 address
+// of the Windows host's own "vEthernet (WSL)" adapter (checked with ipconfig.exe
+// against `ip route show default` on 2026-11-09: both 172.25.224.1).
 func TestLaunchSetsRemoteBindEnvForNonLoopbackHost(t *testing.T) {
 	requirePOSIXFakeBinary(t)
 	t.Setenv("TMPDIR", t.TempDir())
+	t.Setenv(RemoteLaunchOptInEnv, "1")
 	root := t.TempDir()
 	projectPath := filepath.Join(root, "project")
 	writeMinimalProject(t, projectPath)
@@ -65,14 +69,45 @@ func TestLaunchSetsRemoteBindEnvForNonLoopbackHost(t *testing.T) {
 	}
 
 	out := fixtureOutput(t, outPath)
-	if !strings.Contains(out, "STAGEHAND_BIND_ADDRESS=0.0.0.0") {
-		t.Errorf("expected STAGEHAND_BIND_ADDRESS=0.0.0.0 for non-loopback host; got: %s", out)
+	if !strings.Contains(out, "STAGEHAND_BIND_ADDRESS=172.25.224.1 ") {
+		t.Errorf("expected STAGEHAND_BIND_ADDRESS=172.25.224.1 for non-loopback host; got: %s", out)
 	}
 	if !strings.Contains(out, "STAGEHAND_ALLOW_REMOTE=1") {
 		t.Errorf("expected STAGEHAND_ALLOW_REMOTE=1 for non-loopback host; got: %s", out)
 	}
 	if strings.Contains(out, "WSLENV=STAGEHAND") {
 		t.Errorf("plain Linux binary must not get WSLENV propagation; got: %s", out)
+	}
+}
+
+// TestLaunchRefusesNonLoopbackHostWithoutServerOptIn verifies the MCP caller
+// alone cannot expose the game off-loopback: without the opt-in on the server
+// process, Launch fails naming it, before Godot is ever spawned.
+func TestLaunchRefusesNonLoopbackHostWithoutServerOptIn(t *testing.T) {
+	requirePOSIXFakeBinary(t)
+	t.Setenv("TMPDIR", t.TempDir())
+	t.Setenv(RemoteLaunchOptInEnv, "")
+	root := t.TempDir()
+	projectPath := filepath.Join(root, "project")
+	writeMinimalProject(t, projectPath)
+	binPath := filepath.Join(root, "fake-godot")
+	outPath := binPath + ".output"
+	writeFakeGodot(t, binPath, "echo spawned >> \""+outPath+"\"\nsleep 2\n")
+
+	cfg := Config{
+		ProjectPath: projectPath,
+		GodotBin:    binPath,
+		Host:        "172.25.224.1",
+		Port:        freeTCPPort(t),
+		TimeoutMs:   1000,
+		SkipImport:  true,
+	}
+	_, err := Launch(context.Background(), cfg)
+	if err == nil || !strings.Contains(err.Error(), RemoteLaunchOptInEnv+"=1") {
+		t.Fatalf("expected an error naming %s=1; got: %v", RemoteLaunchOptInEnv, err)
+	}
+	if _, statErr := os.Stat(outPath); statErr == nil {
+		t.Fatal("Godot must not be spawned when the non-loopback launch is refused")
 	}
 }
 

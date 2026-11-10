@@ -19,6 +19,11 @@ const multiInstanceEnvVar = "STAGEHAND_MULTI"
 
 const hostSelectionDescription = "WebSocket host; use 127.0.0.1 for local/Linux Godot, localhost for WSL mirrored Windows Godot, or the WSL gateway IP for WSL NAT Windows Godot. Gateway access also requires STAGEHAND_BIND_ADDRESS=0.0.0.0, STAGEHAND_ALLOW_REMOTE=1, and the current auth_token"
 
+// launchHostDescription is the godot_launch counterpart of
+// hostSelectionDescription: the launcher configures the game's bind address
+// itself, but only an operator opt-in may move it off loopback.
+const launchHostDescription = "WebSocket host the launched game binds and is dialed on; use 127.0.0.1 (default) for local/Linux Godot, localhost for WSL mirrored Windows Godot, or the WSL gateway IP for WSL NAT Windows Godot. A non-loopback host must be an IP literal, binds the game to exactly that address, and is refused unless the MCP server process has " + launch.RemoteLaunchOptInEnv + "=1"
+
 const headlessScreenshotWarning = "headless=true is for structural tools such as godot_get_tree, godot_find_nodes, and godot_evaluate; godot_screenshot, baselines, and diffs require a visible rendered window. Relaunch with headless=false for visual workflows."
 
 // multiInstanceModeEnabled reports whether the host asked for strict

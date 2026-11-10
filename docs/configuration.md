@@ -12,6 +12,7 @@ Every way to turn Stagehand on and tune it. Back to the [README](../README.md).
 | Fixed authentication token | `STAGEHAND_AUTH_TOKEN=<secret>` (otherwise a fresh token is generated and printed) |
 | Bind address | `STAGEHAND_BIND_ADDRESS=127.0.0.1` (loopback is the default) |
 | Remote access | `STAGEHAND_BIND_ADDRESS=0.0.0.0 STAGEHAND_ALLOW_REMOTE=1` |
+| Off-loopback `godot_launch` | `STAGEHAND_LAUNCH_ALLOW_REMOTE=1` on the MCP server (or CLI) process; without it a non-loopback `host` is refused. The game binds that exact IP, never `0.0.0.0` |
 | Unsafe methods | `STAGEHAND_ALLOW_UNSAFE=1` or `godot_launch(allow_unsafe=true)` |
 | Ordinary RPC timeout | `STAGEHAND_CALL_TIMEOUT_MS=30000` (default; 1–86400000 milliseconds) |
 | Strict multi-instance mode | `STAGEHAND_MULTI=1` on the MCP server process (makes `godot_connect`'s `port` mandatory) |
