@@ -30,10 +30,18 @@ never changes; new failure classes get new numbers.
 | 3 | Connection — could not launch, reach, or authenticate with Godot |
 | 4 | Godot error — a well-formed request the addon rejected (node not found, blocked method) |
 | 5 | **Assertion failed** — the game was reachable and answered, but an assertion or visual diff did not hold. This is the "real regression" code |
-| 6 | Timeout — a wait or deadline expired |
+| 6 | Timeout — a wait or deadline expired, including the run's own `--timeout` |
+| 7 | Cancelled — the process received SIGINT or SIGTERM (e.g. a cancelled CI job). Teardown and artifact writes still ran; `report.json` carries `failure.kind: "cancelled"` |
 
 The 4/5 split is the useful one: 4 means your test is wrong or the scene
 changed shape, 5 means the game behaved incorrectly.
+
+On SIGINT/SIGTERM or `--timeout` expiry, `run` stops the in-flight step, skips
+the remaining steps, then runs `teardown` under a fresh 15s deadline (the dead
+run context would fail every teardown step instantly) and writes
+`report.json`, `junit.xml` and `rpc-trace.json` as usual. Only the exit code
+and `failure.kind` differ: `timeout` / 6 for `--timeout`, `cancelled` / 7 for a
+signal.
 
 ## One-shot commands
 

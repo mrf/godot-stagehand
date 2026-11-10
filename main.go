@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/mrf/godot-stagehand/internal/cli"
 	"github.com/mrf/godot-stagehand/internal/gwp"
@@ -58,7 +60,19 @@ func dispatch(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cli.ExitOK
 	}
 
+	// Signal handling is installed only here, after the MCP and setup paths
+	// have returned: the stdio server keeps the runtime's default signal
+	// behaviour exactly as MCP clients have always seen it.
+	ctx, stop := signalContext(ctx)
+	defer stop()
 	return cli.Run(ctx, args, stdout, stderr)
+}
+
+// signalContext cancels the returned context on SIGINT or SIGTERM, so a
+// cancelled CI job reaches the scenario runner as a cancellation it can wind
+// down (teardown, artifacts, temp dirs) instead of the process dying outright.
+func signalContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 }
 
 // runVersion prints the build report when args request it, reporting whether it

@@ -36,9 +36,10 @@ type Options struct {
 	// Progress receives one line per step. Nil is silent.
 	Progress io.Writer
 
-	// dial and now are test seams.
-	dial dialer
-	now  func() time.Time
+	// dial, now and teardownGrace are test seams.
+	dial          dialer
+	now           func() time.Time
+	teardownGrace time.Duration
 }
 
 // Default artifact filenames inside OutDir.
@@ -119,7 +120,7 @@ func (r *runState) execute(ctx context.Context) *Report {
 	session, err := r.opts.dial(ctx, r.sc, r.opts, logs)
 	if err != nil {
 		report.RPC = Trace{Calls: []TraceCall{}}
-		return r.finish(report, &Failure{Phase: "connect", Kind: KindConnection, Message: err.Error()})
+		return r.finish(report, markCancelled(ctx, &Failure{Phase: "connect", Kind: KindConnection, Message: err.Error()}))
 	}
 	defer func() { _ = session.Close() }()
 
@@ -136,9 +137,14 @@ func (r *runState) execute(ctx context.Context) *Report {
 
 	var failure *Failure
 	report.Steps, failure = r.runPhase(ctx, "step", r.sc.Steps, false)
+	failure = markCancelled(ctx, failure)
 	// Teardown always runs so a scenario can restore state even after a
 	// failure; its own failures are reported but never mask the first one.
-	teardown, teardownFailure := r.runPhase(ctx, "teardown", r.sc.Teardown, true)
+	// It must not inherit a cancelled or expired run context — every step
+	// would fail instantly — so it gets a fresh, short deadline instead.
+	teardownCtx, cancelTeardown := context.WithTimeout(context.WithoutCancel(ctx), r.teardownTimeout())
+	defer cancelTeardown()
+	teardown, teardownFailure := r.runPhase(teardownCtx, "teardown", r.sc.Teardown, true)
 	report.Teardown = teardown
 	if failure == nil {
 		failure = teardownFailure
@@ -146,6 +152,31 @@ func (r *runState) execute(ctx context.Context) *Report {
 
 	report.RPC = r.trace.Trace()
 	return r.finish(report, failure)
+}
+
+// teardownGrace bounds teardown once the run context is already done.
+const teardownGrace = 15 * time.Second
+
+func (r *runState) teardownTimeout() time.Duration {
+	if r.opts.teardownGrace > 0 {
+		return r.opts.teardownGrace
+	}
+	return teardownGrace
+}
+
+// markCancelled reclassifies a failure caused by the run being cancelled from
+// outside. The step that was in flight fails with whatever the transport made
+// of the dead context (a timeout, a connection error), which would send a CI
+// gate chasing the wrong cause. An assertion that genuinely failed first is
+// left alone, and a --timeout expiry stays a timeout.
+func markCancelled(ctx context.Context, failure *Failure) *Failure {
+	if failure == nil || failure.Kind == KindAssertion || !errors.Is(ctx.Err(), context.Canceled) {
+		return failure
+	}
+	marked := *failure
+	marked.Kind = KindCancelled
+	marked.Message = "run cancelled by signal: " + failure.Message
+	return &marked
 }
 
 // runPhase executes a list of steps. When force is true every step runs

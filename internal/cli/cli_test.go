@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/mrf/godot-stagehand/internal/godotconn"
@@ -140,10 +141,11 @@ func TestExitCodesAreStable(t *testing.T) {
 		"ok": ExitOK, "internal": ExitInternal, "usage": ExitUsage,
 		"connection": ExitConnection, "remote": ExitRemote,
 		"assertion": ExitAssertion, "timeout": ExitTimeout,
+		"cancelled": ExitCancelled,
 	}
 	want := map[string]int{
 		"ok": 0, "internal": 1, "usage": 2, "connection": 3,
-		"remote": 4, "assertion": 5, "timeout": 6,
+		"remote": 4, "assertion": 5, "timeout": 6, "cancelled": 7,
 	}
 	for name, got := range pinned {
 		if got != want[name] {
@@ -776,6 +778,45 @@ func TestRunScenarioEndToEndProducesArtifactsAndExitCode(t *testing.T) {
 	for _, name := range []string{"report.json", "junit.xml", "rpc-trace.json"} {
 		if _, err := os.Stat(filepath.Join(outDir, name)); err != nil {
 			t.Errorf("missing artifact %s: %v", name, err)
+		}
+	}
+}
+
+// TestRunScenarioCancelledExitsCancelledAndKeepsArtifacts pins
+// godot-stagehand-ext-review-2026-11-327t.11: when the process context is
+// cancelled (what SIGINT/SIGTERM do in main), the run exits ExitCancelled —
+// distinct from the --timeout code — and still leaves its artifacts.
+func TestRunScenarioCancelledExitsCancelledAndKeepsArtifacts(t *testing.T) {
+	withToken(t)
+	stub := newStubGodot(t, nil)
+
+	dir := t.TempDir()
+	scenarioPath := filepath.Join(dir, "cancel.json")
+	body := `{
+		"name": "cancelled run",
+		"target": {"mode": "connect", "port": ` + strconv.Itoa(stub.port(t)) + `},
+		"steps": [{"action": "sleep", "with": {"duration_ms": 60000}}]
+	}`
+	if err := os.WriteFile(scenarioPath, []byte(body), 0o644); err != nil {
+		t.Fatalf("write scenario: %v", err)
+	}
+	outDir := filepath.Join(dir, "artifacts")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	time.AfterFunc(200*time.Millisecond, cancel)
+
+	var stdout, stderr bytes.Buffer
+	code := Run(ctx, []string{"run", scenarioPath, "--out-dir=" + outDir, "--quiet"}, &stdout, &stderr)
+	if code != ExitCancelled {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitCancelled, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"kind": "cancelled"`) {
+		t.Errorf("report does not carry a cancelled failure:\n%s", stdout.String())
+	}
+	for _, name := range []string{"report.json", "junit.xml", "rpc-trace.json"} {
+		if _, err := os.Stat(filepath.Join(outDir, name)); err != nil {
+			t.Errorf("missing artifact %s after cancel: %v", name, err)
 		}
 	}
 }
