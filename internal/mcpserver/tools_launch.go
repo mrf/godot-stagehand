@@ -31,7 +31,7 @@ var launchTool = mcp.NewTool("godot_launch",
 		mcp.Description("Path to the Godot binary (default: find via environment or PATH)"),
 	),
 	mcp.WithString("host",
-		mcp.Description(hostSelectionDescription),
+		mcp.Description(launchHostDescription),
 		mcp.DefaultString(launch.DefaultHost),
 	),
 	mcp.WithNumber("port",
@@ -149,7 +149,29 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 		jsonResult["protocol"] = gwp.ProtocolID
 		jsonResult["capabilities"] = result.Handshake.Capabilities
 	}
+	warnings := launchWarnings(result, headless)
+	if len(warnings) > 0 {
+		jsonResult["warnings"] = warnings
+	}
+	jsonBytes, err := json.MarshalIndent(jsonResult, "", "  ")
+	if err != nil {
+		text := fmt.Sprintf("Launched Godot (pid=%d) at %s:%d, engine=%s, stagehand=%s",
+			result.PID, result.Host, result.Port, result.EngineVersion, result.StagehandVersion)
+		for _, warning := range warnings {
+			text += "\nwarning: " + warning
+		}
+		return mcp.NewToolResultText(text), nil
+	}
+	return mcp.NewToolResultText(string(jsonBytes)), nil
+}
+
+// launchWarnings collects everything the godot_launch caller must be told
+// about the instance it just got.
+func launchWarnings(result *launch.LaunchResult, headless bool) []string {
 	var warnings []string
+	if result.BindWarning != "" {
+		warnings = append(warnings, result.BindWarning)
+	}
 	if headless {
 		warnings = append(warnings, headlessScreenshotWarning)
 	}
@@ -164,15 +186,7 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 	if result.Handshake != nil && len(result.Handshake.MissingOptional) > 0 {
 		warnings = append(warnings, result.Handshake.Summary())
 	}
-	if len(warnings) > 0 {
-		jsonResult["warnings"] = warnings
-	}
-	jsonBytes, err := json.MarshalIndent(jsonResult, "", "  ")
-	if err != nil {
-		return mcp.NewToolResultText(fmt.Sprintf("Launched Godot (pid=%d) at %s:%d, engine=%s, stagehand=%s",
-			result.PID, result.Host, result.Port, result.EngineVersion, result.StagehandVersion)), nil
-	}
-	return mcp.NewToolResultText(string(jsonBytes)), nil
+	return warnings
 }
 
 // findFreePort returns a free TCP port on 127.0.0.1.

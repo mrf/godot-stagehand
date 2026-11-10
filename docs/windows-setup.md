@@ -68,6 +68,11 @@ Or use `godot_launch` with explicit paths:
 }
 ```
 
+Under WSL NAT networking, pass the WSL gateway IP as `host` instead. That needs
+`STAGEHAND_LAUNCH_ALLOW_REMOTE=1` in the MCP server's environment (and the
+firewall rule above); the launcher then binds Godot to the gateway IP — the
+Windows host's own `vEthernet (WSL)` address — rather than `0.0.0.0`.
+
 For screenshot, baseline, or diff workflows, launch a visible Godot window:
 
 ```json

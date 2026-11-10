@@ -114,6 +114,10 @@ type LaunchResult struct {
 	// applied, or "" when the instance is isolated. Callers should surface it:
 	// without isolation, concurrent launches of one project share user://.
 	UserDataWarning string
+	// BindWarning is set when the game listens off-loopback, and "" otherwise.
+	// Callers must surface it: the addon's own warning goes to process output,
+	// which an interactive launch discards.
+	BindWarning string
 	// ownedUserDataDir is the temporary user data root this launch allocated
 	// and is therefore responsible for removing in Kill. Empty when the caller
 	// supplied UserDataDir or opted out of isolation.
@@ -145,6 +149,10 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 	}
 	host := cfg.Host
 	host = normalizeHost(host)
+	bind, err := planBind(host, remoteLaunchOptedIn())
+	if err != nil {
+		return nil, err
+	}
 	port := cfg.Port
 	if port == 0 {
 		port = DefaultPort
@@ -229,12 +237,7 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 	// asked for a non-loopback host (e.g. the WSL NAT gateway IP) needs the
 	// addon to actually bind there, or dialGodotWhenReady's dial to that host
 	// times out against a socket nothing is listening on.
-	if !isLoopbackHost(host) {
-		cmd.Env = append(cmd.Env,
-			"STAGEHAND_BIND_ADDRESS=0.0.0.0",
-			"STAGEHAND_ALLOW_REMOTE=1",
-		)
-	}
+	cmd.Env = append(cmd.Env, bind.env...)
 	// Appended last so the isolated data paths win over anything inherited:
 	// os/exec keeps the final occurrence of a duplicated variable.
 	cmd.Env = append(cmd.Env, isolation.env...)
@@ -320,6 +323,7 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		Process:          cmd,
 		UserDataDir:      isolation.dir,
 		UserDataWarning:  isolation.warning,
+		BindWarning:      bind.warning,
 		ownedUserDataDir: isolation.owned,
 		waitChan:         wait,
 	}, nil

@@ -15,6 +15,13 @@ trusted network with an appropriate host firewall, and never publish the token.
 The WebSocket transport is not encrypted; this boundary is not a substitute for
 TLS, network isolation, or a trustworthy local host.
 
+`godot_launch` (and the CLI/scenario launcher) applies the same rule to the
+game it starts. A non-loopback `host` is refused unless the launching process —
+the MCP server, not the MCP caller — has `STAGEHAND_LAUNCH_ALLOW_REMOTE=1`. With
+it, the game binds exactly the requested IP (never `0.0.0.0`), and the
+`godot_launch` result carries a warning saying so. Hostnames other than
+`localhost` are refused outright, since there is no address to bind them to.
+
 **Connection limits.** A peer that completes the WebSocket upgrade must
 authenticate within 5 seconds or it is closed (code 1008). A failed
 `authenticate` is answered and then closes the connection, so each socket gets

@@ -1,6 +1,9 @@
 package launch
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestIsWindowsBinaryFromNonWindowsHost(t *testing.T) {
 	cases := []struct {
@@ -96,6 +99,70 @@ func TestWslenvValue(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := wslenvValue(tc.existing, tc.names); got != tc.want {
 				t.Fatalf("wslenvValue(%q, %v) = %q, want %q", tc.existing, tc.names, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPlanBindLoopbackSetsNothing(t *testing.T) {
+	for _, host := range []string{"", "127.0.0.1", "localhost", "::1"} {
+		t.Run(host, func(t *testing.T) {
+			plan, err := planBind(host, false)
+			if err != nil {
+				t.Fatalf("planBind(%q) error: %v", host, err)
+			}
+			if len(plan.env) != 0 || plan.warning != "" {
+				t.Fatalf("planBind(%q) = %+v, want an empty plan", host, plan)
+			}
+		})
+	}
+}
+
+// TestPlanBindNonLoopbackBindsRequestedIP is the regression test for a
+// non-loopback launch binding every interface: the game must listen only on
+// the address the caller asked to dial, never 0.0.0.0, and say so.
+func TestPlanBindNonLoopbackBindsRequestedIP(t *testing.T) {
+	for _, host := range []string{"172.25.224.1", "192.168.4.26", "fd00::1"} {
+		t.Run(host, func(t *testing.T) {
+			plan, err := planBind(host, true)
+			if err != nil {
+				t.Fatalf("planBind(%q) error: %v", host, err)
+			}
+			joined := strings.Join(plan.env, " ")
+			if !strings.Contains(joined, "STAGEHAND_BIND_ADDRESS="+host) {
+				t.Errorf("expected STAGEHAND_BIND_ADDRESS=%s; got %q", host, joined)
+			}
+			if strings.Contains(joined, "0.0.0.0") {
+				t.Errorf("must never bind 0.0.0.0 for host %s; got %q", host, joined)
+			}
+			if !strings.Contains(joined, "STAGEHAND_ALLOW_REMOTE=1") {
+				t.Errorf("expected STAGEHAND_ALLOW_REMOTE=1; got %q", joined)
+			}
+			if !strings.Contains(plan.warning, host) {
+				t.Errorf("expected a warning naming %s; got %q", host, plan.warning)
+			}
+		})
+	}
+}
+
+func TestPlanBindNonLoopbackWithoutOptInNamesEnvVar(t *testing.T) {
+	_, err := planBind("172.25.224.1", false)
+	if err == nil {
+		t.Fatal("expected an error without the server-side opt-in")
+	}
+	if !strings.Contains(err.Error(), RemoteLaunchOptInEnv+"=1") {
+		t.Fatalf("error must name %s=1; got: %v", RemoteLaunchOptInEnv, err)
+	}
+}
+
+// TestPlanBindRejectsNonIPHost covers hosts net.ParseIP cannot read ("127.1",
+// "ip6-localhost", a DNS name): there is no address to bind them to, so they
+// are refused even with the opt-in rather than widened to every interface.
+func TestPlanBindRejectsNonIPHost(t *testing.T) {
+	for _, host := range []string{"127.1", "ip6-localhost", "example.com"} {
+		t.Run(host, func(t *testing.T) {
+			if _, err := planBind(host, true); err == nil {
+				t.Fatalf("planBind(%q) must refuse a non-IP, non-localhost host", host)
 			}
 		})
 	}
