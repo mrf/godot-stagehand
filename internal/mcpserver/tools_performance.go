@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -71,6 +72,30 @@ var assertPerformanceTool = mcp.NewTool("godot_assert_performance",
 	instanceIDOpt,
 )
 
+// defaultSampleIntervalMs mirrors PERFORMANCE_SAMPLER.DEFAULT_SAMPLE_INTERVAL_MS
+// in the addon; the sampling time is derived from it when the caller omits it.
+const defaultSampleIntervalMs = 16
+
+// performanceSamplingWork is how long assert_performance samples: the warm-up
+// plus either duration_ms or sample_count intervals (an upper bound — the addon
+// sleeps only between samples). params holds the int-valued wire params.
+func performanceSamplingWork(params map[string]any) time.Duration {
+	asFloat := func(key string, fallback int) float64 {
+		if v, ok := params[key].(int); ok {
+			return float64(v)
+		}
+		return float64(fallback)
+	}
+	var sampling time.Duration
+	if _, hasDuration := params["duration_ms"]; hasDuration {
+		sampling = msToDuration(asFloat("duration_ms", 0))
+	} else {
+		interval := asFloat("sample_interval_ms", defaultSampleIntervalMs)
+		sampling = msToDuration(asFloat("sample_count", 1) * interval)
+	}
+	return msToDuration(asFloat("warmup_ms", 0)) + sampling
+}
+
 type assertPerformanceResult struct {
 	Passed    bool    `json:"passed"`
 	Monitor   string  `json:"monitor"`
@@ -120,7 +145,9 @@ func (s *Server) handleAssertPerformance(ctx context.Context, req mcp.CallToolRe
 		params["duration_ms"] = req.GetInt("duration_ms", 0)
 	}
 
-	raw, errResult := s.callGodotInstance(ctx, instanceID, "assert_performance", params)
+	sampleCtx, cancel := s.withExpectedWorkDeadline(ctx, performanceSamplingWork(params))
+	defer cancel()
+	raw, errResult := s.callGodotInstance(sampleCtx, instanceID, "assert_performance", params)
 	if errResult != nil {
 		return errResult, nil
 	}

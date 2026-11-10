@@ -2,7 +2,9 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 
@@ -54,6 +56,7 @@ func (s *Server) handleRecordStop(ctx context.Context, req mcp.CallToolRequest) 
 	if errResult != nil {
 		return errResult, nil
 	}
+	s.rememberRecordingDuration(instanceID, result)
 	return mcp.NewToolResultText(string(result)), nil
 }
 
@@ -75,6 +78,42 @@ var replayTool = mcp.NewTool("godot_replay",
 	),
 	instanceIDOpt,
 )
+
+// recordingKey identifies a recording within one Godot instance's user://.
+func recordingKey(instanceID, path string) string { return instanceID + "\x00" + path }
+
+// rememberRecordingDuration notes the duration record_stop reported so a later
+// replay can derive its deadline. The recording lives in the game's user://,
+// which this process cannot read, so record_stop is the only place the length
+// is visible; a malformed result is simply not remembered.
+func (s *Server) rememberRecordingDuration(instanceID string, recordStopResult json.RawMessage) {
+	var stopped struct {
+		Path       string  `json:"path"`
+		DurationMs float64 `json:"duration_ms"`
+	}
+	if json.Unmarshal(recordStopResult, &stopped) != nil || stopped.Path == "" {
+		return
+	}
+	s.recordingMu.Lock()
+	defer s.recordingMu.Unlock()
+	if s.recordingDurations == nil {
+		s.recordingDurations = map[string]time.Duration{}
+	}
+	s.recordingDurations[recordingKey(instanceID, stopped.Path)] = msToDuration(stopped.DurationMs)
+}
+
+func (s *Server) recordingDuration(instanceID, path string) (time.Duration, bool) {
+	s.recordingMu.Lock()
+	defer s.recordingMu.Unlock()
+	d, ok := s.recordingDurations[recordingKey(instanceID, path)]
+	return d, ok
+}
+
+// replayWork is how long the addon spends injecting a recording of the given
+// length at the given speed.
+func replayWork(recorded time.Duration, speed float64) time.Duration {
+	return msToDuration(float64(recorded/time.Millisecond) / speed)
+}
 
 func (s *Server) handleReplay(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	instanceID := req.GetString("instance_id", "default")
@@ -98,12 +137,27 @@ func (s *Server) handleReplay(ctx context.Context, req mcp.CallToolRequest) (*mc
 		return mcp.NewToolResultError(fmt.Sprintf("speed must be greater than 0, got %v", speed)), nil
 	}
 
+	waitForReady := req.GetBool("wait_for_ready", true)
+	// The recording's length is known only if this server saw record_stop
+	// write it; an unknown recording keeps the ordinary deadline. Waiting for
+	// the scene to be ready adds up to one ordinary deadline on top.
+	replayCtx := ctx
+	if recorded, known := s.recordingDuration(instanceID, recordingPath); known {
+		work := replayWork(recorded, speed)
+		if waitForReady {
+			work += s.ordinaryCallTimeout()
+		}
+		var cancel context.CancelFunc
+		replayCtx, cancel = s.withExpectedWorkDeadline(ctx, work)
+		defer cancel()
+	}
+
 	// The wire parameter stays `input_path` so a newer binary still drives an
 	// addon build from before the rename.
-	result, errResult := s.callGodotInstance(ctx, instanceID, "replay", map[string]any{
+	result, errResult := s.callGodotInstance(replayCtx, instanceID, "replay", map[string]any{
 		"input_path":     recordingPath,
 		"speed":          speed,
-		"wait_for_ready": req.GetBool("wait_for_ready", true),
+		"wait_for_ready": waitForReady,
 	})
 	if errResult != nil {
 		return errResult, nil

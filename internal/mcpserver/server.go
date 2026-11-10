@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -82,6 +83,11 @@ type Server struct {
 	callTimeout time.Duration
 	// callSlots bounds work that can block on a remote Godot process.
 	callSlots chan struct{}
+
+	// recordingDurations maps instance + recording path to the length
+	// record_stop reported, so replay can derive its deadline.
+	recordingMu        sync.Mutex
+	recordingDurations map[string]time.Duration
 }
 
 // New creates a new MCP server with all Godot tools registered.
@@ -261,12 +267,49 @@ func (s *Server) withGodotCallDeadline(ctx context.Context) (context.Context, co
 	if _, hasDeadline := ctx.Deadline(); hasDeadline {
 		return ctx, func() {}, 0
 	}
-	timeout := s.callTimeout
-	if timeout <= 0 {
-		timeout = defaultGodotCallTimeout
-	}
+	timeout := s.ordinaryCallTimeout()
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	return callCtx, cancel, timeout
+}
+
+// ordinaryCallTimeout is the deadline an ordinary Godot call gets.
+func (s *Server) ordinaryCallTimeout() time.Duration {
+	if s.callTimeout <= 0 {
+		return defaultGodotCallTimeout
+	}
+	return s.callTimeout
+}
+
+// derivedDeadlineBuffer is added to the work a call is known to take, so the
+// Go side outlives the addon's own timers.
+const derivedDeadlineBuffer = waitDeadlineBuffer
+
+// withExpectedWorkDeadline bounds a call whose addon-side work takes a known
+// time (typing, replay, performance sampling). The deadline is the work plus
+// derivedDeadlineBuffer, never shorter than the ordinary call deadline and
+// never longer than maxGodotCallTimeout. A caller-supplied deadline wins.
+func (s *Server) withExpectedWorkDeadline(ctx context.Context, work time.Duration) (context.Context, context.CancelFunc) {
+	if _, hasDeadline := ctx.Deadline(); hasDeadline {
+		return ctx, func() {}
+	}
+	timeout := s.ordinaryCallTimeout()
+	if derived := work + derivedDeadlineBuffer; derived > timeout {
+		timeout = min(derived, maxGodotCallTimeout)
+	}
+	return context.WithTimeout(ctx, timeout)
+}
+
+// msToDuration converts a millisecond count to a Duration, clamping negatives
+// to zero and large values to maxGodotCallTimeout so arithmetic on
+// caller-supplied counts cannot overflow.
+func msToDuration(ms float64) time.Duration {
+	if ms <= 0 {
+		return 0
+	}
+	if limit := float64(maxGodotCallTimeout / time.Millisecond); ms >= limit {
+		return maxGodotCallTimeout
+	}
+	return time.Duration(ms * float64(time.Millisecond))
 }
 
 // callGodot sends a JSON-RPC method to the default Godot instance.
