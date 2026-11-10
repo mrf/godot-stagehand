@@ -14,6 +14,22 @@ Remote binding requires both a non-loopback `STAGEHAND_BIND_ADDRESS` and
 trusted network with an appropriate host firewall, and never publish the token.
 The WebSocket transport is not encrypted; this boundary is not a substitute for
 TLS, network isolation, or a trustworthy local host.
+
+**Connection limits.** A peer that completes the WebSocket upgrade must
+authenticate within 5 seconds or it is closed (code 1008). A failed
+`authenticate` is answered and then closes the connection, so each socket gets
+one guess. At most 32 peers are held at once. A configured
+`STAGEHAND_AUTH_TOKEN` shorter than 32 characters draws a startup warning;
+prefer the generated 64-hex-character token.
+
+**Browser origins (known gap).** Godot 4.6's `WebSocketPeer` gives the server
+no access to the upgrade request's headers, and `StreamPeer` cannot peek at the
+request without consuming it, so Stagehand cannot check or reject a browser
+`Origin`. Any web page in a local browser can therefore open sockets to the
+port. Without the token it cannot run commands, and each socket is closed
+within 5 seconds, but a page that keeps reopening sockets can still crowd out a
+real client and delay the quit-on-disconnect timer.
+
 Expression evaluation and arbitrary method calls are disabled unless the
 session separately opts into unsafe capabilities. Authentication limits who can
 reach automation; unsafe opt-in controls what an authenticated peer may execute.
