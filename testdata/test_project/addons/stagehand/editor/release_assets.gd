@@ -13,7 +13,7 @@ const RELEASE_BASE: String = "https://github.com/mrf/godot-stagehand/releases"
 ## /releases/latest/download/<asset> redirect endpoint.
 const TAG_LATEST: String = "latest"
 
-const ASSET_NAMES: Dictionary[String, String] = {
+const ASSET_NAMES: Dictionary = {
 	"Linux/x86_64": "godot-stagehand-linux-amd64",
 	"Linux/amd64": "godot-stagehand-linux-amd64",
 	"macOS/x86_64": "godot-stagehand-darwin-amd64",

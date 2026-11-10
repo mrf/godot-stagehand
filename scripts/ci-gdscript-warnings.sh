@@ -8,6 +8,11 @@
 # treated as error.)". testdata/test_project sets exactly that, so loading it
 # headless is a real warnings-as-errors gate over the checked-in addon copy.
 #
+# A game-mode load (`--headless --quit`) never compiles addons/stagehand/editor/*.gd:
+# only the EditorPlugin pulls those in. So every project is loaded twice, once
+# plain and once with `--editor`, or an editor-only parse error (e.g. a Godot-4.4
+# typed Dictionary on the documented-minimum 4.3) ships green.
+#
 # Two things make this fragile enough to need a self-test:
 #   1. Godot excludes res://addons from warnings by default, via a setting
 #      that was renamed mid-4.x (exclude_addons -> directory_rules).
@@ -51,6 +56,10 @@ static func _stagehand_warning_gate_probe():
 	return probe_value
 '
 
+# Same violation, aimed at a script only the editor loads. The editor pass of
+# `check` must catch it; the game-mode pass never even compiles the file.
+readonly EDITOR_PROBE_FILE="addons/stagehand/editor/release_assets.gd"
+
 if [[ -z "${GODOT_BIN:-}" ]]; then
     echo "ERROR: GODOT_BIN is not set" >&2
     exit 1
@@ -60,14 +69,16 @@ if [[ ! -x "${GODOT_BIN}" ]]; then
     exit 1
 fi
 
-# diagnostics <project-dir> — print every warning/error line from a headless
-# project load. Always succeeds; callers decide what an empty result means.
+# diagnostics <project-dir> [extra godot args...] — print every warning/error
+# line from a headless project load. Always succeeds; callers decide what an
+# empty result means. Pass `--editor` to also compile the editor-only scripts.
 diagnostics() {
     local project="$1" log
+    shift
     log="$(mktemp)"
     # `|| true`: --quit reports success even on compile failure, and the log is
     # the only signal. Never let the exit code decide.
-    "${GODOT_BIN}" --headless --path "${project}" --quit >"${log}" 2>&1 || true
+    "${GODOT_BIN}" --headless "$@" --path "${project}" --quit >"${log}" 2>&1 || true
     # -A1 pulls in the "at: GDScript::reload (res://...gd:NN)" line that Godot
     # prints under each diagnostic; the path lives there, not on the message
     # line. It cannot produce false positives on its own — context is only
@@ -90,17 +101,23 @@ scratch_project() {
 
 cmd_check() {
     local failed=0
-    local src project found
+    local src project found mode
     for src in "${PROJECT}" "${EXAMPLE_PROJECT}"; do
-        project="$(scratch_project "${src}")"
-        found="$(diagnostics "${project}")"
-        if [[ -n "${found}" ]]; then
-            echo "GDScript warnings-as-errors violations detected in ${src}:"
-            echo "${found}"
-            failed=1
-            continue
-        fi
-        echo "OK: $(basename "${src}") loads clean with every gdscript/warnings/* elevated to error."
+        for mode in game editor; do
+            project="$(scratch_project "${src}")"
+            if [[ "${mode}" == editor ]]; then
+                found="$(diagnostics "${project}" --editor)"
+            else
+                found="$(diagnostics "${project}")"
+            fi
+            if [[ -n "${found}" ]]; then
+                echo "GDScript warnings-as-errors violations detected in ${src} (${mode}-mode load):"
+                echo "${found}"
+                failed=1
+                continue
+            fi
+            echo "OK: $(basename "${src}") loads clean in ${mode} mode with every gdscript/warnings/* elevated to error."
+        done
     done
     [[ "${failed}" -eq 0 ]]
 }
@@ -126,6 +143,20 @@ cmd_selftest() {
     fi
     echo "OK: gate is armed — the injected addon violation was caught:"
     grep "${PROBE_FILE}" <<<"${found}" || true
+
+    # Editor-mode negative control: a violation in an editor-only script.
+    project="$(scratch_project "${PROJECT}")"
+    printf '%s' "${PROBE_SOURCE}" >>"${project}/${EDITOR_PROBE_FILE}"
+    found="$(diagnostics "${project}" --editor)"
+    if ! grep -q "${EDITOR_PROBE_FILE}" <<<"${found}"; then
+        echo "ERROR: the editor-mode gate is DISARMED." >&2
+        echo "A deliberate untyped_declaration violation was appended to" >&2
+        echo "${EDITOR_PROBE_FILE} and an --editor load did not report it:" >&2
+        echo "${found:-<no diagnostics>}" >&2
+        exit 1
+    fi
+    echo "OK: editor-mode gate is armed — the injected editor-script violation was caught:"
+    grep "${EDITOR_PROBE_FILE}" <<<"${found}" || true
 }
 
 case "${1:-}" in

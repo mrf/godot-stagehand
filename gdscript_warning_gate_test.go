@@ -132,3 +132,58 @@ func extractDirectoryRules(t *testing.T, settings string) (map[string]string, bo
 	}
 	return rules, true
 }
+
+const warningGateScript = "scripts/ci-gdscript-warnings.sh"
+
+// TestWarningGateLoadsEditorScripts guards the blind spot behind
+// godot-stagehand-ext-review-2026-11-327t.2: a game-mode `--headless --quit`
+// never compiles addons/stagehand/editor/*.gd (only the editor plugin loads
+// them), so a Godot-4.3-incompatible typed Dictionary there passed the whole
+// compat matrix. `check` must also load each project with `--editor`, and
+// `selftest` must prove an editor-only violation is caught.
+func TestWarningGateLoadsEditorScripts(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(addonInstallRepoRoot(t), filepath.FromSlash(warningGateScript)))
+	if err != nil {
+		t.Fatalf("read %s: %v", warningGateScript, err)
+	}
+	script := string(data)
+
+	if !strings.Contains(script, `--editor`) {
+		t.Errorf("%s never passes --editor to Godot: addons/stagehand/editor/*.gd is never parsed by the gate", warningGateScript)
+	}
+
+	m := regexp.MustCompile(`(?m)^readonly EDITOR_PROBE_FILE="([^"]+)"`).FindStringSubmatch(script)
+	if m == nil {
+		t.Fatalf("%s declares no EDITOR_PROBE_FILE: selftest cannot prove an editor-only violation is caught", warningGateScript)
+	}
+	if !strings.HasPrefix(m[1], "addons/stagehand/editor/") {
+		t.Errorf("EDITOR_PROBE_FILE = %q, want a file under addons/stagehand/editor/", m[1])
+	}
+}
+
+// TestAddonUsesNoTypedDictionary pins acceptance criterion 1: typed
+// Dictionary[K, V] is a Godot 4.4 feature and 4.3 is the documented minimum.
+func TestAddonUsesNoTypedDictionary(t *testing.T) {
+	root := addonInstallRepoRoot(t)
+	typedDict := regexp.MustCompile(`\bDictionary\[`)
+	err := filepath.WalkDir(filepath.Join(root, "addons", "stagehand"), func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".gd") {
+			return err
+		}
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		for i, line := range strings.Split(string(data), "\n") {
+			code, _, _ := strings.Cut(line, "#")
+			if typedDict.MatchString(code) {
+				rel, _ := filepath.Rel(root, path)
+				t.Errorf("%s:%d uses a typed Dictionary (Godot 4.4+, minimum is 4.3):\n\t%s", rel, i+1, line)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk addon: %v", err)
+	}
+}
