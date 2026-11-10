@@ -27,6 +27,19 @@ without their property values. Separately, `get_property` and `set_property`
 refuse private (`_`-prefixed) members and `script` on every node. Unsafe mode can
 only be enabled by relaunching with `STAGEHAND_ALLOW_UNSAFE=1`.
 
+Input recording is confined the same way. `record_start` writes, and `replay`
+reads, only files under `user://stagehand_recordings/`: a path is either
+relative to that directory (`run1.json`, `runs/run1.json`) or spelled out in
+full (`user://stagehand_recordings/run1.json`). Segments may use letters,
+digits, `_`, `-` and `.`; `res://`, any other scheme or bare `user://` path,
+absolute paths, drive letters, backslashes, and `.`/`..` segments are refused
+with `invalid_params` before any file is opened — so a caller can neither
+truncate a project script or `~/.bashrc` nor use replay to probe whether a file
+exists. The addon (`resolve_recording_path` in `input_recorder.gd`) and the Go
+clients (`gwpop.ResolveRecordingPath`, used by the MCP tools, CLI and scenario
+runner) apply the identical rule. `STAGEHAND_ALLOW_UNSAFE=1` lifts it in the
+addon only; the Go clients always apply it.
+
 **Read this before running setup.** Once a game is running with
 Stagehand enabled, anyone who has the session token can inspect and mutate its
 state, including calling arbitrary methods if unsafe capabilities are opted

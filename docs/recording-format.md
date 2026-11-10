@@ -98,3 +98,10 @@ files still replay. Nothing writes that spelling anymore.
 empty the recorder picks `user://stagehand_recordings/<session_id>.json`. The
 parent directory is created if missing, for a caller-supplied path as well as
 the default one.
+
+Every recording lives under `user://stagehand_recordings/`, and both
+`output_path` and `godot_replay`'s `recording_path` resolve into it:
+`run1.json` and `runs/run1.json` are relative to that directory, and a full
+`user://stagehand_recordings/...` path is kept as is. `res://`, absolute, and
+`..` paths are refused with `invalid_params`. The full rule, and the
+`STAGEHAND_ALLOW_UNSAFE=1` exception, is in [Security](security.md).

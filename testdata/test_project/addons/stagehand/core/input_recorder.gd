@@ -26,6 +26,10 @@ const DEFAULT_RECORDING_DIR: String = "user://stagehand_recordings"
 
 static var _session_counter: int = 0
 
+## Lifts the [method resolve_recording_path] sandbox so record and replay take
+## any path. The server sets it from STAGEHAND_ALLOW_UNSAFE=1.
+var allow_unsafe_paths: bool = false
+
 var _recording: bool = false
 var _include_mouse_move: bool = false
 var _output_path: String = ""
@@ -73,8 +77,14 @@ func start_recording(output_path: String, include_mouse_move: bool = false) -> D
 			"session_id": _session_id,
 			"next_action": "Call record_stop before starting another recording.",
 		})
+	var target: String = output_path
+	if not target.is_empty():
+		var resolved: Dictionary = _resolve_path(target)
+		if ERRORS.is_error(resolved):
+			return resolved
+		target = resolved.get("path", "")
 	_session_id = _next_session_id()
-	_output_path = output_path if not output_path.is_empty() else default_output_path(_session_id)
+	_output_path = target if not target.is_empty() else default_output_path(_session_id)
 	_include_mouse_move = include_mouse_move
 	_start_scene = _current_scene_path()
 	_events = []
@@ -143,14 +153,20 @@ func start_replay(input_path: String, speed: float = 1.0, wait_for_ready: bool =
 			"session_id": _session_id,
 			"next_action": "Call record_stop before replaying.",
 		})
-	var file: FileAccess = FileAccess.open(input_path, FileAccess.READ)
+	# Resolved before the open, so a refused path never reveals whether the
+	# file exists or parses.
+	var resolved: Dictionary = _resolve_path(input_path)
+	if ERRORS.is_error(resolved):
+		return resolved
+	var path: String = resolved.get("path", "")
+	var file: FileAccess = FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		var err: Error = FileAccess.get_open_error()
 		return ERRORS.make(
 			ERRORS.IO_ERROR,
-			"Failed to open file for reading: %s (%s)" % [input_path, error_string(err)],
+			"Failed to open file for reading: %s (%s)" % [path, error_string(err)],
 			{
-				"path": input_path,
+				"path": path,
 				"godot_error": error_string(err),
 				"next_action": "Check the recording_path; record_stop reports the path it wrote.",
 			}
@@ -165,7 +181,7 @@ func start_replay(input_path: String, speed: float = 1.0, wait_for_ready: bool =
 			ERRORS.IO_ERROR,
 			"Failed to parse recording: %s" % json.get_error_message(),
 			{
-				"path": input_path,
+				"path": path,
 				"next_action": "Replay a file written by record_stop; it must be valid JSON.",
 			}
 		)
@@ -287,6 +303,33 @@ static func parse_recording(data: Variant) -> Dictionary:
 static func event_delay_sec(t_ms: int, speed: float) -> float:
 	var effective_speed: float = speed if speed > 0.0 else 1.0
 	return (float(t_ms) / 1000.0) / effective_speed
+
+
+## Maps a caller-supplied recording path onto the file it names inside
+## [constant DEFAULT_RECORDING_DIR]: [code]{"path": resolved}[/code], or an
+## [code]invalid_params[/code] envelope when it would escape it. A path already
+## under the directory is kept; another scheme (res://, a bare user://), an
+## absolute path, a drive letter, a backslash, and a "." or ".." segment are
+## refused rather than normalised. Mirrors Go's gwpop.ResolveRecordingPath —
+## change both together (docs/security.md).
+static func resolve_recording_path(path: String) -> Dictionary:
+	var prefix: String = DEFAULT_RECORDING_DIR + "/"
+	var rel: String = path
+	if path.begins_with(prefix):
+		rel = path.substr(prefix.length())
+	elif path.contains(":"):
+		return _invalid_recording_path(path, "only paths under %s may name a scheme or drive" % prefix)
+	elif path.begins_with("/"):
+		return _invalid_recording_path(path, "absolute paths are not allowed")
+	if rel.is_empty():
+		return _invalid_recording_path(path, "a file name is required")
+	for segment: String in rel.split("/"):
+		if segment.is_empty() or segment == "." or segment == "..":
+			return _invalid_recording_path(path, "segment \"%s\" is not allowed" % segment)
+		for i: int in segment.length():
+			if not _is_recording_path_char(segment.unicode_at(i)):
+				return _invalid_recording_path(path, "character \"%s\" is not allowed" % segment[i])
+	return {"path": prefix + rel}
 
 
 ## Path used when the caller starts a recording without naming one.
@@ -425,6 +468,36 @@ func _current_scene_path() -> String:
 static func _next_session_id() -> String:
 	_session_counter += 1
 	return "rec-%d-%d" % [Time.get_ticks_usec(), _session_counter]
+
+
+## [method resolve_recording_path], unless [member allow_unsafe_paths] lifts the
+## sandbox and the path is taken verbatim.
+func _resolve_path(path: String) -> Dictionary:
+	if allow_unsafe_paths:
+		return {"path": path}
+	return resolve_recording_path(path)
+
+
+static func _invalid_recording_path(path: String, reason: String) -> Dictionary:
+	return ERRORS.make(
+		ERRORS.INVALID_PARAMS,
+		"Invalid recording path \"%s\": %s" % [path, reason],
+		{
+			"path": path,
+			"next_action": "Use a path inside %s/, e.g. \"run1.json\" or \"runs/run1.json\"; segments use letters, digits, '_', '-' and '.'. STAGEHAND_ALLOW_UNSAFE=1 lifts this." % DEFAULT_RECORDING_DIR,
+		}
+	)
+
+
+static func _is_recording_path_char(c: int) -> bool:
+	return (
+		(c >= 97 and c <= 122)  # a-z
+		or (c >= 65 and c <= 90)  # A-Z
+		or (c >= 48 and c <= 57)  # 0-9
+		or c == 95  # _
+		or c == 45  # -
+		or c == 46  # .
+	)
 
 
 ## Creates the directory holding [param path] if it is missing. Returns an empty

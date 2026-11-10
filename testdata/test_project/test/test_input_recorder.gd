@@ -12,6 +12,11 @@ extends GdUnitTestSuite
 ## and the legacy `frames`/`time_ms` spelling are pinned here.
 
 const RECORDER := preload("res://addons/stagehand/core/input_recorder.gd")
+const ERRORS := preload("res://addons/stagehand/core/errors.gd")
+
+## Scratch space inside the recording sandbox: the recorder refuses any path
+## outside user://stagehand_recordings/, so GdUnit's own temp dir is off limits.
+const TMP_DIR: String = "user://stagehand_recordings/gdunit_input_recorder"
 
 var _recorder: RECORDER
 var _tmp_dir: String
@@ -21,7 +26,16 @@ func before_test() -> void:
 	_recorder = RECORDER.new()
 	add_child(_recorder)
 	auto_free(_recorder)
-	_tmp_dir = create_temp_dir("recordings")
+	_tmp_dir = TMP_DIR
+	DirAccess.make_dir_recursive_absolute(_tmp_dir)
+
+
+func after_test() -> void:
+	# Stop first so _exit_tree does not write a file after the sweep below.
+	if _recorder.is_recording():
+		var _stopped: Dictionary = _recorder.stop_recording()
+	for file_name: String in DirAccess.get_files_at(_tmp_dir):
+		DirAccess.remove_absolute("%s/%s" % [_tmp_dir, file_name])
 
 
 func _tmp_path(file_name: String) -> String:
@@ -339,6 +353,72 @@ func test_replay_while_recording_is_refused() -> void:
 	var _start: Dictionary = _recorder.start_recording(path, false)
 	var result: Dictionary = await _recorder.start_replay(path, 1.0, false)
 	assert_str(str(result.get("error", ""))).is_not_empty()
+
+
+# --- path sandbox ------------------------------------------------------------
+
+
+func test_resolve_recording_path_keeps_paths_inside_the_recording_dir() -> void:
+	var cases: Dictionary = {
+		"ok.json": "user://stagehand_recordings/ok.json",
+		"runs/menu_flow-2.json": "user://stagehand_recordings/runs/menu_flow-2.json",
+		"user://stagehand_recordings/ok.json": "user://stagehand_recordings/ok.json",
+		"user://stagehand_recordings/a/b.json": "user://stagehand_recordings/a/b.json",
+	}
+	for input: String in cases:
+		var resolved: Dictionary = RECORDER.resolve_recording_path(input)
+		assert_bool(ERRORS.is_error(resolved)).override_failure_message("rejected %s" % input).is_false()
+		assert_str(str(resolved.get("path"))).is_equal(str(cases[input]))
+
+
+func test_resolve_recording_path_rejects_escapes() -> void:
+	for input: String in [
+		"", "res://x.json", "res://player.gd", "user://x.json", "user://../x.json",
+		"user://stagehand_recordings", "user://stagehand_recordings/",
+		"user://stagehand_recordings/../x.json", "user://stagehand_recordings_evil/x.json",
+		"/tmp/x.json", "C:/Users/x.json", "C:\\Users\\x.json", "sub\\x.json", "../x.json",
+		"a/../../x.json", "./x.json", "a//x.json", "x.json/", "file:///tmp/x.json", "x y.json",
+	]:
+		var resolved: Dictionary = RECORDER.resolve_recording_path(input)
+		assert_str(ERRORS.code_of(resolved)).override_failure_message("accepted %s" % input) \
+			.is_equal(ERRORS.INVALID_PARAMS)
+
+
+func test_start_recording_rejects_paths_outside_the_recording_dir() -> void:
+	for input: String in ["res://x.json", "user://../x.json", "/tmp/x.json"]:
+		var result: Dictionary = _recorder.start_recording(input, false)
+		assert_str(ERRORS.code_of(result)).override_failure_message("accepted %s" % input) \
+			.is_equal(ERRORS.INVALID_PARAMS)
+		assert_bool(_recorder.is_recording()).is_false()
+
+
+func test_start_recording_accepts_paths_inside_the_recording_dir() -> void:
+	for input: String in [_tmp_path("ok.json"), "gdunit_input_recorder/ok.json"]:
+		var result: Dictionary = _recorder.start_recording(input, false)
+		assert_bool(ERRORS.is_error(result)).override_failure_message("rejected %s" % input).is_false()
+		assert_str(str(result.get("output_path"))).is_equal(_tmp_path("ok.json"))
+		var stopped: Dictionary = _recorder.stop_recording()
+		assert_str(str(stopped.get("path"))).is_equal(_tmp_path("ok.json"))
+		assert_bool(FileAccess.file_exists(_tmp_path("ok.json"))).is_true()
+
+
+func test_replay_rejects_paths_outside_the_recording_dir() -> void:
+	# Real, readable files: the refusal must come before the open, so replay is
+	# not an existence/JSON oracle for files outside the sandbox.
+	for input: String in ["res://project.godot", "user://../x.json", "/etc/hostname"]:
+		var result: Dictionary = await _recorder.start_replay(input, 1.0, false)
+		assert_str(ERRORS.code_of(result)).override_failure_message("accepted %s" % input) \
+			.is_equal(ERRORS.INVALID_PARAMS)
+
+
+func test_unsafe_mode_lifts_the_path_sandbox() -> void:
+	_recorder.allow_unsafe_paths = true
+	var path: String = "user://gdunit_input_recorder_unsafe.json"
+	var result: Dictionary = _recorder.start_recording(path, false)
+	assert_str(str(result.get("output_path"))).is_equal(path)
+	var stopped: Dictionary = _recorder.stop_recording()
+	assert_bool(ERRORS.is_error(stopped)).is_false()
+	DirAccess.remove_absolute(path)
 
 
 # --- helpers -----------------------------------------------------------------

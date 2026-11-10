@@ -5,12 +5,14 @@ import (
 	"fmt"
 
 	"github.com/mark3labs/mcp-go/mcp"
+
+	"github.com/mrf/godot-stagehand/internal/gwpop"
 )
 
 var recordStartTool = mcp.NewTool("godot_record_start",
 	mcp.WithDescription("Start recording player input in the running Godot game"),
 	mcp.WithString("output_path",
-		mcp.Description("File path where the recording will be saved, e.g. \"res://recordings/run1.json\". Defaults to a timestamped file under user://stagehand_recordings/."),
+		mcp.Description("Where to save the recording, inside user://stagehand_recordings/: a relative path such as \"run1.json\" or \"runs/run1.json\", or a full user://stagehand_recordings/... path. res://, absolute and '..' paths are refused. Defaults to a timestamped file in that directory."),
 	),
 	mcp.WithBoolean("include_mouse_move",
 		mcp.Description("Capture mouse-motion events too. Off by default: motion dominates a recording's size and is rarely what a repro depends on."),
@@ -27,7 +29,11 @@ func (s *Server) handleRecordStart(ctx context.Context, req mcp.CallToolRequest)
 	// Forwarded only when set — an empty output_path means "addon picks one",
 	// and the addon distinguishes absent from empty.
 	if outputPath := req.GetString("output_path", ""); outputPath != "" {
-		params["output_path"] = outputPath
+		resolved, err := gwpop.ResolveRecordingPath(outputPath)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		params["output_path"] = resolved
 	}
 
 	result, errResult := s.callGodotInstance(ctx, instanceID, "record_start", params)
@@ -54,7 +60,7 @@ func (s *Server) handleRecordStop(ctx context.Context, req mcp.CallToolRequest) 
 var replayTool = mcp.NewTool("godot_replay",
 	mcp.WithDescription("Replay a previously recorded input session in the running Godot game"),
 	mcp.WithString("recording_path",
-		mcp.Description("File path of the recording to replay, e.g. \"res://recordings/run1.json\""),
+		mcp.Description("Recording to replay, inside user://stagehand_recordings/: the path record_stop reported, or a relative path such as \"run1.json\". res://, absolute and '..' paths are refused."),
 	),
 	mcp.WithString("input_path",
 		mcp.Description("Deprecated alias for recording_path"),
@@ -81,6 +87,10 @@ func (s *Server) handleReplay(ctx context.Context, req mcp.CallToolRequest) (*mc
 	}
 	if recordingPath == "" {
 		return mcp.NewToolResultError(`required argument "recording_path" not found`), nil
+	}
+	recordingPath, err := gwpop.ResolveRecordingPath(recordingPath)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	speed := req.GetFloat("speed", 1.0)
