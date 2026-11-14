@@ -58,7 +58,7 @@ There are two matching modes:
 
 - **`text:` — loose match (substring, case-insensitive).** Matches if the node's
   text *contains* the value, ignoring case. If the value contains glob
-  metacharacters (`*`, `?`, `[`) it is instead treated as a glob pattern via
+  metacharacters (`*`, `?`) it is instead treated as a glob pattern via
   `String.match()`. Convenient, but loose: `text:Continue` matches *both* a
   Button captioned "CONTINUE" *and* a Label reading "Continue from day 8?".
 - **`text=` — exact match (whole string, case-sensitive).** Matches only when the
