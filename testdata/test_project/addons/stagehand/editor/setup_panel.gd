@@ -13,6 +13,9 @@ extends Window
 
 const DEFAULT_PORT: int = 26700
 const CONNECT_TIMEOUT_MS: int = 3000
+## JSON-RPC error code the runtime server returns to an unauthenticated peer
+## (mirrors AUTHENTICATION_REQUIRED in autoload/stagehand_server.gd).
+const AUTHENTICATION_REQUIRED: int = -32001
 
 enum State { NEEDS_SETUP, READY, CONNECTED }
 
@@ -324,7 +327,10 @@ func _on_test_pressed() -> void:
 	_test_button.disabled = false
 	if result.get("ok", false):
 		_set_state(State.CONNECTED)
-		_log("[color=#3ac06a]Connected — Stagehand server v%s responded.[/color]" % result.get("version", "?"))
+		if result.get("authenticated", false):
+			_log("[color=#3ac06a]Connected — Stagehand server v%s responded.[/color]" % result.get("version", "?"))
+		else:
+			_log("[color=#3ac06a]Server reachable (auth required) — the MCP client authenticates with the session token.[/color]")
 	else:
 		if _binary_exists():
 			_set_state(State.READY)
@@ -332,7 +338,8 @@ func _on_test_pressed() -> void:
 
 
 ## Opens a WebSocket to the running game's Stagehand server and sends a JSON-RPC
-## ping. Returns {"ok": bool, "version": String} or {"ok": false, "error": String}.
+## ping. Returns the shape documented on _parse_ping_response, or
+## {"ok": false, "error": String} when no reply arrived.
 func _ping_server(port: int) -> Dictionary:
 	var ws: WebSocketPeer = WebSocketPeer.new()
 	var url: String = "ws://127.0.0.1:%d" % port
@@ -371,19 +378,34 @@ func _ping_server(port: int) -> Dictionary:
 	return {"ok": false, "error": "timed out (is the game running with --stagehand?)"}
 
 
-func _parse_ping_response(text: String) -> Dictionary:
+## Maps a ping reply to {"ok", "reachable", "authenticated", "version"|"error"}.
+## The server rejects every method but `authenticate` from an unauthenticated
+## peer, so an AUTHENTICATION_REQUIRED error still proves a live Stagehand
+## server answered: it counts as ok/reachable with authenticated=false.
+static func _parse_ping_response(text: String) -> Dictionary:
 	var json: JSON = JSON.new()
 	if json.parse(text) != OK:
-		return {"ok": false, "error": "invalid response"}
+		return {"ok": false, "reachable": false, "error": "invalid response"}
 	var data: Variant = json.data
 	if data is not Dictionary:
-		return {"ok": false, "error": "unexpected response shape"}
+		return {"ok": false, "reachable": false, "error": "unexpected response shape"}
 	var dict: Dictionary = data
 	var response_result: Variant = dict.get("result")
 	if response_result is Dictionary:
 		var rd: Dictionary = response_result
-		return {"ok": true, "version": str(rd.get("stagehand_version", "?"))}
-	return {"ok": false, "error": "no result in response"}
+		return {
+			"ok": true,
+			"reachable": true,
+			"authenticated": true,
+			"version": str(rd.get("stagehand_version", "?")),
+		}
+	var response_error: Variant = dict.get("error")
+	if response_error is Dictionary:
+		var ed: Dictionary = response_error
+		if ed.get("code") == AUTHENTICATION_REQUIRED:
+			return {"ok": true, "reachable": true, "authenticated": false}
+		return {"ok": false, "reachable": true, "error": str(ed.get("message", "server error"))}
+	return {"ok": false, "reachable": false, "error": "no result in response"}
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
