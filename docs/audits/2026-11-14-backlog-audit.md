@@ -26,7 +26,7 @@ behind a nine-ticket P1 infrastructure epic.
 | 327t.28 SKILL.md | P2 → P1 | What the Claude Code plugin's agent reads; omits tools the plugin hooks use. Cheap. |
 | 327t.10 Go client | P2 → P3 | Needs a hostile or mismatched process on the local port. |
 | 327t.21 addon param typing | P2 → P3, after .16/.20/.22 | Go frontends type-check first; rewrites 46 param reads across six files, so it must run last. |
-| 7fgr interval capture | P2 → P3, needs-human | Three new public tools with no design sign-off; serves keystone, not adoption. |
+| 7fgr interval capture | P2 → P3, needs-human | Three new public tools with no design sign-off; serves a private project, not adoption. |
 | ez2g README badges | P2 → P3, needs-human | Landed 5298833; coverage badge then removed by the 08-03 README cut. Only Mark's call remains. |
 | rq21 | needs-human, after .24 | It asks for a decision; half of it duplicates 327t.20 AC2. |
 | y7sc, 58t, 8t7 | → P4 | Parked: low-risk symlink case and two upstream limitations. |
