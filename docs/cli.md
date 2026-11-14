@@ -283,6 +283,23 @@ rejected at validation time when `headless` is true. For a visual gate in CI,
 set `"headless": false` and provide a display (Xvfb). See
 [visual-smoke-contract.md](visual-smoke-contract.md).
 
+## Host capability probe
+
+```bash
+godot-stagehand hostcompat-probe --project-path .hostcompat/pixelorama \
+  --godot-bin "$GODOT_BIN" [--game-args a,b] [--headed] [--timeout 10m]
+```
+
+Launches a host project and prints what it measurably is as JSON: content scale
+(factor, stretch mode, aspect), autoload count, non-root `Window` nodes and
+whether subwindows embed, whether the tree is paused, node count, and
+time-to-ready (`cold_import` says whether the number includes first import).
+`axes` lists the host-compat stress axes the run observed; `unprobed` lists the
+ones no runtime read can settle. It is a reporter — it asserts nothing — and
+works in safe mode (no `allow_unsafe`). Exit 3 means the host would not start;
+exit 4 means it started but a read failed. See
+`docs/design/host-project-compat-suite.md` (Amendment 7a).
+
 ## Debugging from a terminal
 
 The one-shot commands exist for the moment a scenario fails and you want to

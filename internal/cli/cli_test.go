@@ -910,6 +910,25 @@ func TestRunProjectPathFlagRejectsConnectModeAsUsage(t *testing.T) {
 	}
 }
 
+func TestHostcompatProbeRequiresProjectPath(t *testing.T) {
+	code, _, stderr := invoke(t, "hostcompat-probe")
+	if code != ExitUsage {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitUsage, stderr)
+	}
+	if !strings.Contains(stderr, "--project-path") {
+		t.Errorf("usage error does not name the missing flag:\n%s", stderr)
+	}
+}
+
+func TestHostcompatProbeLaunchFailureIsAConnectionError(t *testing.T) {
+	dir := t.TempDir()
+	code, _, stderr := invoke(t, "hostcompat-probe", "--project-path="+dir,
+		"--godot-bin="+filepath.Join(dir, "no-such-godot"))
+	if code != ExitConnection {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitConnection, stderr)
+	}
+}
+
 func mustMarshal(t *testing.T, v any) string {
 	t.Helper()
 	data, err := json.Marshal(v)

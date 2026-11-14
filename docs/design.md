@@ -182,7 +182,7 @@ optional `instance_id` (default `"default"`) — see "Multiple Instances" below.
 Returns: `{ success, current_scene }`
 
 **`godot_get_game_state`**
-No parameters. Returns: `{ current_scene, fps, physics_ticks, window_size, connected, engine_version }`
+No parameters. Returns: `{ current_scene, fps, physics_ticks, paused, window_size, connected, engine_version }` (`paused` is `SceneTree.paused`)
 
 ### Node Querying
 

@@ -28,6 +28,18 @@ import (
 // should treat this as a clean, non-retryable failure.
 var ErrPortUnavailable = errors.New("port unavailable")
 
+// FreePort returns a free TCP port on the loopback interface. The port is
+// released before returning, so a caller that launches on it can still lose the
+// race to another process (see ErrPortUnavailable).
+func FreePort() (int, error) {
+	l, err := net.Listen("tcp", DefaultHost+":0")
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
+}
+
 // Config holds parameters for launching a Godot process.
 type Config struct {
 	// ProjectPath is the path to the Godot project directory (contains project.godot).
