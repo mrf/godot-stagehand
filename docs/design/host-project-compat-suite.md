@@ -432,6 +432,25 @@ alongside seven pre-existing addons. One open question — it inserts
 appending. Autoload declaration order is initialisation order, so this changes
 host init order. Deliberate, or incidental to how `setup` writes the section?
 
+**Answered (`argp.2`): incidental.** `ensureAutoloadRegistered`
+(`internal/setup/project.go`) inserts the line immediately after the
+`[autoload]` header. That behaviour was ported unchanged from `copy-addon.sh`,
+where it was `sed "/^\[autoload\]/a\..."` ("Add after the [autoload] section
+header", commit `6c6d1b2`); no commit message, comment or test gives an
+ordering rationale, and nothing in the addon depends on being first. It is left
+as is here — whether Stagehand should initialise first, last, or be ordered
+deliberately is a product decision, filed as a follow-up. `setup` does preserve
+every host autoload (the runner's tests assert it).
+
+**Implemented:** `scripts/hostcompat-run.sh <id>` runs
+`checkout → setup → import → scenario` and names the stage that failed, with a
+distinct exit code per stage (checkout 75, setup 10, import 11, launch/connect
+12, scenario 13; 2 and 3 pass through from the checkout script). `--through
+import` is the unattended, no-window half. The import stage fails on a non-zero
+`godot --headless --import`, a timeout, or a parse diagnostic pointing into
+`res://addons/stagehand/`; diagnostics in the host's own code are printed as
+notes and do not fail it, consistent with the narrow assertion surface.
+
 ### 5. Two axes are missing from the enum
 
 Both are real failure classes with prior form, and neither is in `knownAxes`:
