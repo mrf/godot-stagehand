@@ -10,7 +10,7 @@
         "source": "git-subdir",
         "url": "mrf/godot-stagehand",
         "path": "integrations/claude-code",
-        "ref": "v0.5.2"
+        "ref": "v0.5.3"
       }
     }
   ]
