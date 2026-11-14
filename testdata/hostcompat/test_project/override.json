@@ -1,0 +1,4 @@
+{
+  "root_node": "TestScene",
+  "clickable": "name:clickButton"
+}

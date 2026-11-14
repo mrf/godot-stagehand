@@ -1,0 +1,61 @@
+{
+  "name": "hostcompat",
+  "description": "The shared host-compat scenario: one template for every host, filled from that host's override.json (internal/hostcompat/template.go, design doc Amendment 7b). It asserts only that Stagehand can connect, enumerate, see a subwindow, deliver input, capture a frame and survive. It never asserts that the host behaves correctly. Every action must pass the internal/hostcompat surface allowlist; a step a host needs that is missing here belongs HERE, not in the override.",
+  "target": {
+    "mode": "launch",
+    "project_path": "${project_path}",
+    "headless": false,
+    "extra_args": "${extra_args}",
+    "timeout_ms": "${timeout_ms}"
+  },
+  "steps": [
+    {
+      "name": "connect: the addon answers",
+      "action": "ping"
+    },
+    {
+      "name": "enumerate: the host's main scene is in the tree",
+      "action": "wait_for_node",
+      "with": { "selector": "name:${root_node}", "state": "exists", "timeout_ms": 60000 }
+    },
+    {
+      "name": "enumerate: the tree is walkable",
+      "action": "tree",
+      "with": { "root_path": "/root", "max_depth": 3 }
+    },
+    {
+      "name": "enumerate: the clickable node is visible to Stagehand",
+      "action": "assert_node_count",
+      "with": { "selector": "${clickable}", "operator": "greater_than", "expected": 0 }
+    },
+    {
+      "name": "subwindow: Stagehand sees Window nodes (/root plus the host's own)",
+      "action": "assert_node_count",
+      "with": { "selector": "class:Window", "operator": "greater_than", "expected": "${subwindows_exceed}" }
+    },
+    {
+      "name": "input: a click is delivered",
+      "action": "click",
+      "with": { "selector": "${clickable}" }
+    },
+    {
+      "name": "input: let the host process the event",
+      "action": "sleep",
+      "with": { "duration_ms": 300 }
+    },
+    {
+      "name": "survive: the addon still answers",
+      "action": "ping"
+    },
+    {
+      "name": "survive: the host's main scene is still in the tree",
+      "action": "wait_for_node",
+      "with": { "selector": "name:${root_node}", "state": "exists", "timeout_ms": 10000 }
+    },
+    {
+      "name": "capture: a frame of the host",
+      "action": "screenshot",
+      "with": { "output": "hostcompat-frame.png" }
+    }
+  ]
+}
