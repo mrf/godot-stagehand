@@ -50,6 +50,18 @@ MCP — at the binary and it gets a live connection to your running game:
 
 Nodes are targeted with selectors — see the [selector guide](selectors.md).
 
+## Input semantics
+
+- **`godot_click` returns before the button is released.** The press is
+  delivered immediately and the release follows `hold_ms` (default 100 ms)
+  later, so a `Button.pressed` handler — which fires on release — may not have
+  run when the call returns. Wait on the outcome (`godot_wait_for_signal`,
+  `godot_wait_for_property`) rather than assuming it.
+- **`godot_press_action` rejects unknown actions** with an `invalid_params`
+  error whose `next_action` lists similar names from the game's `InputMap`.
+- **`godot_type_text` sends `\n` as the Enter key**, so it submits a `LineEdit`
+  and inserts a line break in a `TextEdit`.
+
 ## Derived call deadlines
 
 Most calls get the ordinary 30-second deadline (see

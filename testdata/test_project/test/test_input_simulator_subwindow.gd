@@ -174,6 +174,24 @@ func test_position_click_inside_the_modal_rect_is_allowed() -> void:
 	assert_bool(result.get("success", false)).is_true()
 
 
+## The title bar is drawn above the client rect but belongs to the dialog: the
+## engine delivers a press there to the modal (drag handle, close button), so
+## refusing it as "outside" is wrong.
+func test_position_click_on_the_modal_title_bar_is_allowed() -> void:
+	var title_height: int = _dialog.get_theme_constant("title_height")
+	var on_title: Vector2 = Vector2(
+		float(_dialog.position.x) + float(_dialog.size.x) / 2.0,
+		float(_dialog.position.y) - float(title_height) / 2.0
+	)
+	var result: Dictionary = StagehandInputSimulator.input_mouse(
+		get_tree(), {"position": _at(on_title.x, on_title.y)}
+	)
+	assert_str(str(result.get("error", ""))).is_empty()
+	assert_bool(result.get("success", false)).is_true()
+	await get_tree().process_frame
+	assert_bool(_dialog.has_focus()).is_true()
+
+
 func test_touch_outside_a_modal_subwindow_returns_a_typed_failure() -> void:
 	var result: Dictionary = StagehandInputSimulator.input_touch(
 		get_tree(), {"position": _at(60.0, 30.0)}
