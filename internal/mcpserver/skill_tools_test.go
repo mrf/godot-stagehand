@@ -81,6 +81,57 @@ func TestSkillToolReferencesAreRegistered(t *testing.T) {
 	}
 }
 
+// TestSkillDocumentsEveryRegisteredTool is the other direction of
+// TestSkillToolReferencesAreRegistered: agents follow the skill literally, so a
+// registered tool with no "#### `godot_x`" heading in the Tool Reference is a
+// tool the agent never learns exists (godot_status and godot_list_instances
+// are also read by the plugin's hooks).
+func TestSkillDocumentsEveryRegisteredTool(t *testing.T) {
+	s := New()
+	section, err := markdownSection(readSkillFile(t), "## Tool Reference")
+	if err != nil {
+		t.Fatalf("%s: %v", skillPath, err)
+	}
+	documented := make(map[string]bool)
+	headingPattern := regexp.MustCompile("(?m)^#### `(godot_[a-z_]+)`\\s*$")
+	for _, match := range headingPattern.FindAllStringSubmatch(section, -1) {
+		documented[match[1]] = true
+	}
+	for name := range s.mcp.ListTools() {
+		if !documented[name] {
+			t.Errorf("%s has no \"#### `%s`\" heading in its Tool Reference", skillPath, name)
+		}
+	}
+}
+
+// TestSkillDocumentsLaunchSafetyArguments guards the godot_launch arguments an
+// agent cannot guess, and the gate that makes godot_evaluate usable at all.
+func TestSkillDocumentsLaunchSafetyArguments(t *testing.T) {
+	content := readSkillFile(t)
+	for _, want := range []string{"allow_unsafe", "share_user_data"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("%s never mentions the godot_launch argument %q", skillPath, want)
+		}
+	}
+	evaluate, err := markdownSection(content, "#### `godot_evaluate`")
+	if err != nil {
+		t.Fatalf("%s: %v", skillPath, err)
+	}
+	evaluate, _, _ = strings.Cut(evaluate, "\n###") // stop at the next heading
+	if !strings.Contains(evaluate, "allow_unsafe") {
+		t.Errorf("%s's godot_evaluate section must say it needs godot_launch(allow_unsafe=true)", skillPath)
+	}
+}
+
+// TestSkillPortGuidanceIsConsistent keeps the skill from contradicting its own
+// port=0 advice: a hardcoded alternate port (26701) invites exactly the shared
+// fixed-port collisions that auto-assign exists to avoid.
+func TestSkillPortGuidanceIsConsistent(t *testing.T) {
+	if strings.Contains(readSkillFile(t), "26701") {
+		t.Errorf("%s suggests the fixed port 26701; guidance must be port=0 (auto-assign)", skillPath)
+	}
+}
+
 func readSkillFile(t *testing.T) string {
 	t.Helper()
 	content, err := os.ReadFile(filepath.Join("..", "..", filepath.FromSlash(skillPath)))

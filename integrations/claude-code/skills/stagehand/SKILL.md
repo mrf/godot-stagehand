@@ -55,6 +55,8 @@ Launch a Godot game with stagehand enabled and connect to it.
 | `port` | no | `0` | TCP port for the WebSocket server (`0` auto-assigns a free port, keeping the instance private to you) |
 | `headless` | no | `true` | Launch Godot in headless mode |
 | `expect_screenshots` | no | `false` | Reject `headless=true` for screenshot/baseline/diff workflows |
+| `allow_unsafe` | no | `false` | Enable `godot_evaluate` and unrestricted `godot_call_method` (blocked-method list lifted) for this launched session. Off by default — without it those requests are refused |
+| `share_user_data` | no | `false` | Use the project's real `user://` directory instead of a private throwaway one. Default: each launch gets an isolated `user://`, so concurrent instances cannot corrupt each other's saves, but nothing written survives the instance. Set `true` only when you need persistent save data and run a single instance |
 | `extra_args` | no | `[]` | Extra command-line arguments for the Godot binary |
 | `timeout_ms` | no | `30000` | Maximum time to wait for Godot to start (min: 1000) |
 
@@ -90,6 +92,31 @@ godot_connect(host="127.0.0.1", port=26700)
 > ```bash
 > ip route show default | awk '/default/ {print $3}'   # -> host for godot_connect
 > ```
+
+#### `godot_status`
+Show all active Godot connections (instance ID, connection state) and process information. Read-only; no parameters. Call it first when unsure whether you are already connected.
+
+```
+godot_status()
+```
+
+#### `godot_list_instances`
+List every Godot connection this MCP server manages: `id`, `host`, `port`, `pid`, `connected` for each. Read-only; no parameters.
+
+```
+godot_list_instances()
+```
+
+#### `godot_disconnect`
+Disconnect and remove a named instance.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `instance_id` | yes | — | ID of the instance to disconnect (see `godot_list_instances`) |
+
+```
+godot_disconnect(instance_id="default")
+```
 
 #### `godot_get_game_state`
 Get current game state: scene name, FPS, physics state, window size. No parameters.
@@ -138,6 +165,19 @@ Find nodes matching a selector expression.
 godot_find_nodes(selector="class:Button", properties=["text", "visible"])
 godot_find_nodes(selector="name:*Player*")
 godot_find_nodes(selector="class:Panel >> text:Submit")
+```
+
+#### `godot_get_accessibility_tree`
+Semantic view of the UI: roles (`button`, `check_box`, `text_field`, ...), accessible names, values, and states. Derived from the Control hierarchy plus author-set accessibility properties (responses carry `source="derived"`, not Godot's real AccessKit tree). Requires Godot 4.5+. Prefer it over `godot_get_tree` when you want to know what a UI *means* rather than how it is built.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `root_path` | no | scene root | Subtree to start from |
+| `max_depth` | no | see tool | Maximum depth to walk |
+| `instance_id` | no | `default` | Instance to target |
+
+```
+godot_get_accessibility_tree(max_depth=4)
 ```
 
 ### Properties
@@ -203,6 +243,18 @@ Simulate a keyboard key press.
 godot_press_key(key="Enter")
 godot_press_key(key="S", modifiers=["ctrl"])
 godot_press_key(key="Space", hold_ms=2000)
+```
+
+#### `godot_focus_window`
+Give window focus to a `Window` (e.g. a modal dialog) so `godot_press_key` reaches it. Use it when `godot_press_key` refuses because a modal dialog is visible but lacks window focus. With no `selector`, it targets the visible modal subwindow that lost focus.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `selector` | no | auto-target | Window to focus, e.g. `class:AcceptDialog` or `name:SplashDialog` |
+| `instance_id` | no | `default` | Instance to target |
+
+```
+godot_focus_window(selector="class:AcceptDialog")
 ```
 
 #### `godot_press_action`
@@ -359,7 +411,7 @@ godot_wait_for_property(selector="name:Player", property="is_grounded", operator
 ### Method Calls & Evaluation
 
 #### `godot_call_method`
-Call a method on a node. Some destructive/private methods are blocked for safety.
+Call a method on a node. Some destructive/private methods are blocked for safety unless the game was launched with `godot_launch(allow_unsafe=true)`.
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
@@ -376,7 +428,7 @@ godot_call_method(selector="name:Enemy", method="take_damage", args=[25])
 ```
 
 #### `godot_evaluate`
-Evaluate a GDScript expression in the running game. Powerful but dangerous.
+Evaluate a GDScript expression in the running game. Powerful but dangerous. **Requires unsafe mode:** the game must have been launched with `godot_launch(allow_unsafe=true)`; otherwise the request is refused.
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
@@ -581,7 +633,7 @@ name:*_Label      # Nodes ending with "_Label"
 
 ### "Connection refused"
 - Game not running, or not started with `--stagehand` flag / `STAGEHAND_ENABLED=1` env var.
-- Check the port is correct (default 26700).
+- Check the port is correct: use the one `godot_launch` reported (it auto-assigns with `port=0`); only a game you started yourself on the addon default is on 26700.
 
 ### "Connection reset" / immediate disconnect
 - Godot may be under heavy load (large scene import, startup).
@@ -604,11 +656,11 @@ name:*_Label      # Nodes ending with "_Label"
 ### Blocked method errors
 - Methods starting with `_` (private/lifecycle) are blocked.
 - Destructive methods (`free`, `queue_free`, `set_script`, `add_child`, `remove_child`, etc.) are blocked.
-- Use `godot_evaluate` if you truly need to call blocked methods (with caution).
+- If you truly need a blocked method, relaunch with `godot_launch(allow_unsafe=true)`, then use `godot_call_method` or `godot_evaluate` (with caution). Both are refused without it.
 
 ### Port conflicts
-- Another Godot instance may already be using port 26700.
-- Use a different port: `godot_launch(port=26701)` or kill the stale process.
+- A fixed port (e.g. the addon default 26700) may already be in use by another Godot instance.
+- Launch with `port=0` (the default) so a free port is auto-assigned, or kill the stale process.
 
 ## Best Practices
 
