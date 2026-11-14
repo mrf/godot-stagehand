@@ -6,8 +6,10 @@ package scenario
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -121,6 +123,26 @@ func Load(path string) (*Scenario, error) {
 		sc.Name = stemOf(path)
 	}
 	return sc, nil
+}
+
+// OverrideProjectPath replaces target.project_path so one shared scenario can
+// run against any checkout (the CLI's --project-path). Unlike the file's own
+// project_path, a relative override is anchored to the working directory — it
+// was typed there, not written next to the scenario. Launch mode only: the
+// field means nothing when attaching to a running game.
+func (s *Scenario) OverrideProjectPath(path string) error {
+	if path == "" {
+		return errors.New("project path override is empty")
+	}
+	if s.Target.Mode != ModeLaunch {
+		return fmt.Errorf("a project path override only applies to %q mode, scenario target.mode is %q", ModeLaunch, s.Target.Mode)
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("resolve project path override: %w", err)
+	}
+	s.Target.ProjectPath = abs
+	return nil
 }
 
 // Parse decodes a scenario from JSON and validates it. Unknown fields are

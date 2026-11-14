@@ -875,6 +875,41 @@ func TestRunRejectsMissingScenarioFile(t *testing.T) {
 	}
 }
 
+// --project-path lets one shared host-compat template run against any checkout.
+// The launch fails (no Godot here), but the error must show the scenario was
+// retargeted before it got that far.
+func TestRunProjectPathFlagRetargetsLaunchScenario(t *testing.T) {
+	dir := t.TempDir()
+	scenarioPath := filepath.Join(dir, "shared.json")
+	body := `{"target": {"mode": "launch", "project_path": "./placeholder", "godot_bin": "` +
+		filepath.Join(dir, "no-such-godot") + `"}, "steps": [{"action": "sleep", "with": {"duration_ms": 1}}]}`
+	if err := os.WriteFile(scenarioPath, []byte(body), 0o644); err != nil {
+		t.Fatalf("write scenario: %v", err)
+	}
+	checkout := filepath.Join(dir, "checkout")
+
+	code, stdout, stderr := invoke(t, "run", scenarioPath, "--project-path="+checkout, "--quiet")
+	if code != ExitConnection {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitConnection, stderr)
+	}
+	if out := stdout + stderr; !strings.Contains(out, checkout) || strings.Contains(out, "placeholder") {
+		t.Errorf("launch did not target the override %q:\n%s", checkout, out)
+	}
+}
+
+func TestRunProjectPathFlagRejectsConnectModeAsUsage(t *testing.T) {
+	dir := t.TempDir()
+	scenarioPath := filepath.Join(dir, "connect.json")
+	body := `{"target": {"mode": "connect", "port": 26700}, "steps": [{"action": "sleep", "with": {"duration_ms": 1}}]}`
+	if err := os.WriteFile(scenarioPath, []byte(body), 0o644); err != nil {
+		t.Fatalf("write scenario: %v", err)
+	}
+	code, _, stderr := invoke(t, "run", scenarioPath, "--project-path="+dir, "--quiet")
+	if code != ExitUsage {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitUsage, stderr)
+	}
+}
+
 func mustMarshal(t *testing.T, v any) string {
 	t.Helper()
 	data, err := json.Marshal(v)

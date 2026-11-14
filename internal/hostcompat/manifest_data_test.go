@@ -27,8 +27,19 @@ func TestCheckedInManifestValidates(t *testing.T) {
 // The candidate set exists to cover axes our own fixture cannot. An uncovered
 // axis is a hole in the suite's premise, so it fails here rather than being
 // discovered later as "we never actually tested that".
+//
+// An axis CI synthesises (host-strict-warnings: the job overrides the host's
+// warnings config, so no project needs to be strict) is the one sanctioned
+// exception, and the exemption is a named list in the package rather than a
+// blanket pass for missing axes.
 func TestCheckedInManifestCoversEveryAxis(t *testing.T) {
-	if missing := loadCheckedInManifest(t).MissingAxes(); len(missing) > 0 {
+	var missing []string
+	for _, axis := range loadCheckedInManifest(t).MissingAxes() {
+		if !IsSynthesisedAxis(axis) {
+			missing = append(missing, axis)
+		}
+	}
+	if len(missing) > 0 {
 		t.Errorf("no candidate project covers these stress axes: %v", missing)
 	}
 }

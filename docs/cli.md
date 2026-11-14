@@ -169,7 +169,7 @@ so it cannot collide with another agent's game.
 
 | Field | Notes |
 |-------|-------|
-| `project_path` | Required. Relative to the scenario file |
+| `project_path` | Required. Relative to the scenario file. Overridden by `--project-path` (relative to the working directory; launch mode only) |
 | `godot_bin` | Overridden by `--godot-bin` |
 | `headless` | Default `true`. Screenshot steps require `false` |
 | `allow_unsafe` | Enables `evaluate` and arbitrary `call_method` |

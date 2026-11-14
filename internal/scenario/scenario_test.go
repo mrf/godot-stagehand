@@ -2,6 +2,7 @@ package scenario
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -347,4 +348,38 @@ func contains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// A shared host-compat template must run against any checkout, so the CLI's
+// --project-path replaces target.project_path. A relative override is anchored
+// to the working directory the caller typed it in, not the scenario file's
+// directory the way the file's own project_path is.
+func TestOverrideProjectPathReplacesLaunchTarget(t *testing.T) {
+	sc := mustParse(t, `{"target":{"mode":"launch","project_path":"./placeholder"},"steps":[{"action":"sleep","with":{"duration_ms":1}}]}`)
+	sc.dir = "/scenarios/shared"
+
+	if err := sc.OverrideProjectPath("/checkouts/pixelorama"); err != nil {
+		t.Fatalf("OverrideProjectPath: %v", err)
+	}
+	if got := sc.resolve(sc.Target.ProjectPath); got != "/checkouts/pixelorama" {
+		t.Errorf("resolved project path = %q, want the override", got)
+	}
+
+	if err := sc.OverrideProjectPath("rel/dir"); err != nil {
+		t.Fatalf("OverrideProjectPath(relative): %v", err)
+	}
+	if got := sc.resolve(sc.Target.ProjectPath); !filepath.IsAbs(got) || strings.HasPrefix(got, "/scenarios/shared") {
+		t.Errorf("relative override resolved to %q, want an absolute path anchored at the cwd", got)
+	}
+}
+
+func TestOverrideProjectPathRejectsConnectModeAndEmpty(t *testing.T) {
+	connect := mustParse(t, `{"target":{"mode":"connect","port":26700},"steps":[{"action":"sleep","with":{"duration_ms":1}}]}`)
+	if err := connect.OverrideProjectPath("/x"); err == nil {
+		t.Error("connect-mode scenario accepted a project path override")
+	}
+	launch := mustParse(t, `{"target":{"mode":"launch","project_path":"p"},"steps":[{"action":"sleep","with":{"duration_ms":1}}]}`)
+	if err := launch.OverrideProjectPath(""); err == nil {
+		t.Error("empty override was accepted")
+	}
 }

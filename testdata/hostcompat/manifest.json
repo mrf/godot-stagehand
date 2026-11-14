@@ -125,7 +125,7 @@
       "ref": "v0.0.9",
       "godot_version": "4.7",
       "license": "MIT",
-      "axes": ["large-project"],
+      "axes": ["large-project", "paused-tree"],
       "enabled": false,
       "claims": {
         "language": {
@@ -142,7 +142,7 @@
         },
         "axes": {
           "status": "unverified",
-          "source": "heavy-autoloads DROPPED: project.godot at v0.0.9 declares only 4 autoloads. large-project still unverified: 2927 tracked files at v0.0.9; measure by first-import time, not size. It is a game (networked MMORPG client), so the capability probe should also report paused-tree; it may boot to a login screen, which is enough for connect/enumerate/input"
+          "source": "heavy-autoloads DROPPED: project.godot at v0.0.9 declares only 4 autoloads. large-project still unverified: 2927 tracked files at v0.0.9; measure by first-import time, not size. paused-tree ASSIGNED, UNVERIFIED: it is a game (networked MMORPG client) and the only game in the set, so it is the sole candidate owner, but nobody has observed it pause its SceneTree at boot. The capability probe must settle that; if it does not pause, the axis needs a different owner. It may boot to a login screen, which is enough for connect/enumerate/input"
         }
       },
       "notes": "Candidate #2 and the only game in the active set. Pinned 2026-10-14 to the latest release tag v0.0.9 (published 2026-08-15, The Prologue). The clearest large-project candidate: an asset-heavy game is where first-import time, the dominant cost in this suite, is real rather than theoretical. Measuring that cost is itself a useful output.",
