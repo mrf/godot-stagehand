@@ -220,6 +220,22 @@ func test_query_unique_matches_node_name() -> void:
 	assert_array(results).contains([_button])
 
 
+func test_query_unique_matches_tooltip_text() -> void:
+	# Godot 4 renamed Control.hint_tooltip to tooltip_text.
+	_button.tooltip_text = "SelFixtureTipOnly"
+	var results: Array[Node] = _query("unique:SelFixtureTipOnly")
+	assert_array(results).contains([_button])
+
+
+func test_query_text_bracket_is_literal_not_glob() -> void:
+	# Godot's String.match has no [..] support, so `[` must not select glob mode.
+	var item: Label = auto_free(Label.new())
+	item.name = "%sBracketItem" % FIXTURE_TAG
+	item.text = "Slot [1] empty"
+	_root.add_child(item)
+	assert_array(_query("text:Slot [1]")).contains([item])
+
+
 func test_query_unique_no_match_returns_empty() -> void:
 	assert_int(_query("unique:NothingNamedLikeThis").size()).is_equal(0)
 
@@ -247,6 +263,24 @@ func test_chain_three_deep() -> void:
 func test_chain_group_scoped_to_ancestor() -> void:
 	var results: Array[Node] = _query("name:%sPanel >> group:sel_fixture_widgets" % FIXTURE_TAG)
 	assert_int(results.size()).is_equal(2)
+
+
+func test_chain_deduplicates_nodes_reached_through_several_scopes() -> void:
+	# Outer and inner are both Controls above the target, so scoping from each
+	# reaches it; it must still appear once.
+	var outer: Control = auto_free(Control.new())
+	outer.name = "%sOuter" % FIXTURE_TAG
+	_root.add_child(outer)
+	var inner: Control = auto_free(Control.new())
+	inner.name = "%sInner" % FIXTURE_TAG
+	outer.add_child(inner)
+	var target: Label = auto_free(Label.new())
+	target.name = "%sDedupTarget" % FIXTURE_TAG
+	inner.add_child(target)
+
+	var results: Array[Node] = _query("class:Control >> name:%sDedupTarget" % FIXTURE_TAG)
+	assert_int(results.size()).is_equal(1)
+	assert_object(results[0]).is_same(target)
 
 
 func test_chain_excludes_the_scope_node_itself() -> void:
@@ -318,6 +352,68 @@ func test_rank_demotes_ignore_filter_control() -> void:
 
 	assert_object(ranked[0]).is_same(clickable)
 	assert_object(ranked[1]).is_same(ignored)
+
+
+func test_rank_prefers_visible_button_over_hidden_button() -> void:
+	# Menus toggled with `visible` are the normal Godot pattern: a hidden menu's
+	# "Back" must not outrank the visible one that appears later in tree order.
+	var hidden: Button = auto_free(Button.new())
+	hidden.name = "%sHiddenBack" % FIXTURE_TAG
+	hidden.text = "Back"
+	hidden.visible = false
+	_root.add_child(hidden)
+	var shown: Button = auto_free(Button.new())
+	shown.name = "%sShownBack" % FIXTURE_TAG
+	shown.text = "Back"
+	_root.add_child(shown)
+
+	var nodes: Array[Node] = [hidden, shown]
+	var ranked: Array[Node] = SelectorEngine.rank_for_interaction(nodes)
+
+	assert_object(ranked[0]).is_same(shown)
+	assert_object(ranked[1]).is_same(hidden)
+
+
+func test_rank_demotes_button_under_hidden_ancestor() -> void:
+	var hidden_menu: Control = auto_free(Control.new())
+	hidden_menu.visible = false
+	_root.add_child(hidden_menu)
+	var in_hidden: Button = auto_free(Button.new())
+	hidden_menu.add_child(in_hidden)
+	var shown: Button = auto_free(Button.new())
+	_root.add_child(shown)
+
+	var nodes: Array[Node] = [in_hidden, shown]
+	var ranked: Array[Node] = SelectorEngine.rank_for_interaction(nodes)
+
+	assert_object(ranked[0]).is_same(shown)
+
+
+func test_rank_prefers_enabled_button_over_disabled_button() -> void:
+	var disabled: Button = auto_free(Button.new())
+	disabled.disabled = true
+	_root.add_child(disabled)
+	var enabled: Button = auto_free(Button.new())
+	_root.add_child(enabled)
+
+	var nodes: Array[Node] = [disabled, enabled]
+	var ranked: Array[Node] = SelectorEngine.rank_for_interaction(nodes)
+
+	assert_object(ranked[0]).is_same(enabled)
+
+
+func test_rank_visibility_stays_within_tier() -> void:
+	# Tiers still dominate: a hidden Button outranks a visible Label.
+	var hidden: Button = auto_free(Button.new())
+	hidden.visible = false
+	_root.add_child(hidden)
+	var shown_label: Label = auto_free(Label.new())
+	_root.add_child(shown_label)
+
+	var nodes: Array[Node] = [shown_label, hidden]
+	var ranked: Array[Node] = SelectorEngine.rank_for_interaction(nodes)
+
+	assert_object(ranked[0]).is_same(hidden)
 
 
 func test_rank_empty_input_returns_empty() -> void:

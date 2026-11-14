@@ -61,8 +61,12 @@ static func query_chained_selector(tree: SceneTree, selector_str: String) -> Arr
 	for i: int in range(1, parsed_parts.size()):
 		var next_result: Array[Node] = []
 		var current_selector: Dictionary = parsed_parts[i]
+		var seen: Dictionary = {}
 		for node: Node in current_matches:
-			next_result.append_array(_resolve_scoped(node, current_selector))
+			for match_node: Node in _resolve_scoped(node, current_selector):
+				if not seen.has(match_node):
+					seen[match_node] = true
+					next_result.append(match_node)
 		current_matches = next_result
 
 	return current_matches
@@ -389,8 +393,8 @@ static func _check_unique_match(node: Node, unique_identifier: String) -> bool:
 	if _matches_pattern(node.name, unique_identifier):
 		return true
 	# Check other likely unique identifiers via get() to avoid type errors
-	if "hint_tooltip" in node:
-		var val: Variant = node.get("hint_tooltip")
+	if "tooltip_text" in node:
+		var val: Variant = node.get("tooltip_text")
 		if val is String and str(val).match(unique_identifier):
 			return true
 	if "placeholder_text" in node:
@@ -417,7 +421,8 @@ static func _matches_pattern(text: String, pattern: String) -> bool:
 	if text.is_empty() or pattern.is_empty():
 		return false
 
-	if pattern.contains("*") or pattern.contains("?") or pattern.contains("["):
+	# String.match supports only `*` and `?` — `[` is a literal character.
+	if pattern.contains("*") or pattern.contains("?"):
 		return text.match(pattern)
 	return text.to_lower().contains(pattern.to_lower())
 
@@ -425,7 +430,7 @@ static func _matches_pattern(text: String, pattern: String) -> bool:
 ## Match node text against a text selector value.
 ## When [param exact] is true, the node text (whitespace-trimmed) must equal the
 ## pattern exactly, case-sensitively (the `text=` form). Otherwise the loose
-## `text:` semantics apply: glob match when the pattern contains *, ?, or [,
+## `text:` semantics apply: glob match when the pattern contains * or ?,
 ## else a case-insensitive substring match.
 static func _matches_text(text: String, pattern: String, exact: bool) -> bool:
 	if exact:
@@ -442,6 +447,8 @@ static func _matches_text(text: String, pattern: String, exact: bool) -> bool:
 ##   2. Other Controls that receive mouse input (mouse_filter != IGNORE).
 ##      Labels default to MOUSE_FILTER_IGNORE and therefore sort below buttons.
 ##   3. Everything else (ignore-filter Controls, Node2D, plain Nodes).
+## Within each tier, nodes that are visible in the tree and (for buttons)
+## enabled come first, so a hidden menu's "Back" never shadows the visible one.
 static func rank_for_interaction(nodes: Array[Node]) -> Array[Node]:
 	var buttons: Array[Node] = []
 	var interactive: Array[Node] = []
@@ -454,10 +461,21 @@ static func rank_for_interaction(nodes: Array[Node]) -> Array[Node]:
 		else:
 			rest.append(node)
 	var ranked: Array[Node] = []
-	ranked.append_array(buttons)
-	ranked.append_array(interactive)
-	ranked.append_array(rest)
+	for tier: Array[Node] in [buttons, interactive, rest]:
+		ranked.append_array(tier.filter(_is_actionable))
+		ranked.append_array(tier.filter(func(n: Node) -> bool: return not _is_actionable(n)))
 	return ranked
+
+
+## True when [param node] can plausibly receive a click right now: visible in
+## the tree (CanvasItems only — other nodes have no visibility) and not a
+## disabled button.
+static func _is_actionable(node: Node) -> bool:
+	if node is CanvasItem and not (node as CanvasItem).is_visible_in_tree():
+		return false
+	if node is BaseButton and (node as BaseButton).disabled:
+		return false
+	return true
 
 
 ## Parse a meta expression "key=value" or "key" into [key, expected_value].
