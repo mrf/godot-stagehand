@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or setup problem
+    url: https://github.com/mrf/godot-stagehand/blob/main/docs/troubleshooting.md
+    about: Won't connect, black screenshots, WSL bridging. Check Troubleshooting before filing a bug.
+  - name: Report a security vulnerability
+    url: https://github.com/mrf/godot-stagehand/blob/main/SECURITY.md
+    about: Authentication, WebSocket or unsafe-capability issues. Report privately, not as a public issue.

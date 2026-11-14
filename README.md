@@ -133,6 +133,12 @@ and strict-mode rules, the [addon sync contract](docs/addon-sync-contract.md)
 before editing any copy of the addon, and the
 [error model](docs/error-model.md) before adding a handler that can fail.
 
+## Reporting bugs / contributing
+
+File bugs and feature requests as [GitHub issues](https://github.com/mrf/godot-stagehand/issues/new/choose).
+See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR, and report security
+problems privately per [SECURITY.md](SECURITY.md).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

@@ -1,0 +1,77 @@
+name: Bug report
+description: Something in godot-stagehand misbehaves
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please check [Troubleshooting](https://github.com/mrf/godot-stagehand/blob/main/docs/troubleshooting.md) first.
+        **Security problems:** do not file them here. Follow [SECURITY.md](https://github.com/mrf/godot-stagehand/blob/main/SECURITY.md).
+  - type: input
+    id: stagehand-version
+    attributes:
+      label: godot-stagehand version
+      description: Output of `godot-stagehand --version`. If the addon version differs from the binary, give both.
+      placeholder: "0.5.2"
+    validations:
+      required: true
+  - type: input
+    id: godot-version
+    attributes:
+      label: Godot version
+      description: Exact version, e.g. `4.6.1.stable`. Say if it is a custom or mono build.
+      placeholder: "4.6.1.stable"
+    validations:
+      required: true
+  - type: dropdown
+    id: host-os
+    attributes:
+      label: Host OS
+      description: Where Godot runs. If the client and Godot are on different sides (for example the client in WSL and Godot on Windows), pick the option that matches and describe the split below.
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - WSL (Godot inside WSL)
+        - WSL client driving Windows Godot
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: frontend
+    attributes:
+      label: How are you driving Stagehand?
+      options:
+        - MCP client (Claude, or another agent)
+        - CLI one-shot command
+        - Scenario runner (`godot-stagehand run`)
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client name and version
+      description: Only if you chose the MCP client above.
+    validations:
+      required: false
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The command, tool call or scenario file that triggers it. A minimal Godot project is ideal.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log or trace
+      description: Godot output, the error returned by Stagehand, or `report.json` / `rpc-trace.json` from a scenario run. Remove your session token first.
+      render: shell
+    validations:
+      required: true
