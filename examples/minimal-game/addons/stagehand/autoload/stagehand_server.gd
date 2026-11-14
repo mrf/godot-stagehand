@@ -788,6 +788,9 @@ func _handle_get_game_state(_unused_params: Variant) -> Dictionary:
 		"current_scene": current_scene_path,
 		"fps": Engine.get_frames_per_second(),
 		"physics_ticks": Engine.get_physics_frames(),
+		# SceneTree.paused is not a node property, so this is the only way a
+		# safe-mode client can observe it (the host-compat capability probe).
+		"paused": get_tree().paused,
 		"window_size": {"x": size.x, "y": size.y},
 		"connected": true,
 		"engine_version": Engine.get_version_info()["string"],

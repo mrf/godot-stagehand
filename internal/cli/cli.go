@@ -42,7 +42,7 @@ func buildCommands() map[string]*command {
 	list := []*command{
 		cmdConnect, cmdStatus, cmdTree, cmdFind, cmdProperty, cmdCall,
 		cmdEval, cmdInput, cmdWait, cmdScreenshot, cmdPerformance, cmdScene,
-		cmdRun, cmdActions,
+		cmdRun, cmdActions, cmdHostcompatProbe,
 	}
 	byName := make(map[string]*command, len(list))
 	for _, c := range list {
