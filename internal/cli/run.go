@@ -17,7 +17,7 @@ var cmdRun = &command{
 	name: "run", usage: "<scenario.json> [--out-dir DIR]", connects: false,
 	summary: "Run a scenario file end to end and emit JSON, JUnit and artifacts",
 	run: func(ctx context.Context, e *env, cmd *command, args []string) error {
-		var outDir, jsonPath, junitPath, baselineDir, godotBin, token string
+		var outDir, jsonPath, junitPath, baselineDir, godotBin, token, projectPath string
 		var timeout time.Duration
 		var quiet bool
 		bind := func(fset *flag.FlagSet) {
@@ -26,6 +26,7 @@ var cmdRun = &command{
 			fset.StringVar(&junitPath, "junit", "", "write the JUnit XML here instead of <out-dir>/junit.xml")
 			fset.StringVar(&baselineDir, "baseline-dir", "", "override the scenario's screenshot baseline directory")
 			fset.StringVar(&godotBin, "godot-bin", "", "Godot binary for launch-mode scenarios (default: GODOT_BIN or PATH)")
+			fset.StringVar(&projectPath, "project-path", "", "override the scenario's target.project_path (launch mode; relative paths resolve against the working directory)")
 			fset.StringVar(&token, "token", "", "session secret for connect-mode scenarios")
 			fset.DurationVar(&timeout, "timeout", 0, "bound the whole run (default: none beyond per-step deadlines)")
 			fset.BoolVar(&quiet, "quiet", false, "suppress per-step progress output")
@@ -38,6 +39,11 @@ var cmdRun = &command{
 			sc, err := scenario.Load(fset.Arg(0))
 			if err != nil {
 				return usagef(err)
+			}
+			if projectPath != "" {
+				if err := sc.OverrideProjectPath(projectPath); err != nil {
+					return usagef(err)
+				}
 			}
 
 			var progress io.Writer

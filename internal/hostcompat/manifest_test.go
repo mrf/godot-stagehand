@@ -1,6 +1,7 @@
 package hostcompat
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -266,6 +267,42 @@ func TestAxisCoverageAndGaps(t *testing.T) {
 	c.Axes = []string{AxisEmbeddedSubwindows}
 	if got := manifestOf(a, b, c).AxisCoverage()[AxisEmbeddedSubwindows]; len(got) != 1 {
 		t.Errorf("disabled project excluded from coverage: %v", got)
+	}
+}
+
+// Amendment 5/7d: paused-tree and host-strict-warnings are real failure
+// classes the original six axes could not express. They must be known axes (so
+// a project may claim them) and must show up as gaps while nothing covers them.
+func TestPausedTreeAndStrictWarningsAxesAreKnownAndReportedWhenMissing(t *testing.T) {
+	for _, axis := range []string{AxisPausedTree, AxisHostStrictWarnings} {
+		if !slices.Contains(KnownAxes(), axis) {
+			t.Errorf("axis %q is not in the known set", axis)
+		}
+	}
+
+	m := manifestOf(baseProject())
+	for _, axis := range []string{AxisPausedTree, AxisHostStrictWarnings} {
+		if !slices.Contains(m.MissingAxes(), axis) {
+			t.Errorf("uncovered axis %q was not reported by MissingAxes", axis)
+		}
+	}
+
+	p := baseProject()
+	p.Axes = []string{AxisPausedTree}
+	if err := manifestOf(p).Validate(); err != nil {
+		t.Errorf("a project claiming %q fails validation: %v", AxisPausedTree, err)
+	}
+}
+
+// host-strict-warnings is covered by CI overriding the host's warnings config
+// on every host, not by finding a strict project. That must be a deliberate,
+// named exception — never "any missing axis is fine".
+func TestSynthesisedAxesAreExactlyHostStrictWarnings(t *testing.T) {
+	if got := SynthesisedAxes(); !slices.Equal(got, []string{AxisHostStrictWarnings}) {
+		t.Errorf("SynthesisedAxes() = %v, want only %q", got, AxisHostStrictWarnings)
+	}
+	if !IsSynthesisedAxis(AxisHostStrictWarnings) || IsSynthesisedAxis(AxisPausedTree) {
+		t.Error("IsSynthesisedAxis disagrees with SynthesisedAxes")
 	}
 }
 

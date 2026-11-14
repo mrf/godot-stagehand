@@ -51,6 +51,14 @@ const (
 	// AxisLargeProject: the host has enough assets that first import dominates
 	// the run, which is a real cost the suite must budget for.
 	AxisLargeProject = "large-project"
+	// AxisPausedTree: the host pauses its SceneTree at boot, so the TCP
+	// connection is accepted but the WebSocket handshake never completes
+	// (sprh). Common in shipping games, absent from every tool-app candidate.
+	AxisPausedTree = "paused-tree"
+	// AxisHostStrictWarnings: the host runs gdscript/warnings/*=2 with
+	// exclude_addons=false, so any warning in the addon is a load failure.
+	// Synthesised by CI rather than owned by a project; see synthesisedAxes.
+	AxisHostStrictWarnings = "host-strict-warnings"
 )
 
 // knownAxes is the closed set. A typo'd axis would silently create a phantom
@@ -62,10 +70,25 @@ var knownAxes = []string{
 	AxisCustomInput,
 	AxisHeavyAutoloads,
 	AxisLargeProject,
+	AxisPausedTree,
+	AxisHostStrictWarnings,
 }
+
+// synthesisedAxes are covered by the CI job rewriting the host's config on
+// every project, not by any project having the property. MissingAxes still
+// reports them — the gap is real until the synthesis exists — and callers that
+// accept a synthesised axis say so explicitly via IsSynthesisedAxis.
+var synthesisedAxes = []string{AxisHostStrictWarnings}
 
 // KnownAxes returns the closed stress-axis set in declaration order.
 func KnownAxes() []string { return slices.Clone(knownAxes) }
+
+// SynthesisedAxes returns the axes CI synthesises instead of a project owning
+// them.
+func SynthesisedAxes() []string { return slices.Clone(synthesisedAxes) }
+
+// IsSynthesisedAxis reports whether CI synthesises the axis on every host.
+func IsSynthesisedAxis(axis string) bool { return slices.Contains(synthesisedAxes, axis) }
 
 // Claim keys. Each names a fact about a third-party project that we must not
 // take on reputation.
