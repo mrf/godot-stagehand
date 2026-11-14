@@ -148,6 +148,8 @@ static func input_action(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var action: String = params.get("action", "")
 	if action.is_empty():
 		return ERRORS.missing_param("action")
+	if not InputMap.has_action(StringName(action)):
+		return _unknown_action(action)
 	var strength: float = _v_float(params.get("strength", 1.0))
 	var hold_ms: int = _v_int(params.get("hold_ms", 100))
 
@@ -155,6 +157,48 @@ static func input_action(tree: SceneTree, params: Dictionary) -> Dictionary:
 	_release_action_after(tree, action, hold_ms / 1000.0)
 
 	return {"success": true, "action": action}
+
+
+## Most bigram-similar names offered by [method _unknown_action].
+const _SIMILAR_ACTION_LIMIT: int = 5
+## Minimum [method String.similarity] for an action to count as "similar".
+const _SIMILAR_ACTION_THRESHOLD: float = 0.3
+
+
+## Typed refusal for an action [InputMap] does not define. [method
+## Input.parse_input_event] accepts any action name and does nothing for an
+## unknown one, so without this check a guessed name reports success on a game
+## that never reacted.
+static func _unknown_action(action: String) -> Dictionary:
+	var scored: Array[Dictionary] = []
+	var all_names: Array[String] = []
+	for known: StringName in InputMap.get_actions():
+		var name: String = String(known)
+		all_names.append(name)
+		var score: float = action.similarity(name)
+		if score >= _SIMILAR_ACTION_THRESHOLD:
+			scored.append({"name": name, "score": score})
+	scored.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var score_a: float = a["score"]
+		var score_b: float = b["score"]
+		return score_a > score_b
+	)
+	var similar: Array[String] = []
+	for entry: Dictionary in scored.slice(0, _SIMILAR_ACTION_LIMIT):
+		similar.append(str(entry["name"]))
+	var hint: String
+	if similar.is_empty():
+		all_names.sort()
+		hint = "No similar actions. Defined actions include: %s." % ", ".join(
+			all_names.slice(0, _SIMILAR_ACTION_LIMIT * 2)
+		)
+	else:
+		hint = "Did you mean: %s?" % ", ".join(similar)
+	return ERRORS.make(ERRORS.INVALID_PARAMS, "Unknown input action: %s" % action, {
+		"action": action,
+		"similar_actions": similar,
+		"next_action": hint,
+	})
 
 
 ## Simulate pressing and releasing a keyboard key.
@@ -397,9 +441,16 @@ static func _gui_delivery_confirmed(target: ClickTarget, expected_node: Node) ->
 
 
 static func _release_mouse_after(tree: SceneTree, viewport: Viewport, pos: Vector2, btn: int, delay_sec: float) -> void:
+	# Held weakly: a lambda capturing a viewport that is freed during the hold
+	# errors in the engine before the body can run, so the guard has to be the
+	# capture itself.
+	var viewport_ref: WeakRef = weakref(viewport)
 	var timer: SceneTreeTimer = tree.create_timer(delay_sec, true, false, true)
 	var _err: int = timer.timeout.connect(func() -> void:
-		_push_mouse_button(viewport, pos, btn, false, false)
+		var live: Viewport = viewport_ref.get_ref()
+		if live == null:
+			return
+		_push_mouse_button(live, pos, btn, false, false)
 	)
 
 
@@ -509,17 +560,23 @@ static func input_text(tree: SceneTree, params: Dictionary) -> Dictionary:
 	var chars: PackedStringArray = text.split("", false)
 	var total_delay: float = 0.0
 	for ch: String in chars:
-		var event: InputEventKey = InputEventKey.new()
-		event.unicode = ch.unicode_at(0)
-		event.keycode = KEY_NONE as Key
-		event.pressed = true
-		Input.parse_input_event(event)
+		if ch == "\n":
+			# Unicode 10 on KEY_NONE neither submits a LineEdit nor breaks a
+			# line in a TextEdit; only a real Enter key does both.
+			Input.parse_input_event(_make_key_event(KEY_ENTER, 0, true))
+			Input.parse_input_event(_make_key_event(KEY_ENTER, 0, false))
+		else:
+			var event: InputEventKey = InputEventKey.new()
+			event.unicode = ch.unicode_at(0)
+			event.keycode = KEY_NONE as Key
+			event.pressed = true
+			Input.parse_input_event(event)
 
-		var release_event: InputEventKey = InputEventKey.new()
-		release_event.unicode = ch.unicode_at(0)
-		release_event.keycode = KEY_NONE as Key
-		release_event.pressed = false
-		Input.parse_input_event(release_event)
+			var release_event: InputEventKey = InputEventKey.new()
+			release_event.unicode = ch.unicode_at(0)
+			release_event.keycode = KEY_NONE as Key
+			release_event.pressed = false
+			Input.parse_input_event(release_event)
 
 		if delay_ms > 0:
 			await tree.create_timer(delay_ms / 1000.0, true, false, true).timeout
@@ -814,7 +871,14 @@ static func _blocking_modal(viewport: Viewport, point: Vector2) -> Window:
 	var window: Window = _frontmost_modal(viewport)
 	if window == null:
 		return null
-	if Rect2(Vector2(window.position), Vector2(window.size)).has_point(point):
+	# The embedded title bar is drawn above the client rect but belongs to the
+	# dialog (drag handle, close button), so a press there is not "outside".
+	var title_height: float = 0.0 if window.borderless else float(window.get_theme_constant("title_height"))
+	var rect: Rect2 = Rect2(
+		Vector2(float(window.position.x), float(window.position.y) - title_height),
+		Vector2(float(window.size.x), float(window.size.y) + title_height)
+	)
+	if rect.has_point(point):
 		return null
 	return window
 

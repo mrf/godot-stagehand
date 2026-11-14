@@ -394,6 +394,26 @@ func test_action_reports_the_action_it_sent() -> void:
 	assert_str(str(result.get("action"))).is_equal("ui_cancel")
 
 
+func test_action_unknown_action_returns_typed_error() -> void:
+	var result: Dictionary = StagehandInputSimulator.input_action(
+		get_tree(), {"action": "no_such_action"}
+	)
+	assert_bool(result.get("success", false)).is_false()
+	assert_str(str(result.get("error_code", ""))).is_equal("invalid_params")
+	assert_str(str(result.get("error", ""))).contains("no_such_action")
+	await get_tree().process_frame
+	# Nothing was pushed for an action the game does not define.
+	assert_int(_recorder.of_type("InputEventAction").size()).is_equal(0)
+
+
+func test_action_unknown_action_next_action_lists_similar_actions() -> void:
+	var result: Dictionary = StagehandInputSimulator.input_action(
+		get_tree(), {"action": "ui_acept"}
+	)
+	var details: Dictionary = result.get("details", {})
+	assert_str(str(details.get("next_action", ""))).contains("ui_accept")
+
+
 func test_action_missing_action_returns_error() -> void:
 	var result: Dictionary = StagehandInputSimulator.input_action(get_tree(), {})
 	assert_str(str(result.get("error", ""))).contains("Missing required parameter: action")
@@ -421,6 +441,46 @@ func test_text_sets_unicode_on_key_events() -> void:
 	var event: InputEventKey = _recorder.first_of_type("InputEventKey")
 	assert_object(event).is_not_null()
 	assert_int(event.unicode).is_equal("Z".unicode_at(0))
+
+
+func test_text_newline_submits_a_line_edit() -> void:
+	var line_edit: LineEdit = auto_free(LineEdit.new())
+	add_child(line_edit)
+	line_edit.grab_focus()
+	await get_tree().process_frame
+	var submitted: Array[String] = []
+	line_edit.text_submitted.connect(func(t: String) -> void: submitted.append(t))
+
+	await StagehandInputSimulator.input_text(get_tree(), {"text": "a\n", "delay_ms": 0})
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	assert_str(line_edit.text).is_equal("a")
+	assert_array(submitted).is_equal(["a"])
+
+
+func test_text_newline_inserts_a_line_break_in_a_text_edit() -> void:
+	var text_edit: TextEdit = auto_free(TextEdit.new())
+	add_child(text_edit)
+	text_edit.grab_focus()
+	await get_tree().process_frame
+
+	await StagehandInputSimulator.input_text(get_tree(), {"text": "a\nb", "delay_ms": 0})
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	assert_str(text_edit.text).is_equal("a\nb")
+
+
+func test_mouse_release_after_the_viewport_is_freed_is_harmless() -> void:
+	var viewport: SubViewport = SubViewport.new()
+	add_child(viewport)
+	StagehandInputSimulator._release_mouse_after(
+		get_tree(), viewport, Vector2.ZERO, MOUSE_BUTTON_LEFT, 0.05
+	)
+	viewport.free()
+	await get_tree().create_timer(0.15, true, false, true).timeout
+	assert_bool(is_instance_valid(viewport)).is_false()
 
 
 func test_text_echoes_what_it_typed() -> void:
