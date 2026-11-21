@@ -69,16 +69,25 @@ if [[ ! -x "${GODOT_BIN}" ]]; then
     exit 1
 fi
 
-# diagnostics <project-dir> [extra godot args...] — print every warning/error
-# line from a headless project load. Always succeeds; callers decide what an
-# empty result means. Pass `--editor` to also compile the editor-only scripts.
+# A few frames after startup the editor loads every script in the project
+# (observed on 4.4 between frames 5 and 20). `--quit` stops after one
+# iteration, so with it that pass ran or not depending on machine speed. A
+# fixed frame budget makes the editor pass cover it every time.
+readonly EDITOR_QUIT_AFTER_FRAMES=300
+
+# diagnostics <project-dir> <game|editor> — print every warning/error line
+# from a headless project load. Always succeeds; callers decide what an empty
+# result means. `editor` also compiles the editor-only scripts.
 diagnostics() {
-    local project="$1" log
-    shift
+    local project="$1" mode="$2" log
+    local -a run_args=(--quit)
+    if [[ "${mode}" == editor ]]; then
+        run_args=(--editor --quit-after "${EDITOR_QUIT_AFTER_FRAMES}")
+    fi
     log="$(mktemp)"
     # `|| true`: --quit reports success even on compile failure, and the log is
     # the only signal. Never let the exit code decide.
-    "${GODOT_BIN}" --headless "$@" --path "${project}" --quit >"${log}" 2>&1 || true
+    "${GODOT_BIN}" --headless "${run_args[@]}" --path "${project}" >"${log}" 2>&1 || true
     # -A1 pulls in the "at: GDScript::reload (res://...gd:NN)" line that Godot
     # prints under each diagnostic; the path lives there, not on the message
     # line. It cannot produce false positives on its own — context is only
@@ -87,15 +96,27 @@ diagnostics() {
     rm -f "${log}"
 }
 
+# Directories the scratch copy hides from Godot with a .gdignore. Vendored
+# gdUnit4 uses 4.5+ syntax (@abstract) and cannot parse on 4.3/4.4, and
+# test/ is its suite (every script extends GdUnitTestSuite); the GdUnit4 CI
+# job covers both on its own Godot version. Never list anything that contains
+# addons/stagehand.
+readonly GDIGNORED_DIRS=("addons/gdUnit4" "test")
+
 # scratch_project <project-dir> — copy the given project somewhere writable,
-# minus the .godot import cache, and echo the path. Godot rewrites
-# project.godot on load, so the gate must never run against the working tree
-# copy.
+# minus the .godot import cache and GDIGNORED_DIRS, and echo the path. Godot
+# rewrites project.godot on load, so the gate must never run against the
+# working tree copy.
 scratch_project() {
-    local src="$1" dir
+    local src="$1" dir ignored
     dir="$(mktemp -d)/$(basename "${src}")"
     cp -R "${src}" "${dir}"
     rm -rf "${dir}/.godot"
+    for ignored in "${GDIGNORED_DIRS[@]}"; do
+        if [[ -d "${dir}/${ignored}" ]]; then
+            touch "${dir}/${ignored}/.gdignore"
+        fi
+    done
     echo "${dir}"
 }
 
@@ -105,11 +126,7 @@ cmd_check() {
     for src in "${PROJECT}" "${EXAMPLE_PROJECT}"; do
         for mode in game editor; do
             project="$(scratch_project "${src}")"
-            if [[ "${mode}" == editor ]]; then
-                found="$(diagnostics "${project}" --editor)"
-            else
-                found="$(diagnostics "${project}")"
-            fi
+            found="$(diagnostics "${project}" "${mode}")"
             if [[ -n "${found}" ]]; then
                 echo "GDScript warnings-as-errors violations detected in ${src} (${mode}-mode load):"
                 echo "${found}"
@@ -126,7 +143,7 @@ cmd_selftest() {
     local project found
     project="$(scratch_project "${PROJECT}")"
     printf '%s' "${PROBE_SOURCE}" >>"${project}/${PROBE_FILE}"
-    found="$(diagnostics "${project}")"
+    found="$(diagnostics "${project}" game)"
     if [[ -z "${found}" ]]; then
         echo "ERROR: the strict-warning gate is DISARMED." >&2
         echo "A deliberate untyped_declaration violation was appended to" >&2
@@ -147,7 +164,7 @@ cmd_selftest() {
     # Editor-mode negative control: a violation in an editor-only script.
     project="$(scratch_project "${PROJECT}")"
     printf '%s' "${PROBE_SOURCE}" >>"${project}/${EDITOR_PROBE_FILE}"
-    found="$(diagnostics "${project}" --editor)"
+    found="$(diagnostics "${project}" editor)"
     if ! grep -q "${EDITOR_PROBE_FILE}" <<<"${found}"; then
         echo "ERROR: the editor-mode gate is DISARMED." >&2
         echo "A deliberate untyped_declaration violation was appended to" >&2
