@@ -242,7 +242,10 @@ jobs:
   #
   # The scenario is deliberately screenshot-free so it needs no display. Visual
   # gates are covered by docs/visual-smoke-contract.md and need Xvfb or a real
-  # screen; see the "Headless Godot cannot render" note in the README.
+  # screen; see the "Headless Godot cannot render" note in the README. The
+  # godot-tagged suite does contain headed tests (hostcompat's template run
+  # takes a screenshot), so that one step runs under xvfb-run;
+  # TestCIScenarioSmokeGodotSuiteHasDisplay keeps it there.
   #
   # "Run the full godot-tagged suite" below is every `-tags=godot` test in the
   # module (`./...`, no `-run` filter) — not just this file's two scenario
@@ -281,8 +284,11 @@ jobs:
           source scripts/ci-install-godot.sh
           echo "GODOT_BIN=${GODOT_BIN}" >> "$GITHUB_ENV"
 
+      - name: Install Xvfb
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb
+
       - name: Run the full godot-tagged suite against real Godot
-        run: go test -tags=godot -count=1 -timeout=10m ./...
+        run: xvfb-run -a go test -tags=godot -count=1 -timeout=10m ./...
 
       - name: Reproduce the documented CI invocation
         run: |
