@@ -55,8 +55,9 @@ gdscript/warnings/untyped_declaration=2
 ; gdUnit4 is vendored third-party code that does not meet this bar (30
 ; inferred_declaration warnings), and the GdUnit4 job loads it for real, so it
 ; keeps level 0. On 4.3-4.5 `exclude_addons=false` has no per-directory
-; equivalent and gates gdUnit4 too -- harmless, because the only jobs on those
-; versions load the autoload and main scene, never gdUnit4's runner.
+; equivalent and gates gdUnit4 too, and gdUnit4 does not even parse on 4.3/4.4,
+; so scripts/ci-gdscript-warnings.sh hides it (and test/) with a .gdignore in
+; its scratch copy rather than relying on this setting.
 gdscript/warnings/exclude_addons=false
 gdscript/warnings/directory_rules={
 "res://addons/gdUnit4": 0

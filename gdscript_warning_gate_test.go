@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -158,6 +160,53 @@ func TestWarningGateLoadsEditorScripts(t *testing.T) {
 	}
 	if !strings.HasPrefix(m[1], "addons/stagehand/editor/") {
 		t.Errorf("EDITOR_PROBE_FILE = %q, want a file under addons/stagehand/editor/", m[1])
+	}
+}
+
+// TestWarningGateEditorPassIsDeterministicAndIgnoresGdUnit4 guards the race
+// behind godot-stagehand-ci-compat-44-gdunit-editor-lhqo. A few frames after
+// startup the editor loads every script in the project; `--quit` stops after
+// one iteration, so whether that pass ran was machine timing (clean locally,
+// red on the CI 4.4 runner). The editor pass must run a fixed frame budget,
+// and because that pass then always compiles vendored gdUnit4 — which uses
+// 4.5+ syntax such as @abstract and so cannot parse on 4.3/4.4 — the scratch
+// copy must .gdignore gdUnit4 and the suite that extends it, and nothing under
+// addons/stagehand.
+func TestWarningGateEditorPassIsDeterministicAndIgnoresGdUnit4(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(addonInstallRepoRoot(t), filepath.FromSlash(warningGateScript)))
+	if err != nil {
+		t.Fatalf("read %s: %v", warningGateScript, err)
+	}
+	script := string(data)
+
+	m := regexp.MustCompile(`(?m)^readonly EDITOR_QUIT_AFTER_FRAMES=(\d+)$`).FindStringSubmatch(script)
+	if m == nil {
+		t.Fatalf("%s declares no EDITOR_QUIT_AFTER_FRAMES: the editor pass races its own full-script load against --quit", warningGateScript)
+	}
+	if frames, _ := strconv.Atoi(m[1]); frames < 100 {
+		t.Errorf("EDITOR_QUIT_AFTER_FRAMES = %d, want >= 100: the full-script pass was observed firing as late as frame 20", frames)
+	}
+	if !strings.Contains(script, `--editor --quit-after "${EDITOR_QUIT_AFTER_FRAMES}"`) {
+		t.Errorf("%s does not pass --quit-after \"${EDITOR_QUIT_AFTER_FRAMES}\" alongside --editor", warningGateScript)
+	}
+
+	m = regexp.MustCompile(`(?m)^readonly GDIGNORED_DIRS=\(([^)]*)\)$`).FindStringSubmatch(script)
+	if m == nil {
+		t.Fatalf("%s declares no GDIGNORED_DIRS: vendored gdUnit4 fails to parse on Godot 4.3/4.4 once the editor pass loads it", warningGateScript)
+	}
+	ignored := strings.Fields(strings.ReplaceAll(m[1], `"`, ""))
+	for _, want := range []string{"addons/gdUnit4", "test"} {
+		if !slices.Contains(ignored, want) {
+			t.Errorf("GDIGNORED_DIRS = %v, missing %q", ignored, want)
+		}
+	}
+	for _, dir := range ignored {
+		if dir == "addons" || dir == "addons/stagehand" || strings.HasPrefix(dir, "addons/stagehand/") {
+			t.Errorf("GDIGNORED_DIRS contains %q, which hides the stagehand addon from the gate", dir)
+		}
+	}
+	if !strings.Contains(script, `.gdignore`) {
+		t.Errorf("%s never writes a .gdignore: GDIGNORED_DIRS has no effect", warningGateScript)
 	}
 }
 
