@@ -44,7 +44,7 @@ func fixtureOutput(t *testing.T, outPath string) string {
 // the project is imported once, to completion, before any game process is
 // spawned — so a fan-out of concurrent launches never cold-imports in parallel.
 func TestLaunchImportsBeforeSpawningGame(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+	isolateTempAndCache(t)
 	projectPath, binPath, outPath := isolationFixture(t)
 
 	cfg := Config{
@@ -75,7 +75,7 @@ func TestLaunchIsolatesUserDataDir(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("XDG-based isolation assertions are Linux-specific")
 	}
-	t.Setenv("TMPDIR", t.TempDir())
+	isolateTempAndCache(t)
 	projectPath, binPath, outPath := isolationFixture(t)
 
 	userDataDir := filepath.Join(t.TempDir(), "instance-user-data")
@@ -109,7 +109,7 @@ func TestLaunchGivesEachLaunchItsOwnUserDataDir(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("XDG-based isolation assertions are Linux-specific")
 	}
-	t.Setenv("TMPDIR", t.TempDir())
+	isolateTempAndCache(t)
 	projectPath, binPath, outPath := isolationFixture(t)
 
 	for i := 0; i < 2; i++ {
@@ -149,7 +149,7 @@ func TestLaunchShareUserDataOptOut(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("XDG-based isolation assertions are Linux-specific")
 	}
-	t.Setenv("TMPDIR", t.TempDir())
+	isolateTempAndCache(t)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(t.TempDir(), "real-user-data"))
 	projectPath, binPath, outPath := isolationFixture(t)
 
@@ -173,7 +173,7 @@ func TestLaunchShareUserDataOptOut(t *testing.T) {
 // TestLaunchSkipImport verifies the import step can be skipped for callers that
 // manage importing themselves.
 func TestLaunchSkipImport(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+	isolateTempAndCache(t)
 	projectPath, binPath, outPath := isolationFixture(t)
 
 	cfg := Config{

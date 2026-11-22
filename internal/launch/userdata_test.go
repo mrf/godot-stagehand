@@ -102,7 +102,7 @@ func TestUserDataUnsupportedReasonCrossOS(t *testing.T) {
 // TestPrepareUserDataDirCreatesDistinctRoots verifies that two launches of the
 // same project get separate, pre-created user data roots.
 func TestPrepareUserDataDirCreatesDistinctRoots(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+	isolateTempAndCache(t)
 
 	first, err := prepareUserDataDir("", "linux")
 	if err != nil {
