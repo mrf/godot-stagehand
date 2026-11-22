@@ -217,9 +217,9 @@ Actions fall into three groups:
   components (`0.1` arrives as `0.10000000149…`) match the literal you wrote.
   `equals`, `not_equals` and array `contains` use it, and `greater_than` /
   `less_than` do not pass for operands that are equal under it.
-  `assert_node_count` is always exact. Unlike this, the addon's
-  `wait_for_property` (and `wait property`) compares with GDScript's exact `==`
-  and takes no tolerance. `assert_performance` fails the step
+  `assert_node_count` is always exact. The addon's `wait_for_property` (and
+  `wait property --tolerance`) applies the same rule with the same default.
+  `assert_performance` fails the step
   when the addon's verdict is false; it defaults to one instantaneous sample,
   but accepts `warmup_ms`, `sample_count` (or `duration_ms` +
   `sample_interval_ms`), and a `statistic` (`min`, `max`, `mean`, `median`,

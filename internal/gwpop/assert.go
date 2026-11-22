@@ -64,8 +64,8 @@ func Compare(operator string, actual, expected any) (bool, error) {
 // float32-widened 0.1 is not "greater than" 0.1. Non-numeric values compare
 // with reflect.DeepEqual.
 //
-// The addon's wait_for_property compares with GDScript's exact ==, so it does
-// not apply a tolerance; see docs/cli.md.
+// The addon's wait_for_property applies the same rule (waiter.gd's
+// _values_equal) with the same default.
 func CompareWithTolerance(operator string, actual, expected any, tolerance float64) (bool, error) {
 	if math.IsNaN(tolerance) || math.IsInf(tolerance, 0) || tolerance < 0 {
 		return false, fmt.Errorf("tolerance must be a finite number >= 0, got %v", tolerance)

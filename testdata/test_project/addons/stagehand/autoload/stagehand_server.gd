@@ -897,10 +897,17 @@ func _handle_wait_for_property(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
 	var invalid: Dictionary = PARAMS.check(p, {
 		"selector": TYPE_STRING, "property": TYPE_STRING, "operator": TYPE_STRING,
-		"timeout_ms": TYPE_INT, "poll_interval_ms": TYPE_INT,
+		"timeout_ms": TYPE_INT, "poll_interval_ms": TYPE_INT, "tolerance": TYPE_FLOAT,
 	})
 	if not invalid.is_empty():
 		return invalid
+	var tolerance: float = PARAMS.get_float(p, "tolerance", WAITER.DEFAULT_TOLERANCE)
+	if tolerance < 0.0:
+		return ERRORS.make(
+			ERRORS.INVALID_PARAMS,
+			"Parameter 'tolerance' must be >= 0, got %s" % tolerance,
+			{"parameter": "tolerance", "got": tolerance}
+		)
 	var selector: String = PARAMS.get_string(p, "selector", "")
 	if selector.is_empty():
 		return ERRORS.missing_param("selector")
@@ -916,7 +923,7 @@ func _handle_wait_for_property(params: Variant) -> Dictionary:
 
 	var waiter: WAITER = WAITER.new()
 	add_child(waiter)
-	var result: Dictionary = await waiter.wait_for_property(selector, property, operator, expected_value, timeout_ms, poll_interval_ms)
+	var result: Dictionary = await waiter.wait_for_property(selector, property, operator, expected_value, timeout_ms, poll_interval_ms, tolerance)
 	waiter.queue_free()
 	return result
 

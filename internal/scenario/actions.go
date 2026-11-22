@@ -127,7 +127,10 @@ func validateStepSemantics(step Step) error {
 		return validateAssertion(step)
 	case "wait_for_property":
 		operator, _ := step.With["operator"].(string)
-		return validateOperator(operator, step.With, "expected_value")
+		if err := validateOperator(operator, step.With, "expected_value"); err != nil {
+			return err
+		}
+		return validateTolerance(step.With)
 	}
 	return nil
 }

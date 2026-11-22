@@ -159,6 +159,12 @@ func test_waits_reject_wrong_types() -> void:
 	_assert_invalid_params(
 		await _server._handle_wait_for_property({"selector": "Node", "property": "x", "operator": 5}), "operator"
 	)
+	_assert_invalid_params(
+		await _server._handle_wait_for_property({"selector": "Node", "property": "x", "operator": "equals", "tolerance": "tight"}), "tolerance"
+	)
+	_assert_invalid_params(
+		await _server._handle_wait_for_property({"selector": "Node", "property": "x", "operator": "equals", "tolerance": -0.5}), "tolerance"
+	)
 
 
 func test_performance_handlers_reject_wrong_types() -> void:

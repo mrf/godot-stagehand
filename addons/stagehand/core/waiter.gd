@@ -8,6 +8,12 @@ const SELF_PROTECTION := preload("res://addons/stagehand/core/self_protection.gd
 ## Widest signal wait_for_signal can capture; see _make_signal_capture.
 const MAX_SIGNAL_ARGS: int = 8
 
+## Default numeric tolerance for property conditions; matches
+## gwpop.DefaultFloatTolerance. Godot floats are float32 widened to float64, so
+## an exact == never matches the literal a caller wrote (0.1 reads back as
+## 0.10000000149011612).
+const DEFAULT_TOLERANCE: float = 1e-6
+
 
 ## Polling mechanism that waits for a condition to become true.
 ## Returns true if condition was met within timeout, false otherwise.
@@ -29,7 +35,12 @@ func wait_condition(condition_func: Callable, timeout_ms: int = 10000, poll_inte
 ## Evaluate different types of property conditions. Reads a property, a
 ## `.`/`:` sub-path, or metadata — never a get_<name>() method, which could run
 ## arbitrary game code in safe mode.
-func evaluate_property_condition(node: Node, property_name: String, operator: String, expected_value: Variant) -> bool:
+##
+## Two numbers are equal when |a-b| <= tolerance * max(1, |a|, |b|) (the rule
+## gwpop.CompareWithTolerance uses); tolerance 0 is exact. equals, not_equals,
+## greater_than and less_than all use it, and the ordering operators fail for
+## operands that are equal under it.
+func evaluate_property_condition(node: Node, property_name: String, operator: String, expected_value: Variant, tolerance: float = DEFAULT_TOLERANCE) -> bool:
 	var actual_value: Variant = null
 	if property_name in node:
 		actual_value = node.get(property_name)
@@ -44,9 +55,9 @@ func evaluate_property_condition(node: Node, property_name: String, operator: St
 
 	match operator:
 		"equals":
-			return actual_value == _parse_stringified_expected(expected_value, actual_value)
+			return _values_equal(actual_value, _parse_stringified_expected(expected_value, actual_value), tolerance)
 		"not_equals":
-			return actual_value != _parse_stringified_expected(expected_value, actual_value)
+			return not _values_equal(actual_value, _parse_stringified_expected(expected_value, actual_value), tolerance)
 		"exists":
 			return actual_value != null
 		"contains":
@@ -67,14 +78,14 @@ func evaluate_property_condition(node: Node, property_name: String, operator: St
 			var actual_f: float = _to_float(actual_value)
 			var expected_f: float = _to_float(parsed_expected)
 			if (actual_value is float or actual_value is int) and (parsed_expected is float or parsed_expected is int):
-				return actual_f > expected_f
+				return actual_f > expected_f and not _within_tolerance(actual_f, expected_f, tolerance)
 			return false
 		"less_than":
 			var parsed_expected: Variant = _parse_stringified_expected(expected_value, actual_value)
 			var actual_f: float = _to_float(actual_value)
 			var expected_f: float = _to_float(parsed_expected)
 			if (actual_value is float or actual_value is int) and (parsed_expected is float or parsed_expected is int):
-				return actual_f < expected_f
+				return actual_f < expected_f and not _within_tolerance(actual_f, expected_f, tolerance)
 			return false
 		_:
 			push_error("Unknown operator: " + operator)
@@ -207,7 +218,7 @@ func wait_for_signal(selector: String, signal_name: String, timeout_ms: int = 50
 
 
 ## Wait for a node's property to satisfy a condition.
-func wait_for_property(selector: String, property: String, operator: String, expected_value: Variant, timeout_ms: int = 10000, poll_interval_ms: int = 100) -> Dictionary:
+func wait_for_property(selector: String, property: String, operator: String, expected_value: Variant, timeout_ms: int = 10000, poll_interval_ms: int = 100, tolerance: float = DEFAULT_TOLERANCE) -> Dictionary:
 	if SELF_PROTECTION.is_forbidden_property(property):
 		return SELF_PROTECTION.forbidden_property_error(selector, property)
 	# A condition on Stagehand's own node is a read oracle for its private state
@@ -221,7 +232,7 @@ func wait_for_property(selector: String, property: String, operator: String, exp
 		var results: Array[Node] = SELECTOR_ENGINE.query(get_tree(), selector)
 		if results.is_empty() or SELF_PROTECTION.is_protected(results[0]):
 			return false
-		return evaluate_property_condition(results[0], property, operator, expected_value)
+		return evaluate_property_condition(results[0], property, operator, expected_value, tolerance)
 
 	var success: bool = await wait_condition(condition, timeout_ms, poll_interval_ms)
 
@@ -304,6 +315,21 @@ static func _node_freed(selector: String, phase: String, elapsed_ms: int) -> Dic
 		"elapsed_ms": elapsed_ms,
 		"next_action": "Wait on a node that outlives the operation, or re-query after the scene settles.",
 	})
+
+
+static func _within_tolerance(a: float, b: float, tolerance: float) -> bool:
+	return absf(a - b) <= tolerance * maxf(1.0, maxf(absf(a), absf(b)))
+
+
+static func _is_number(v: Variant) -> bool:
+	return v is float or v is int
+
+
+## Numbers compare within tolerance; everything else keeps GDScript's exact ==.
+static func _values_equal(a: Variant, b: Variant, tolerance: float) -> bool:
+	if _is_number(a) and _is_number(b):
+		return _within_tolerance(_to_float(a), _to_float(b), tolerance)
+	return a == b
 
 
 static func _to_float(v: Variant) -> float:

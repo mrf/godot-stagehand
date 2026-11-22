@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -350,6 +351,25 @@ func TestOneShotCommandsCoverTheDocumentedSurface(t *testing.T) {
 				t.Errorf("last method = %q, want %q", got, testCase.method)
 			}
 		})
+	}
+}
+
+func TestWaitPropertyToleranceFlag(t *testing.T) {
+	withToken(t)
+	stub := newStubGodot(t, nil)
+	port := stub.portFlag(t)
+	base := []string{"wait", "property", port, "name:Hud", "x", "--operator=equals", "--expected=0.1", "--timeout-ms=200"}
+
+	if code, _, stderr := invoke(t, append(slices.Clone(base), "--tolerance=0")...); code != ExitOK {
+		t.Fatalf("--tolerance=0: exit = %d (stderr: %s)", code, stderr)
+	}
+	before := len(stub.called())
+	code, _, stderr := invoke(t, append(slices.Clone(base), "--tolerance=-1")...)
+	if code != ExitUsage {
+		t.Fatalf("--tolerance=-1: exit = %d, want %d (stderr: %s)", code, ExitUsage, stderr)
+	}
+	if len(stub.called()) != before {
+		t.Error("a negative tolerance reached the addon")
 	}
 }
 
