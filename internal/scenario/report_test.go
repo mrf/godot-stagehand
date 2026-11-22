@@ -138,14 +138,8 @@ func TestJUnitExcludesTeardownFromCounts(t *testing.T) {
 	}
 }
 
-func TestJUnitSurfacesTeardownFailureInSystemOut(t *testing.T) {
-	r := nineStepsOneTeardown()
-	r.Teardown[0].Status = StatusFailed
-	r.Teardown[0].Error = "disconnect: broken pipe"
-	r.Status = StatusFailed
-	idx := 0
-	r.Failure = &Failure{StepIndex: &idx, Phase: "teardown", Kind: KindConnection, Message: "disconnect: broken pipe"}
-
+func readJUnit(t *testing.T, r *Report) junitSuites {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "junit.xml")
 	if err := r.WriteJUnit(path); err != nil {
 		t.Fatalf("WriteJUnit: %v", err)
@@ -158,11 +152,80 @@ func TestJUnitSurfacesTeardownFailureInSystemOut(t *testing.T) {
 	if err := xml.Unmarshal(data, &doc); err != nil {
 		t.Fatalf("junit is not valid XML: %v", err)
 	}
-	if doc.Suites[0].Tests != 9 || doc.Suites[0].Failures != 0 {
-		t.Errorf("counts tests/failures = %d/%d, want 9/0 (teardown failure must not inflate the excluded count)",
-			doc.Suites[0].Tests, doc.Suites[0].Failures)
+	return doc
+}
+
+// A teardown failure fails the run (exit 3), so the JUnit report must not read
+// green: it renders exactly one error testcase, while passing teardown steps
+// stay excluded (godot-stagehand-ext-review-2026-11-327t.12).
+func TestJUnitRendersTeardownFailureAsErrorCase(t *testing.T) {
+	r := nineStepsOneTeardown()
+	r.Teardown[0].Status = StatusFailed
+	r.Teardown[0].Error = "disconnect: broken pipe"
+	r.Teardown[0].ErrorKind = KindConnection
+	r.Status = StatusFailed
+	idx := 0
+	r.Failure = &Failure{StepIndex: &idx, Phase: "teardown", Kind: KindConnection, Message: "disconnect: broken pipe"}
+
+	doc := readJUnit(t, r)
+	suite := doc.Suites[0]
+	if suite.Tests != 10 || suite.Errors != 1 || suite.Failures != 0 {
+		t.Errorf("counts tests/errors/failures = %d/%d/%d, want 10/1/0", suite.Tests, suite.Errors, suite.Failures)
 	}
-	if !strings.Contains(doc.Suites[0].SystemOut, "teardown") {
+	if doc.Tests != 10 || doc.Errors != 1 {
+		t.Errorf("testsuites tests/errors = %d/%d, want 10/1", doc.Tests, doc.Errors)
+	}
+	last := suite.Cases[len(suite.Cases)-1]
+	if last.Error == nil || !strings.Contains(last.Name, "teardown") || !strings.Contains(last.ClassName, ".teardown.") {
+		t.Errorf("last case = %+v, want a teardown error case", last)
+	}
+	if !strings.Contains(suite.SystemOut, "teardown") {
 		t.Error("a failing teardown must still be visible in the junit system-out")
+	}
+}
+
+// A run that dies before the first step has no steps to report; without a
+// synthetic case the suite reads tests=0 failures=0 errors=0 while the job
+// exits non-zero.
+func TestJUnitRendersPreStepFailureAsSetupCase(t *testing.T) {
+	for _, phase := range []string{"setup", "connect"} {
+		t.Run(phase, func(t *testing.T) {
+			r := &Report{
+				Name:   "smoke",
+				Status: StatusFailed,
+				Steps:  []StepResult{},
+				Failure: &Failure{
+					Phase: phase, Kind: KindConnection, Message: "dial tcp: connection refused\nsecond line",
+				},
+			}
+			doc := readJUnit(t, r)
+			suite := doc.Suites[0]
+			if suite.Tests != 1 || suite.Errors != 1 || suite.Failures != 0 {
+				t.Fatalf("counts tests/errors/failures = %d/%d/%d, want 1/1/0", suite.Tests, suite.Errors, suite.Failures)
+			}
+			c := suite.Cases[0]
+			if c.Name != "setup" || c.ClassName != "smoke.setup" {
+				t.Errorf("case name/classname = %q/%q, want setup/smoke.setup", c.Name, c.ClassName)
+			}
+			if c.Error == nil || c.Error.Type != KindConnection || c.Error.Message != "dial tcp: connection refused" {
+				t.Errorf("case error = %+v, want connection error with first-line message", c.Error)
+			}
+			if doc.Tests != 1 || doc.Errors != 1 {
+				t.Errorf("testsuites tests/errors = %d/%d, want 1/1", doc.Tests, doc.Errors)
+			}
+		})
+	}
+}
+
+func TestJUnitStepFailureAddsNoSetupCase(t *testing.T) {
+	idx := 0
+	r := &Report{
+		Name:    "smoke",
+		Status:  StatusFailed,
+		Steps:   []StepResult{{Index: 0, Name: "go", Action: "click", Status: StatusFailed, Error: "boom", ErrorKind: KindAssertion}},
+		Failure: &Failure{StepIndex: &idx, Phase: "step", Kind: KindAssertion, Message: "boom"},
+	}
+	if got := readJUnit(t, r).Suites[0].Tests; got != 1 {
+		t.Errorf("tests = %d, want 1 (a step failure has its own case)", got)
 	}
 }

@@ -76,13 +76,23 @@ func (r *Report) WriteJUnit(path string) error {
 		},
 	}
 
-	// Teardown is cleanup, not an assertion: it is deliberately excluded from
-	// the testcase list so a CI dashboard's test count agrees with
-	// report.json's Steps array. A teardown failure is still visible via
-	// SystemOut below, which embeds Summary()'s teardown tally and failure
-	// detail.
+	// A failure before any step ran (setup, connect) has no step to hang a
+	// verdict on, so it gets a synthetic case or the suite would read green.
+	if f := r.Failure; f != nil && f.StepIndex == nil {
+		suite.Cases = append(suite.Cases, preStepCase(r.Name, f))
+	}
 	for _, step := range r.Steps {
-		suite.Cases = append(suite.Cases, junitCaseFor(r.Name, step))
+		suite.Cases = append(suite.Cases, junitCaseFor(r.Name, "step", step))
+	}
+	// Teardown is cleanup, not an assertion: passing steps are excluded so the
+	// testcase count agrees with report.json's Steps array. A failed teardown
+	// step fails the run, so it alone is rendered.
+	for _, step := range r.Teardown {
+		if step.Status == StatusFailed {
+			tc := junitCaseFor(r.Name, "teardown", step)
+			tc.Name = "teardown " + tc.Name
+			suite.Cases = append(suite.Cases, tc)
+		}
 	}
 
 	for _, c := range suite.Cases {
@@ -115,10 +125,26 @@ func (r *Report) WriteJUnit(path string) error {
 	return writeArtifact(path, append([]byte(xml.Header), append(body, '\n')...))
 }
 
-func junitCaseFor(scenarioName string, step StepResult) junitCase {
+// preStepCase renders a failure that happened before any step as a testcase.
+func preStepCase(scenarioName string, f *Failure) junitCase {
+	name := "setup"
+	if f.Phase != "setup" && f.Phase != "connect" {
+		name = f.Phase
+	}
+	detail := &junitFailure{Message: firstLine(f.Message), Type: f.Kind, Body: f.Message}
+	testCase := junitCase{Name: name, ClassName: scenarioName + "." + name, Time: "0.000"}
+	if f.Kind == KindAssertion {
+		testCase.Failure = detail
+	} else {
+		testCase.Error = detail
+	}
+	return testCase
+}
+
+func junitCaseFor(scenarioName, phase string, step StepResult) junitCase {
 	testCase := junitCase{
 		Name:      fmt.Sprintf("%02d %s", step.Index, step.Name),
-		ClassName: fmt.Sprintf("%s.step.%s", scenarioName, step.Action),
+		ClassName: fmt.Sprintf("%s.%s.%s", scenarioName, phase, step.Action),
 		Time:      seconds(step.DurationMs),
 	}
 	switch step.Status {
