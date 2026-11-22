@@ -69,8 +69,10 @@ with `invalid_params` before any file is opened — so a caller can neither
 truncate a project script or `~/.bashrc` nor use replay to probe whether a file
 exists. The addon (`resolve_recording_path` in `input_recorder.gd`) and the Go
 clients (`gwpop.ResolveRecordingPath`, used by the MCP tools, CLI and scenario
-runner) apply the identical rule. `STAGEHAND_ALLOW_UNSAFE=1` lifts it in the
-addon only; the Go clients always apply it.
+runner) apply the identical lexical rule. Only the addon can see the game's
+filesystem, so it additionally refuses a path whose recording directory or any
+component under it is a symlink. `STAGEHAND_ALLOW_UNSAFE=1` lifts the sandbox in
+the addon only; the Go clients always apply the lexical rule.
 
 **Read this before running setup.** Once a game is running with
 Stagehand enabled, anyone who has the session token can inspect and mutate its
