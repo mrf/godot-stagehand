@@ -12,7 +12,7 @@ import (
 )
 
 // TestConcurrentAutoPortLaunchesGetDistinctRealPorts reproduces M3 (the
-// findFreePort TOCTOU race) end-to-end against real Godot binds, not the
+// launch.FreePort TOCTOU race) end-to-end against real Godot binds, not the
 // fake pickPort/doLaunch stand-ins used by launch_port_retry_test.go. Several
 // port=0 auto-assigned launches race each other for real; every one must
 // still succeed and land on a distinct port, whether or not any of them
@@ -49,7 +49,7 @@ func TestConcurrentAutoPortLaunchesGetDistinctRealPorts(t *testing.T) {
 				GodotBin:    godotBin,
 				Headless:    true,
 			}
-			results[i], errs[i] = launchWithAutoPort(ctx, cfg, findFreePort, launch.Launch)
+			results[i], errs[i] = launchWithAutoPort(ctx, cfg, launch.FreePort, launch.Launch)
 		}(i)
 	}
 	wg.Wait()
