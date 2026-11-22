@@ -5,6 +5,9 @@ const ERRORS := preload("res://addons/stagehand/core/errors.gd")
 const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
 const SELF_PROTECTION := preload("res://addons/stagehand/core/self_protection.gd")
 
+## Widest signal wait_for_signal can capture; see _make_signal_capture.
+const MAX_SIGNAL_ARGS: int = 8
+
 
 ## Polling mechanism that waits for a condition to become true.
 ## Returns true if condition was met within timeout, false otherwise.
@@ -79,7 +82,7 @@ func evaluate_property_condition(node: Node, property_name: String, operator: St
 
 
 ## Wait for a node matching the selector to reach the desired state.
-## state: "exists" (node in tree), "visible" (node in tree and visible), "removed" (node absent)
+## state: "exists" (node in tree), "visible" (visible in tree: the node and every ancestor visible), "removed" (node absent)
 func wait_for_node(selector: String, state: String = "exists", timeout_ms: int = 10000, poll_interval_ms: int = 100) -> Dictionary:
 	var condition: Callable = func() -> bool:
 		var results: Array[Node] = SELECTOR_ENGINE.query(get_tree(), selector)
@@ -89,7 +92,7 @@ func wait_for_node(selector: String, state: String = "exists", timeout_ms: int =
 			"visible":
 				if results.size() > 0 and results[0] is CanvasItem:
 					var ci: CanvasItem = results[0]
-					return ci.visible
+					return ci.is_visible_in_tree()
 				return false
 			"removed":
 				return results.size() == 0
@@ -148,19 +151,24 @@ func wait_for_signal(selector: String, signal_name: String, timeout_ms: int = 50
 			}
 		)
 
-	# Use an Array to share state with the lambda (captures are by value for reassignment)
-	var state: Array = [false, []]  # [received, signal_args]
+	var argc: int = _signal_arg_count(node, signal_name)
+	if argc > MAX_SIGNAL_ARGS:
+		return ERRORS.make(
+			ERRORS.INVALID_PARAMS,
+			"Signal '%s' on node '%s' declares %d arguments; wait_for_signal captures at most %d"
+				% [signal_name, node.get_path(), argc, MAX_SIGNAL_ARGS],
+			{
+				"selector": selector,
+				"signal_name": signal_name,
+				"argument_count": argc,
+				"max_arguments": MAX_SIGNAL_ARGS,
+				"next_action": "Wait on a signal with fewer arguments, or poll the state it changes with wait_for_property.",
+			}
+		)
 
-	# Create a one-shot callback that captures signal arguments.
-	var callback: Callable = func(arg1: Variant = null, arg2: Variant = null, arg3: Variant = null, arg4: Variant = null,
-			arg5: Variant = null, arg6: Variant = null, arg7: Variant = null, arg8: Variant = null) -> void:
-		state[0] = true
-		var args: Array = []
-		for arg: Variant in [arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8]:
-			if arg == null:
-				break
-			args.append(arg)
-		state[1] = args
+	# Shared by reference with the capture lambda: [received, signal_args].
+	var state: Array = [false, []]
+	var callback: Callable = _make_signal_capture(state, argc)
 
 	if not is_instance_valid(node):
 		return _node_freed(selector, "before signal connection", Time.get_ticks_msec() - start_time)
@@ -232,6 +240,60 @@ func wait_for_property(selector: String, property: String, operator: String, exp
 				"next_action": "Raise timeout_ms, or read the property with get_property to see the value it actually holds.",
 			}
 		)
+
+
+## Number of arguments a signal declares, or 0 if the node does not list it.
+static func _signal_arg_count(node: Node, signal_name: String) -> int:
+	for info: Dictionary in node.get_signal_list():
+		if info.get("name") == signal_name:
+			var declared: Array = info.get("args", [])
+			return declared.size()
+	return 0
+
+
+## One-shot receiver whose arity matches the signal's declared argument count
+## exactly. A fixed-arity lambda with defaulted parameters cannot tell a real
+## null from a missing argument, so the count comes from the signal declaration
+## and every argument, nulls included, is recorded. GDScript has no variadic
+## lambdas, hence one arm per arity up to MAX_SIGNAL_ARGS.
+static func _make_signal_capture(state: Array, argc: int) -> Callable:
+	match argc:
+		0:
+			return func() -> void:
+				state[0] = true
+				state[1] = []
+		1:
+			return func(a1: Variant) -> void:
+				state[0] = true
+				state[1] = [a1]
+		2:
+			return func(a1: Variant, a2: Variant) -> void:
+				state[0] = true
+				state[1] = [a1, a2]
+		3:
+			return func(a1: Variant, a2: Variant, a3: Variant) -> void:
+				state[0] = true
+				state[1] = [a1, a2, a3]
+		4:
+			return func(a1: Variant, a2: Variant, a3: Variant, a4: Variant) -> void:
+				state[0] = true
+				state[1] = [a1, a2, a3, a4]
+		5:
+			return func(a1: Variant, a2: Variant, a3: Variant, a4: Variant, a5: Variant) -> void:
+				state[0] = true
+				state[1] = [a1, a2, a3, a4, a5]
+		6:
+			return func(a1: Variant, a2: Variant, a3: Variant, a4: Variant, a5: Variant, a6: Variant) -> void:
+				state[0] = true
+				state[1] = [a1, a2, a3, a4, a5, a6]
+		7:
+			return func(a1: Variant, a2: Variant, a3: Variant, a4: Variant, a5: Variant, a6: Variant, a7: Variant) -> void:
+				state[0] = true
+				state[1] = [a1, a2, a3, a4, a5, a6, a7]
+		_:
+			return func(a1: Variant, a2: Variant, a3: Variant, a4: Variant, a5: Variant, a6: Variant, a7: Variant, a8: Variant) -> void:
+				state[0] = true
+				state[1] = [a1, a2, a3, a4, a5, a6, a7, a8]
 
 
 ## Canonical failure for a target node that was freed mid-wait.

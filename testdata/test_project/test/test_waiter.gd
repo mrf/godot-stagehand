@@ -10,6 +10,7 @@ extends GdUnitTestSuite
 ## which is not reliable enough to assert on tightly.
 
 const Waiter := preload("res://addons/stagehand/core/waiter.gd")
+const SignalEmitter := preload("res://test/fixtures/signal_emitter.gd")
 
 ## Long enough to poll a few times, short enough to keep the suite quick.
 const TIMEOUT_MS: int = 120
@@ -126,6 +127,29 @@ func test_wait_for_visible_times_out_on_hidden_node() -> void:
 	)
 	assert_str(str(result.get("error_code", ""))).is_equal("timeout")
 	assert_str(str(result.get("error", ""))).contains("did not become visible")
+
+
+func test_wait_for_visible_times_out_when_ancestor_is_hidden() -> void:
+	var menu: Control = auto_free(Control.new())
+	menu.name = "HiddenMenu"
+	menu.visible = false
+	add_child(menu)
+	var button: Control = Control.new()
+	button.name = "MenuButton"
+	button.visible = true
+	button.add_to_group(&"waiter_nested_probe")
+	menu.add_child(button)
+
+	var result: Dictionary = await _waiter.wait_for_node(
+		"group:waiter_nested_probe", "visible", TIMEOUT_MS, POLL_MS
+	)
+	assert_str(str(result.get("error_code", ""))).is_equal("timeout")
+
+	menu.visible = true
+	result = await _waiter.wait_for_node(
+		"group:waiter_nested_probe", "visible", TIMEOUT_MS, POLL_MS
+	)
+	assert_bool(result.get("success", false)).is_true()
 
 
 # ── evaluate_property_condition ──────────────────────────────────────────
@@ -379,6 +403,67 @@ func test_wait_for_unknown_signal_returns_error() -> void:
 	)
 	assert_str(str(result.get("error_code", ""))).is_equal("invalid_params")
 	assert_str(str(result.get("error", ""))).contains("not found on node")
+
+
+func _emit_soon(emitter: Node, signal_name: StringName, args: Array) -> void:
+	get_tree().create_timer(0.02).timeout.connect(
+		func() -> void: emitter.callv(&"emit_signal", [signal_name] + args)
+	)
+
+
+func _wait_on_emitter(signal_name: String) -> Dictionary:
+	return await _waiter.wait_for_signal("group:waiter_emitter", signal_name, 2000)
+
+
+func _add_emitter() -> Node:
+	var emitter: Node = auto_free(SignalEmitter.new())
+	emitter.add_to_group(&"waiter_emitter")
+	add_child(emitter)
+	return emitter
+
+
+func test_wait_for_signal_preserves_null_args() -> void:
+	var emitter: Node = _add_emitter()
+	_emit_soon(emitter, &"two_args", [null, 3])
+	var result: Dictionary = await _wait_on_emitter("two_args")
+	assert_bool(result.get("received", false)).is_true()
+	var args: Array = result.get("args", [])
+	assert_int(args.size()).is_equal(2)
+	assert_object(args[0]).is_null()
+	assert_int(args[1]).is_equal(3)
+
+
+func test_wait_for_signal_keeps_trailing_null() -> void:
+	var emitter: Node = _add_emitter()
+	_emit_soon(emitter, &"trailing_null", [1, null])
+	var result: Dictionary = await _wait_on_emitter("trailing_null")
+	var args: Array = result.get("args", [])
+	assert_int(args.size()).is_equal(2)
+
+
+func test_wait_for_signal_with_no_args_reports_empty_args() -> void:
+	var emitter: Node = _add_emitter()
+	_emit_soon(emitter, &"no_args", [])
+	var result: Dictionary = await _wait_on_emitter("no_args")
+	assert_bool(result.get("received", false)).is_true()
+	var args: Array = result.get("args", [])
+	assert_int(args.size()).is_equal(0)
+
+
+func test_wait_for_signal_captures_eight_args() -> void:
+	var emitter: Node = _add_emitter()
+	_emit_soon(emitter, &"eight_args", [1, 2, 3, 4, 5, 6, 7, 8])
+	var result: Dictionary = await _wait_on_emitter("eight_args")
+	var args: Array = result.get("args", [])
+	assert_int(args.size()).is_equal(8)
+	assert_int(args[7]).is_equal(8)
+
+
+func test_wait_for_signal_with_more_than_eight_args_errors_clearly() -> void:
+	_add_emitter()
+	var result: Dictionary = await _wait_on_emitter("nine_args")
+	assert_str(str(result.get("error_code", ""))).is_equal("invalid_params")
+	assert_str(str(result.get("error", ""))).contains("9 arguments")
 
 
 # ── Engine.time_scale = 0 ────────────────────────────────────────────────
