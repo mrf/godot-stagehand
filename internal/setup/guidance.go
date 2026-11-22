@@ -27,7 +27,7 @@ func printGuidance(out io.Writer, opts Options) {
 	fmt.Fprint(out, mcpSnippet(opts.BinaryPath))
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Run your game with:")
-	fmt.Fprintf(out, "  godot --path %s --stagehand\n", opts.ProjectPath)
+	fmt.Fprintf(out, "  godot --path %s --stagehand\n", shellQuote(opts.ProjectPath))
 	fmt.Fprintln(out, "  Godot prints a one-session Authentication token at startup.")
 	fmt.Fprintln(out, "  Pass that token to godot_connect as auth_token.")
 	fmt.Fprintln(out)
@@ -35,14 +35,14 @@ func printGuidance(out io.Writer, opts Options) {
 	fmt.Fprintln(out, "  a tool, anything with its own --help)? It may reject --stagehand with")
 	fmt.Fprintln(out, "  \"Unknown option: --stagehand\" and quit. Use the environment variable")
 	fmt.Fprintln(out, "  instead — it bypasses argument parsing entirely:")
-	fmt.Fprintf(out, "    STAGEHAND_ENABLED=1 godot --path %s\n", opts.ProjectPath)
+	fmt.Fprintf(out, "    STAGEHAND_ENABLED=1 godot --path %s\n", shellQuote(opts.ProjectPath))
 
 	if opts.IsWSL {
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, "WSL detected — connection guidance:")
 		fmt.Fprintln(out, "  • Linux Godot inside WSL: connect with host 127.0.0.1 (the default).")
 		fmt.Fprintln(out, "  • Windows Godot (godot.exe) from WSL: pass a Windows path and pick a host:")
-		fmt.Fprintf(out, "      godot.exe --path \"$(wslpath -w %s)\" --stagehand\n", opts.ProjectPath)
+		fmt.Fprintf(out, "      godot.exe --path \"$(wslpath -w %s)\" --stagehand\n", shellQuote(opts.ProjectPath))
 		fmt.Fprintln(out, "      - mirrored networking: host localhost")
 		fmt.Fprintln(out, "      - default/NAT networking: host = WSL default gateway IP")
 		fmt.Fprintln(out, "        and explicitly set STAGEHAND_BIND_ADDRESS=0.0.0.0 plus STAGEHAND_ALLOW_REMOTE=1")
@@ -62,3 +62,14 @@ func mcpSnippet(binaryPath string) string {
 }
 `, binaryPath)
 }
+
+// shellQuote renders s as a single POSIX shell word: unchanged when it only
+// holds characters that are safe unquoted, otherwise single-quoted.
+func shellQuote(s string) string {
+	if s != "" && strings.Trim(s, shellSafe) == "" {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+const shellSafe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@%+=:,./-"

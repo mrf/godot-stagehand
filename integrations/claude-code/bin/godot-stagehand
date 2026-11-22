@@ -207,9 +207,18 @@ mv -f -- "$tmp_bin" "$target"
 rm -f -- "$tmp_sums"
 trap - EXIT HUP INT TERM
 
+# Best-effort: the install already succeeded, so a failed removal (a file held
+# open on Windows) must not abort under `set -e`. A directory holding a
+# .download.* file is another session's install in progress: leave it alone.
+has_download() {
+    for f in "$1"/.download.*; do
+        [ -e "$f" ] && return 0
+    done
+    return 1
+}
 for old in "$bin_root"/*; do
-    if [ "$old" != "$target_dir" ] && [ -d "$old" ]; then
-        rm -rf -- "$old"
+    if [ "$old" != "$target_dir" ] && [ -d "$old" ] && ! has_download "$old"; then
+        rm -rf -- "$old" || true
     fi
 done
 
