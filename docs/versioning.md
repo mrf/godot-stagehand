@@ -34,7 +34,7 @@ except commit metadata.
 
 **Enforcement, not convention.** `go test ./internal/version/` walks every
 `addons/stagehand/` copy in the repo — canonical, `testdata/`, `examples/` — and
-fails if any mirror disagrees. `build-release.sh <tag>` re-checks the same set
+fails if any mirror disagrees. `./build-release.sh <tag>` (repo root) re-checks the same set
 plus the built binary's `--version` output, and the release workflow runs it in
 `--verify-only` mode before publishing anything.
 
