@@ -3,6 +3,7 @@ package scenario
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -224,6 +225,33 @@ func TestParseRejectsLaunchSettingsInConnectMode(t *testing.T) {
 	}`))
 	if err == nil {
 		t.Fatal("connect mode accepted launch-only settings")
+	}
+}
+
+func TestParseRejectsEnvOnlyActivationInConnectMode(t *testing.T) {
+	_, err := Parse([]byte(`{
+		"target": {"mode": "connect", "port": 26701, "env_only_activation": true},
+		"steps": [{"action": "tree"}]
+	}`))
+	if err == nil || !strings.Contains(err.Error(), "env_only_activation") {
+		t.Fatalf("Parse = %v, want an error naming env_only_activation", err)
+	}
+}
+
+func TestLaunchConfigCarriesEnvOnlyActivation(t *testing.T) {
+	sc, err := Parse([]byte(`{
+		"target": {"mode": "launch", "project_path": "p", "env_only_activation": true, "extra_args": ["--x"]},
+		"steps": [{"action": "tree"}]
+	}`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	cfg := sc.launchConfig("", 26710, nil)
+	if !cfg.EnvOnlyActivation {
+		t.Error("launch.Config.EnvOnlyActivation = false, want the target's true")
+	}
+	if !slices.Equal(cfg.ExtraArgs, []string{"--x"}) || cfg.Port != 26710 {
+		t.Errorf("launch.Config = %+v, want extra_args and port threaded through", cfg)
 	}
 }
 

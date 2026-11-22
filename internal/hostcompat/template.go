@@ -46,6 +46,9 @@ type Override struct {
 	// TimeoutMs bounds launch and connect (target.timeout_ms). Zero keeps the
 	// template's default; a large project's cold import needs more.
 	TimeoutMs int `json:"timeout_ms,omitempty"`
+	// EnvOnlyActivation drops --stagehand from the command line for a host
+	// that parses its own argv and rejects it (target.env_only_activation).
+	EnvOnlyActivation bool `json:"env_only_activation,omitempty"`
 }
 
 // ParseOverride decodes and validates an override file. Unknown fields are
@@ -126,11 +129,12 @@ func (o *Override) params(projectPath string) map[string]any {
 		extra[i] = a
 	}
 	return map[string]any{
-		"project_path": projectPath,
-		"root_node":    o.RootNode,
-		"clickable":    o.Clickable,
-		"extra_args":   extra,
-		"timeout_ms":   timeout,
+		"project_path":        projectPath,
+		"root_node":           o.RootNode,
+		"clickable":           o.Clickable,
+		"extra_args":          extra,
+		"timeout_ms":          timeout,
+		"env_only_activation": o.EnvOnlyActivation,
 		// /root is itself a Window and `find class:Window` returns it, so a
 		// host with N subwindows has N+1 matches: "more than N". The runner's
 		// assert_node_count has no gte, so greater_than is the only "at

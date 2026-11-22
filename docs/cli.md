@@ -175,6 +175,7 @@ so it cannot collide with another agent's game.
 | `allow_unsafe` | Enables `evaluate` and arbitrary `call_method` |
 | `share_user_data` | Opts out of per-instance `user://` isolation |
 | `extra_args` | Passed to the game after `--` |
+| `env_only_activation` | Activate via `STAGEHAND_ENABLED=1` only; omit `--stagehand` for hosts that reject unknown args |
 | `port`, `host`, `timeout_ms` | |
 
 `"mode": "connect"` attaches to an already-running game. `port` is required —
