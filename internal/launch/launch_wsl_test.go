@@ -45,7 +45,7 @@ func TestEnsureProjectImportedTranslatesUNCPathForStampDir(t *testing.T) {
 // against `ip route show default` on 2026-11-09: both 172.25.224.1).
 func TestLaunchSetsRemoteBindEnvForNonLoopbackHost(t *testing.T) {
 	requirePOSIXFakeBinary(t)
-	t.Setenv("TMPDIR", t.TempDir())
+	isolateTempAndCache(t)
 	t.Setenv(RemoteLaunchOptInEnv, "1")
 	root := t.TempDir()
 	projectPath := filepath.Join(root, "project")
@@ -85,7 +85,7 @@ func TestLaunchSetsRemoteBindEnvForNonLoopbackHost(t *testing.T) {
 // process, Launch fails naming it, before Godot is ever spawned.
 func TestLaunchRefusesNonLoopbackHostWithoutServerOptIn(t *testing.T) {
 	requirePOSIXFakeBinary(t)
-	t.Setenv("TMPDIR", t.TempDir())
+	isolateTempAndCache(t)
 	t.Setenv(RemoteLaunchOptInEnv, "")
 	root := t.TempDir()
 	projectPath := filepath.Join(root, "project")
@@ -121,7 +121,7 @@ func TestLaunchSetsWSLENVForWindowsBinaryFromNonWindowsHost(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("this launch shape is a non-Windows host driving a Windows .exe")
 	}
-	t.Setenv("TMPDIR", t.TempDir())
+	isolateTempAndCache(t)
 	root := t.TempDir()
 	projectPath := filepath.Join(root, "project")
 	writeMinimalProject(t, projectPath)
@@ -159,7 +159,7 @@ func TestLaunchWSLENVPreservesExistingValue(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("this launch shape is a non-Windows host driving a Windows .exe")
 	}
-	t.Setenv("TMPDIR", t.TempDir())
+	isolateTempAndCache(t)
 	t.Setenv("WSLENV", "FOO/p")
 	root := t.TempDir()
 	projectPath := filepath.Join(root, "project")

@@ -154,3 +154,14 @@ func freeTCPPort(t *testing.T) int {
 	defer ln.Close()
 	return ln.Addr().(*net.TCPAddr).Port
 }
+
+// isolateTempAndCache points the temp dir and every OS's user cache dir at
+// fresh per-test directories, so import locks never touch the real cache.
+func isolateTempAndCache(t *testing.T) {
+	t.Helper()
+	t.Setenv("TMPDIR", t.TempDir())
+	cache := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cache)
+	t.Setenv("HOME", cache)
+	t.Setenv("LocalAppData", cache)
+}

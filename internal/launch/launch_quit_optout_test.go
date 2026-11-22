@@ -33,7 +33,7 @@ func TestLaunchForwardsQuitOnDisconnectOptOut(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("TMPDIR", t.TempDir())
+			isolateTempAndCache(t)
 			root := t.TempDir()
 			projectPath := filepath.Join(root, "project")
 			writeMinimalProject(t, projectPath)

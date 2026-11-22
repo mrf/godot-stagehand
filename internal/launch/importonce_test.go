@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -32,7 +33,7 @@ func fakeImporterProject(t *testing.T) (projectPath, binPath, runsPath string) {
 // import-once contract: the first call performs a headless import and stamps
 // the project; later calls are no-ops.
 func TestEnsureProjectImportedRunsHeadlessImportOnce(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+	isolateTempAndCache(t)
 	projectPath, binPath, runsPath := fakeImporterProject(t)
 
 	for i := 0; i < 3; i++ {
@@ -59,7 +60,7 @@ func TestEnsureProjectImportedRunsHeadlessImportOnce(t *testing.T) {
 // for the shared-.godot bug: N concurrent launches of the same project must
 // funnel through one import, not race each other into the cache.
 func TestEnsureProjectImportedSerializesConcurrentLaunches(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+	isolateTempAndCache(t)
 	projectPath, binPath, runsPath := fakeImporterProject(t)
 
 	const launches = 6
@@ -89,7 +90,7 @@ func TestEnsureProjectImportedSerializesConcurrentLaunches(t *testing.T) {
 // TestEnsureProjectImportedPropagatesFailure verifies that a failed import is
 // reported and does not stamp the project as imported.
 func TestEnsureProjectImportedPropagatesFailure(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+	isolateTempAndCache(t)
 	requirePOSIXFakeBinary(t)
 	root := t.TempDir()
 	projectPath := filepath.Join(root, "project")
@@ -109,9 +110,53 @@ func TestEnsureProjectImportedPropagatesFailure(t *testing.T) {
 	}
 }
 
-// TestAcquireImportLockStealsStaleLock covers the crashed-holder case: a lock
-// left behind by a process that died must not wedge every later launch.
-func TestAcquireImportLockStealsStaleLock(t *testing.T) {
+// TestAcquireImportLockIgnoresDeadHoldersLeftoverFile covers the crashed-holder
+// case: the lock is an OS-level lock, so a file left behind by a dead process
+// (no live lock on it) must not block, however old or new it is.
+func TestAcquireImportLockIgnoresDeadHoldersLeftoverFile(t *testing.T) {
+	lockPath := filepath.Join(t.TempDir(), "import.lock")
+	if err := os.WriteFile(lockPath, []byte("999999\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	release, err := acquireImportLock(ctx, lockPath)
+	if err != nil {
+		t.Fatalf("expected an unheld leftover lock file to be acquirable, got: %v", err)
+	}
+	release()
+}
+
+// TestAcquireImportLockIsExclusiveAndReleasable verifies that a held lock blocks
+// a second taker until the context expires, and that release hands it over.
+func TestAcquireImportLockIsExclusiveAndReleasable(t *testing.T) {
+	lockPath := filepath.Join(t.TempDir(), "import.lock")
+	release, err := acquireImportLock(context.Background(), lockPath)
+	if err != nil {
+		t.Fatalf("first acquire: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	if _, err := acquireImportLock(ctx, lockPath); err == nil {
+		t.Fatal("expected the second acquire to block until the context expired")
+	}
+
+	release()
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel2()
+	release2, err := acquireImportLock(ctx2, lockPath)
+	if err != nil {
+		t.Fatalf("acquire after release: %v", err)
+	}
+	release2()
+}
+
+// TestAcquireImportLockManyWaitersNeverOverlap is the stale-lock-race
+// regression: with the old delete-if-stale scheme two waiters could both steal
+// an old lock file and run inside the critical section together.
+func TestAcquireImportLockManyWaitersNeverOverlap(t *testing.T) {
 	lockPath := filepath.Join(t.TempDir(), "import.lock")
 	if err := os.WriteFile(lockPath, []byte("999999\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -121,38 +166,43 @@ func TestAcquireImportLockStealsStaleLock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	release, err := acquireImportLock(ctx, lockPath, time.Minute)
-	if err != nil {
-		t.Fatalf("expected a stale lock to be stolen, got: %v", err)
+	const waiters = 8
+	var inside, maxInside atomic.Int32
+	var wg sync.WaitGroup
+	for i := 0; i < waiters; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			release, err := acquireImportLock(ctx, lockPath)
+			if err != nil {
+				t.Errorf("acquire: %v", err)
+				return
+			}
+			n := inside.Add(1)
+			for {
+				m := maxInside.Load()
+				if n <= m || maxInside.CompareAndSwap(m, n) {
+					break
+				}
+			}
+			time.Sleep(20 * time.Millisecond)
+			inside.Add(-1)
+			release()
+		}()
 	}
-	release()
-	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
-		t.Errorf("release should remove the lock file, stat err = %v", err)
+	wg.Wait()
+	if got := maxInside.Load(); got != 1 {
+		t.Fatalf("expected exactly one holder at a time, saw %d concurrently", got)
 	}
 }
 
-// TestAcquireImportLockWaitsForHolder verifies that a live lock blocks until
-// the context expires rather than being stolen immediately.
-func TestAcquireImportLockWaitsForHolder(t *testing.T) {
-	lockPath := filepath.Join(t.TempDir(), "import.lock")
-	release, err := acquireImportLock(context.Background(), lockPath, time.Minute)
-	if err != nil {
-		t.Fatalf("first acquire: %v", err)
-	}
-	defer release()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
-	defer cancel()
-	if _, err := acquireImportLock(ctx, lockPath, time.Minute); err == nil {
-		t.Fatal("expected the second acquire to block until the context expired")
-	}
-}
-
-// TestImportLockPathIsPerProject keeps unrelated projects from serializing on
-// one another while keeping the same project's launches on one lock.
-func TestImportLockPathIsPerProject(t *testing.T) {
+// TestImportLockPathIsPerProjectAndPerUser keeps unrelated projects from
+// serializing on one another, keeps one project's launches on one lock, and
+// keeps the file out of the shared temp dir.
+func TestImportLockPathIsPerProjectAndPerUser(t *testing.T) {
+	isolateTempAndCache(t)
 	a := importLockPath(filepath.Join("home", "games", "alpha"))
 	b := importLockPath(filepath.Join("home", "games", "beta"))
 	if a == b {
@@ -161,7 +211,73 @@ func TestImportLockPathIsPerProject(t *testing.T) {
 	if again := importLockPath(filepath.Join("home", "games", "alpha")); again != a {
 		t.Fatalf("import lock path is not stable: %q vs %q", a, again)
 	}
-	if filepath.Dir(a) != os.TempDir() {
-		t.Errorf("lock should live in the temp dir, got %q", a)
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(a, cache+string(filepath.Separator)) {
+		t.Errorf("lock should live under the per-user cache dir %q, got %q", cache, a)
+	}
+	if strings.HasPrefix(a, os.TempDir()+string(filepath.Separator)) {
+		t.Errorf("lock must not live in the shared temp dir, got %q", a)
+	}
+}
+
+// TestEnsureProjectImportedReimportsAfterAssetsChange covers the stale-stamp
+// bug: an asset added or changed after the first import must trigger a
+// re-import, while an unchanged project must not.
+func TestEnsureProjectImportedReimportsAfterAssetsChange(t *testing.T) {
+	isolateTempAndCache(t)
+	projectPath, binPath, runsPath := fakeImporterProject(t)
+	ensure := func(wantImports int, why string) {
+		t.Helper()
+		if err := ensureProjectImported(context.Background(), binPath, projectPath, 10*time.Second); err != nil {
+			t.Fatalf("ensureProjectImported: %v", err)
+		}
+		if n := len(readInvocationLog(t, runsPath)); n != wantImports {
+			t.Fatalf("%s: expected %d import(s) so far, got %d", why, wantImports, n)
+		}
+	}
+
+	ensure(1, "first launch")
+	ensure(1, "unchanged project")
+
+	sprite := filepath.Join(projectPath, "new_sprite.png")
+	if err := os.WriteFile(sprite, []byte("png"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ensure(2, "after adding an asset")
+	ensure(2, "stamp stable after re-import")
+
+	if err := os.WriteFile(sprite, []byte("a longer png"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ensure(3, "after modifying an asset")
+}
+
+// TestProjectFingerprintIgnoresImportCacheAndVCS verifies that Godot's own
+// cache dir and VCS metadata never churn the fingerprint.
+func TestProjectFingerprintIgnoresImportCacheAndVCS(t *testing.T) {
+	root := t.TempDir()
+	writeMinimalProject(t, root)
+	before, err := projectFingerprint(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{".godot/imported/x.ctex", ".git/HEAD"} {
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	after, err := projectFingerprint(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before != after {
+		t.Fatalf("fingerprint changed for ignored dirs: %q vs %q", before, after)
 	}
 }

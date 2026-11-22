@@ -54,15 +54,23 @@ mode.
 
 `Launch` therefore imports before it spawns anything:
 
-1. If `<project>/.godot/.stagehand_imported` exists, skip — the cache is warm.
-2. Otherwise take an exclusive lock file in the OS temp directory keyed on the
-   absolute project path. This is a deliberate cross-process singleton:
+1. If `<project>/.godot/.stagehand_imported` exists and its recorded
+   fingerprint matches the project's current one, skip — the cache is warm. The
+   fingerprint is a hash of every file's relative path, size and mtime under the
+   project (excluding `.godot/` and `.git/`); it does not read contents, so a
+   same-size edit that preserves mtime is not detected. Adding or changing an
+   asset invalidates the stamp and triggers a re-import.
+2. Otherwise take an exclusive OS-level file lock (`flock` / `LockFileEx`) on a
+   file in the per-user cache dir (`os.UserCacheDir()/godot-stagehand/`) keyed
+   on the absolute project path. This is a deliberate cross-process singleton:
    independent `godot-stagehand` processes (one per MCP client) must contend on
-   the same file. A lock older than twice the import budget is assumed to belong
-   to a dead process and is stolen.
+   the same file. The kernel drops the lock when its holder dies, so there is no
+   stale-lock stealing.
 3. Re-check the stamp — another launch may have imported while we waited.
 4. Run `godot --headless --path <project> --import`, which "starts the editor,
-   waits for any resources to be imported, and then quits", then write the stamp.
+   waits for any resources to be imported, and then quits", then write the
+   stamp with the post-import fingerprint (Godot writes `.import`/`.uid`
+   sidecars next to assets).
 
 Concurrent launches therefore fan out only *after* exactly one import has
 completed. `launch.Config.SkipImport` opts out; `ImportTimeoutMs` bounds the
