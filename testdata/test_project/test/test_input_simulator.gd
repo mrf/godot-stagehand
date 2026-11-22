@@ -34,6 +34,8 @@ class EventRecorder:
 
 
 const GROUP: StringName = &"input_sim_target"
+## Longer than any hold/duration a test leaves pending at its end.
+const SIMULATOR_SETTLE_SEC: float = 0.15
 
 var _recorder: EventRecorder
 var _button: Button
@@ -450,6 +452,8 @@ func test_key_press_triggers_physical_key_bound_action() -> void:
 	await get_tree().process_frame
 
 	var pressed: bool = Input.is_action_pressed(action)
+	# Wait out the 500ms hold: it exceeds after_test's settle window.
+	await get_tree().create_timer(0.55, true, false, true).timeout
 	InputMap.erase_action(action)
 	assert_bool(pressed).is_true()
 
@@ -662,6 +666,10 @@ func after_test() -> void:
 	if InputMap.has_action(MOUSE_ACTION):
 		Input.action_release(MOUSE_ACTION)
 		InputMap.erase_action(MOUSE_ACTION)
+	# The simulator schedules releases on SceneTreeTimers and queues key/action
+	# events for the next frame; left pending, they land in the next test's
+	# recorder. Outlast the default 100ms hold so every test starts clean.
+	await get_tree().create_timer(SIMULATOR_SETTLE_SEC, true, false, true).timeout
 
 
 func test_key_release_arrives_when_time_scale_is_zero() -> void:
