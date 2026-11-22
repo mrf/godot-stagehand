@@ -328,6 +328,7 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		cleanup()
 		return nil, err
 	}
+	conn.PinHandshake(handshake)
 	// Prove the instance we connected to is the one we spawned. If the token
 	// does not match, we reached a different Stagehand instance (e.g. a stale
 	// process that still holds the port) and our own process failed to bind.

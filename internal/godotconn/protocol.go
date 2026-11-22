@@ -107,6 +107,15 @@ const (
 	CodeHandlerError = -32006
 )
 
+// Client-synthesized codes: the peer never sends these. They let a failed call
+// carry a typed cause through the same RPCError path as server errors.
+const (
+	// CodeFrameTooLarge: an inbound frame exceeded MaxFrameBytes.
+	CodeFrameTooLarge = -32010
+	// CodeMalformedFrame: a frame for this call was not a valid response.
+	CodeMalformedFrame = -32011
+)
+
 func newRequest(id int64, method string, params any) *Request {
 	return &Request{
 		JSONRPC: "2.0",

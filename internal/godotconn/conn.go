@@ -13,13 +13,28 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"github.com/mrf/godot-stagehand/internal/gwp"
 )
 
 var (
 	ErrNotConnected = errors.New("not connected to Godot")
 	ErrReconnecting = errors.New("reconnecting to Godot, try again")
 	ErrClosed       = errors.New("connection closed")
+
+	// ErrMalformedFrame marks an inbound frame that is not a JSON-RPC response.
+	// It is a protocol error, not a transport failure: the socket stays up.
+	ErrMalformedFrame = errors.New("malformed frame from Godot")
+	// ErrInstanceChanged marks a reconnect that reached a different game (a
+	// different instance token) than the session was established with.
+	ErrInstanceChanged = errors.New("reconnected to a different Godot instance")
 )
+
+// MaxFrameBytes caps one inbound WebSocket message. Godot's largest legitimate
+// frame is a base64 PNG screenshot (an 8K frame is tens of MiB), so the limit
+// sits above that while still stopping an arbitrary peer on the local port from
+// forcing an unbounded allocation.
+const MaxFrameBytes int64 = 64 << 20
 
 // queueTimeout is how long Call waits for reconnection before failing.
 const queueTimeout = 3 * time.Second
@@ -49,8 +64,12 @@ type Connection struct {
 	reconnectFailed chan struct{} // closed when the reconnect loop gives up permanently
 	reconnectDone   chan struct{} // closed when reconnectLoop returns, success or not
 	reconnectGaveUp bool          // true once the retry budget is exhausted or re-auth is rejected
+	reconnectErr    error         // why the reconnect loop gave up, when it was not budget exhaustion
 	authToken       string
 	liveness        livenessConfig
+	readLimit       int64
+	pinned          *pinnedHandshake // identity every reconnected peer must match
+	lastProtocolErr error
 
 	maxReconnectAttempts int // 0 = unlimited
 
@@ -85,6 +104,23 @@ func dialWithLimits(
 	liveness livenessConfig,
 	maxReconnectAttempts int,
 ) (*Connection, error) {
+	return dialConfigured(ctx, host, port, liveness, maxReconnectAttempts, MaxFrameBytes)
+}
+
+// dialWithReadLimit lets tests exercise the frame cap without allocating
+// MaxFrameBytes.
+func dialWithReadLimit(ctx context.Context, host string, port int, readLimit int64) (*Connection, error) {
+	return dialConfigured(ctx, host, port, defaultLiveness, configuredMaxReconnectAttempts(), readLimit)
+}
+
+func dialConfigured(
+	ctx context.Context,
+	host string,
+	port int,
+	liveness livenessConfig,
+	maxReconnectAttempts int,
+	readLimit int64,
+) (*Connection, error) {
 	if err := liveness.validate(); err != nil {
 		return nil, err
 	}
@@ -96,6 +132,7 @@ func dialWithLimits(
 		done:                 make(chan struct{}),
 		liveness:             liveness,
 		maxReconnectAttempts: maxReconnectAttempts,
+		readLimit:            readLimit,
 	}
 	ws, err := c.dialWebSocket(ctx, Connected)
 	if err != nil {
@@ -113,6 +150,7 @@ func (c *Connection) dialWebSocket(ctx context.Context, nextState State) (*webso
 	if err != nil {
 		return nil, err
 	}
+	ws.SetReadLimit(c.readLimit)
 	if err := ws.SetReadDeadline(time.Now().Add(c.liveness.pongWait)); err != nil {
 		_ = ws.Close()
 		return nil, fmt.Errorf("set initial read deadline: %w", err)
@@ -324,12 +362,20 @@ func (c *Connection) readLoop(ws *websocket.Conn) {
 		default:
 		}
 
-		var resp Response
-		if err := ws.ReadJSON(&resp); err != nil {
+		_, frame, err := ws.ReadMessage()
+		if err != nil {
 			select {
 			case <-c.done:
 				return // closed intentionally
 			default:
+			}
+			if errors.Is(err, websocket.ErrReadLimit) {
+				// gorilla closes the socket after an oversized frame; tell the
+				// callers why before the generic "connection lost" reaches them.
+				c.mu.Lock()
+				c.failPendingLocked(CodeFrameTooLarge,
+					fmt.Sprintf("frame from Godot exceeds the %d-byte read limit", c.readLimit))
+				c.mu.Unlock()
 			}
 			c.handleDisconnect(ws)
 			return
@@ -338,6 +384,12 @@ func (c *Connection) readLoop(ws *websocket.Conn) {
 			_ = ws.Close()
 			c.handleDisconnect(ws)
 			return
+		}
+
+		var resp Response
+		if err := json.Unmarshal(frame, &resp); err != nil {
+			c.rejectMalformedFrame(frame, err)
+			continue
 		}
 
 		c.mu.Lock()
@@ -351,6 +403,36 @@ func (c *Connection) readLoop(ws *websocket.Conn) {
 			ch <- &resp
 		}
 	}
+}
+
+// rejectMalformedFrame records a frame that failed to decode as a response. The
+// socket is healthy, so it stays up. If the frame still carries the id of an
+// in-flight call, that call fails now instead of waiting out its context.
+func (c *Connection) rejectMalformedFrame(frame []byte, decodeErr error) {
+	var probe struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(frame, &probe)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.lastProtocolErr = fmt.Errorf("%w: %v", ErrMalformedFrame, decodeErr)
+	if ch, ok := c.pending[probe.ID]; ok {
+		delete(c.pending, probe.ID)
+		ch <- &Response{
+			JSONRPC: "2.0",
+			ID:      probe.ID,
+			Error:   &RPCError{Code: CodeMalformedFrame, Message: c.lastProtocolErr.Error()},
+		}
+	}
+}
+
+// LastProtocolError returns the most recent malformed-frame error, or nil if
+// the peer has never sent one. Malformed frames do not drop the connection.
+func (c *Connection) LastProtocolError() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastProtocolErr
 }
 
 func (c *Connection) keepaliveLoop(ws *websocket.Conn, stop <-chan struct{}) {
@@ -373,15 +455,31 @@ func (c *Connection) keepaliveLoop(ws *websocket.Conn, stop <-chan struct{}) {
 }
 
 func (c *Connection) cancelPendingLocked() {
+	c.failPendingLocked(CodeInternalError, "connection lost")
+}
+
+func (c *Connection) failPendingLocked(code int, message string) {
 	for id, ch := range c.pending {
 		ch <- &Response{
 			JSONRPC: "2.0",
 			ID:      id,
-			Error: &RPCError{
-				Code:    CodeInternalError,
-				Message: "connection lost",
-			},
+			Error:   &RPCError{Code: code, Message: message},
 		}
 		delete(c.pending, id)
 	}
+}
+
+// pinnedHandshake is the identity a reconnected peer must reproduce.
+type pinnedHandshake struct {
+	protocolVersion int
+	instanceToken   string
+}
+
+// PinHandshake records the negotiated session so every reconnect re-runs
+// version negotiation and requires the same instance token. Without it a
+// reconnect trusts whatever answers on the port after re-authenticating.
+func (c *Connection) PinHandshake(info *gwp.Info) {
+	c.mu.Lock()
+	c.pinned = &pinnedHandshake{protocolVersion: info.ProtocolVersion, instanceToken: info.InstanceToken}
+	c.mu.Unlock()
 }
