@@ -1066,7 +1066,7 @@ func TestSmokeRecordReplay(t *testing.T) {
 		t.Errorf("record_stop path = %q, want %q", stopResult.Path, recordingPath)
 	}
 	if stopResult.EventsCount == 0 {
-		t.Fatalf("record captured no events; the click never reached the recorder's _input()\nGodot log:\n%s",
+		t.Fatalf("record captured no events; the click never reached the recorder\nGodot log:\n%s",
 			readFileBestEffort(logPath))
 	}
 	t.Logf("recorded: session=%s events=%d duration_ms=%d path=%s",

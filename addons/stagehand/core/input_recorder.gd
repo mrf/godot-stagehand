@@ -8,6 +8,8 @@ extends Node
 ## `events`/`t_ms`, and [method parse_recording] still reads them.
 
 const ERRORS := preload("res://addons/stagehand/core/errors.gd")
+const INPUT_SIMULATOR := preload("res://addons/stagehand/core/input_simulator.gd")
+const SELF_PROTECTION := preload("res://addons/stagehand/core/self_protection.gd")
 
 ## Recording format generation this build writes. Readers accept anything at or
 ## below it; a higher version is refused rather than silently mis-read.
@@ -37,9 +39,32 @@ var _session_id: String = ""
 var _start_scene: String = ""
 var _events: Array[Dictionary] = []
 var _start_time_ms: int = 0
+var _tap: _CaptureTap = null
 
 
-func _input(event: InputEvent) -> void:
+## Feeds the recorder from the front of the root viewport's [code]_input[/code]
+## pass. Godot calls [method Node._input] in reverse tree order, so the
+## recorder's own position (under the StagehandServer autoload, ahead of the
+## current scene) would see an event only after every game node had had the
+## chance to [method Viewport.set_input_as_handled] it — a pause menu's Escape
+## never reached the recording. An [constant Node.INTERNAL_MODE_BACK] child of
+## the root sorts after every ordinary node, including scenes added later.
+## [constant Node.PROCESS_MODE_ALWAYS] keeps capture running while the tree is
+## paused. Viewport-level hooks such as [signal Window.window_input] were
+## rejected: they fire before the root's stretch transform and never see the
+## [method Viewport.push_input] events Stagehand itself injects.
+class _CaptureTap extends Node:
+	var sink: Callable
+
+	func _input(event: InputEvent) -> void:
+		if sink.is_valid():
+			sink.call(event)
+
+
+## Records [param event] if a recording is active. Positions are taken as
+## delivered to [code]_input[/code]: the root viewport's canvas space, after
+## content-scale stretch — the space [method start_replay] pushes them back in.
+func capture(event: InputEvent) -> void:
 	if not _recording:
 		return
 	if not _include_mouse_move and event is InputEventMouseMotion:
@@ -90,6 +115,7 @@ func start_recording(output_path: String, include_mouse_move: bool = false) -> D
 	_events = []
 	_start_time_ms = Time.get_ticks_msec()
 	_recording = true
+	_attach_tap()
 	return {
 		"success": true,
 		"recording": true,
@@ -105,6 +131,7 @@ func stop_recording() -> Dictionary:
 			"next_action": "Call record_start before record_stop.",
 		})
 	_recording = false
+	_detach_tap()
 	var duration_ms: int = Time.get_ticks_msec() - _start_time_ms
 	var events_count: int = _events.size()
 	var session_id: String = _session_id
@@ -207,16 +234,13 @@ func start_replay(input_path: String, speed: float = 1.0, wait_for_ready: bool =
 		var delay_sec: float = event_delay_sec(_variant_to_int(entry.get("t_ms", 0)), speed)
 		if delay_sec > last_delay_sec:
 			last_delay_sec = delay_sec
-		if delay_sec <= 0.0:
-			Input.parse_input_event(event)
-			continue
 		var tree: SceneTree = get_tree()
-		if tree == null:
-			Input.parse_input_event(event)
+		if delay_sec <= 0.0 or tree == null:
+			_inject(event)
 			continue
 		@warning_ignore("return_value_discarded")
 		tree.create_timer(delay_sec, true, false, true).timeout.connect(func() -> void:
-			Input.parse_input_event(event)
+			_inject(event)
 		)
 
 	if last_delay_sec > 0.0:
@@ -347,6 +371,7 @@ static func serialize_event(event: InputEvent) -> Dictionary:
 			"key_label": e.key_label,
 			"unicode": e.unicode,
 			"pressed": e.pressed,
+			"echo": e.echo,
 			"shift": e.shift_pressed,
 			"ctrl": e.ctrl_pressed,
 			"alt": e.alt_pressed,
@@ -405,6 +430,7 @@ static func deserialize_event(entry: Dictionary) -> InputEvent:
 			ev.key_label = _variant_to_int(entry.get("key_label", 0)) as Key
 			ev.unicode = _variant_to_int(entry.get("unicode", 0))
 			ev.pressed = _variant_to_bool(entry.get("pressed", false))
+			ev.echo = _variant_to_bool(entry.get("echo", false))
 			ev.shift_pressed = _variant_to_bool(entry.get("shift", false))
 			ev.ctrl_pressed = _variant_to_bool(entry.get("ctrl", false))
 			ev.alt_pressed = _variant_to_bool(entry.get("alt", false))
@@ -443,6 +469,45 @@ static func deserialize_event(entry: Dictionary) -> InputEvent:
 			ev.relative = _variant_to_vector2(entry.get("relative", {}))
 			return ev
 	return null
+
+
+## Pointer events were captured in the root's canvas space, so they go back in
+## through the simulator's [method Viewport.push_input] path:
+## [method Input.parse_input_event] would treat them as window pixels and apply
+## content-scale stretch a second time. Touch is not re-emulated as mouse there,
+## which is right here — any emulated mouse events were recorded alongside it.
+## Keys and actions keep [method Input.parse_input_event], which routes them to
+## the focused window (see [method StagehandInputSimulator.focus_window]).
+func _inject(event: InputEvent) -> void:
+	if (
+		event is InputEventMouse
+		or event is InputEventScreenTouch
+		or event is InputEventScreenDrag
+	):
+		var tree: SceneTree = get_tree()
+		INPUT_SIMULATOR.push_local(tree.root if tree != null else null, event)
+		return
+	Input.parse_input_event(event)
+
+
+func _attach_tap() -> void:
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return
+	_tap = _CaptureTap.new()
+	_tap.name = "StagehandInputRecorderTap"
+	_tap.sink = capture
+	_tap.process_mode = Node.PROCESS_MODE_ALWAYS
+	_tap.add_to_group(SELF_PROTECTION.PROTECTED_GROUP)
+	tree.root.add_child(_tap, false, Node.INTERNAL_MODE_BACK)
+
+
+func _detach_tap() -> void:
+	if _tap == null:
+		return
+	_tap.sink = Callable()
+	_tap.queue_free()
+	_tap = null
 
 
 ## Blocks until the scene tree has a current scene, so the first injected event
