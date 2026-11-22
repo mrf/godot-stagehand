@@ -286,8 +286,21 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 	if err != nil {
 		// Clean up process on failure.
 		_ = cmd.Process.Kill()
-		waitForProcessExit(wait, processExitWaitTimeout)
-		return nil, fmt.Errorf("Godot failed to become ready: %w", err)
+		exited := waitForProcessExit(wait, processExitWaitTimeout)
+		err = fmt.Errorf("Godot failed to become ready: %w", err)
+		if launchCtx.Err() == nil {
+			return nil, err
+		}
+		return nil, &ReadinessTimeoutError{
+			Host:      host,
+			Port:      port,
+			PID:       cmd.Process.Pid,
+			AuthToken: authToken,
+			// The process we killed is only WSL's interop proxy for a Windows
+			// godot.exe; its exit says nothing about the game itself.
+			GameMayStillRun: !exited || isWindowsBinaryFromNonWindowsHost(runtime.GOOS, godotBin),
+			err:             err,
+		}
 	}
 	// We will keep the connection open on success; caller is responsible for
 	// closing it. cleanup tears everything down on any post-connect failure.
@@ -347,6 +360,25 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		waitChan:         wait,
 	}, nil
 }
+
+// ReadinessTimeoutError is returned when the launched game did not accept a
+// connection before the readiness deadline. It keeps the address and auth
+// token the game was started with so a game that binds after the deadline is
+// still connectable. Error() never includes the token.
+type ReadinessTimeoutError struct {
+	Host      string
+	Port      int
+	PID       int
+	AuthToken string
+	// GameMayStillRun is set when the kill issued on timeout is not known to
+	// have stopped the game, so it may still come up on Host:Port.
+	GameMayStillRun bool
+	err             error
+}
+
+func (e *ReadinessTimeoutError) Error() string { return e.err.Error() }
+
+func (e *ReadinessTimeoutError) Unwrap() error { return e.err }
 
 // attachProcessLogs routes the child's stdout and stderr to w, or discards
 // them when w is nil. Both streams get the same writer so the interleaving
