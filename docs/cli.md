@@ -218,7 +218,7 @@ Actions fall into three groups:
   `p95`) to sample and assert monitors over time instead — see the
   performance-monitoring note in the [README](../README.md) for what this is
   not yet: proven statistical regression gating.
-- **Local** — `sleep`, `screenshot`, `save_baseline`, `screenshot_diff`.
+- **Local** — `sleep` (`duration_ms`: whole milliseconds, 1–3600000), `screenshot` (unnamed shots are written as `step-<i>.png` / `teardown-<i>.png`), `save_baseline`, `screenshot_diff`.
 
 The `name` of a `save_baseline` / `screenshot_diff` step is a filename stem,
 not a path, and is checked at validation time against the allowlist in
