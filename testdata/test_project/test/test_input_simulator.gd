@@ -214,6 +214,155 @@ func test_touch_unknown_action_returns_error() -> void:
 	assert_str(str(result.get("error", ""))).contains("Unknown action")
 
 
+# ── input_touch: mouse emulation ─────────────────────────────────────────
+# A real touchscreen tap reaches mouse-only Controls such as Button because
+# Input synthesizes mouse events from touch when emulate_mouse_from_touch is on.
+
+var _saved_mouse_from_touch: bool = Input.emulate_mouse_from_touch
+
+
+func _with_mouse_from_touch(enabled: bool) -> void:
+	Input.emulate_mouse_from_touch = enabled
+
+
+func _count_presses(button: BaseButton) -> Array[int]:
+	var count: Array[int] = [0]
+	var _err: int = button.pressed.connect(func() -> void: count[0] += 1)
+	return count
+
+
+func test_touch_begin_end_on_a_button_emits_pressed() -> void:
+	_with_mouse_from_touch(true)
+	var presses: Array[int] = _count_presses(_button)
+
+	StagehandInputSimulator.input_touch(get_tree(), {"position": _at(440.0, 315.0), "action": "begin"})
+	StagehandInputSimulator.input_touch(get_tree(), {"position": _at(440.0, 315.0), "action": "end"})
+
+	assert_int(presses[0]).is_equal(1)
+
+
+func test_touch_tap_on_a_button_emits_pressed() -> void:
+	_with_mouse_from_touch(true)
+	var presses: Array[int] = _count_presses(_button)
+
+	StagehandInputSimulator.input_touch(get_tree(), {"position": _at(440.0, 315.0), "duration_ms": 20})
+	await get_tree().create_timer(0.15, true, false, true).timeout
+
+	assert_int(presses[0]).is_equal(1)
+
+
+func test_touch_emulates_left_mouse_button_events() -> void:
+	_with_mouse_from_touch(true)
+	StagehandInputSimulator.input_touch(get_tree(), {"position": _at(30.0, 40.0), "action": "begin"})
+
+	var event: InputEventMouseButton = _recorder.first_of_type("InputEventMouseButton")
+	assert_object(event).is_not_null()
+	assert_bool(event.pressed).is_true()
+	assert_int(event.button_index).is_equal(MOUSE_BUTTON_LEFT)
+	assert_vector(event.position).is_equal(Vector2(30.0, 40.0))
+
+
+func test_touch_drag_emulates_mouse_motion_with_left_button_held() -> void:
+	_with_mouse_from_touch(true)
+	StagehandInputSimulator.input_touch(get_tree(), {
+		"position": _at(10.0, 10.0),
+		"drag_to": _at(60.0, 30.0),
+		"action": "move",
+	})
+
+	var event: InputEventMouseMotion = _recorder.first_of_type("InputEventMouseMotion")
+	assert_object(event).is_not_null()
+	assert_vector(event.position).is_equal(Vector2(60.0, 30.0))
+	assert_vector(event.relative).is_equal(Vector2(50.0, 20.0))
+	assert_int(event.button_mask).is_equal(MOUSE_BUTTON_MASK_LEFT)
+
+
+## Godot emulates the mouse from the first finger only; a second finger must
+## not click on its own.
+func test_touch_from_a_secondary_finger_emulates_no_mouse() -> void:
+	_with_mouse_from_touch(true)
+	StagehandInputSimulator.input_touch(
+		get_tree(), {"position": _at(30.0, 40.0), "action": "begin", "index": 1}
+	)
+	assert_int(_recorder.of_type("InputEventMouseButton").size()).is_equal(0)
+
+
+func test_touch_without_mouse_emulation_pushes_no_mouse_events() -> void:
+	_with_mouse_from_touch(false)
+	var presses: Array[int] = _count_presses(_button)
+
+	StagehandInputSimulator.input_touch(get_tree(), {"position": _at(440.0, 315.0), "action": "begin"})
+	StagehandInputSimulator.input_touch(get_tree(), {"position": _at(440.0, 315.0), "action": "end"})
+
+	assert_int(_recorder.of_type("InputEventMouseButton").size()).is_equal(0)
+	assert_int(presses[0]).is_equal(0)
+
+
+# ── input_mouse: polled input state ──────────────────────────────────────
+# Pointer events are delivered with Viewport.push_input, which Input never
+# sees. Actions bound to the button are kept in sync explicitly; the raw
+# button mask is not (documented in docs/tools.md).
+
+const MOUSE_ACTION: StringName = &"stagehand_test_mouse_fire"
+
+
+func _add_mouse_action(button: MouseButton) -> void:
+	var bind: InputEventMouseButton = InputEventMouseButton.new()
+	bind.button_index = button
+	# -1 is "all devices", what the editor's Input Map writes; it is also what
+	# lets the emulated mouse (device DEVICE_ID_EMULATION) match.
+	bind.device = -1
+	InputMap.add_action(MOUSE_ACTION)
+	InputMap.action_add_event(MOUSE_ACTION, bind)
+
+
+func test_mouse_click_holds_a_mouse_bound_action_until_release() -> void:
+	_add_mouse_action(MOUSE_BUTTON_LEFT)
+	StagehandInputSimulator.input_mouse(get_tree(), {"position": _at(10.0, 10.0), "hold_ms": 50})
+
+	assert_bool(Input.is_action_pressed(MOUSE_ACTION)).is_true()
+	await get_tree().create_timer(0.2, true, false, true).timeout
+	assert_bool(Input.is_action_pressed(MOUSE_ACTION)).is_false()
+
+
+func test_mouse_click_with_another_button_leaves_the_action_alone() -> void:
+	_add_mouse_action(MOUSE_BUTTON_LEFT)
+	StagehandInputSimulator.input_mouse(
+		get_tree(), {"position": _at(10.0, 10.0), "button": "right", "hold_ms": 50}
+	)
+	assert_bool(Input.is_action_pressed(MOUSE_ACTION)).is_false()
+
+
+func test_touch_holds_a_mouse_bound_action_via_emulation() -> void:
+	_with_mouse_from_touch(true)
+	_add_mouse_action(MOUSE_BUTTON_LEFT)
+
+	StagehandInputSimulator.input_touch(get_tree(), {"position": _at(10.0, 10.0), "action": "begin"})
+	assert_bool(Input.is_action_pressed(MOUSE_ACTION)).is_true()
+	StagehandInputSimulator.input_touch(get_tree(), {"position": _at(10.0, 10.0), "action": "end"})
+	assert_bool(Input.is_action_pressed(MOUSE_ACTION)).is_false()
+
+
+## Documented limitation: Input exposes no way to set its button mask without
+## also dispatching the event a second time through the window.
+func test_mouse_click_does_not_set_polled_mouse_button_state() -> void:
+	StagehandInputSimulator.input_mouse(get_tree(), {"position": _at(10.0, 10.0), "hold_ms": 50})
+	assert_bool(Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)).is_false()
+
+
+func test_mouse_release_after_the_viewport_is_freed_still_releases_the_action() -> void:
+	_add_mouse_action(MOUSE_BUTTON_LEFT)
+	var viewport: SubViewport = SubViewport.new()
+	add_child(viewport)
+	StagehandInputSimulator._push_mouse_button(viewport, Vector2.ZERO, MOUSE_BUTTON_LEFT, true, false)
+	StagehandInputSimulator._release_mouse_after(
+		get_tree(), viewport, Vector2.ZERO, MOUSE_BUTTON_LEFT, 0.05
+	)
+	viewport.free()
+	await get_tree().create_timer(0.15, true, false, true).timeout
+	assert_bool(Input.is_action_pressed(MOUSE_ACTION)).is_false()
+
+
 # ── input_mouse_move ─────────────────────────────────────────────────────
 
 func test_mouse_move_pushes_motion_event_at_coordinates() -> void:
@@ -509,6 +658,10 @@ func test_text_unmatched_selector_returns_error() -> void:
 
 func after_test() -> void:
 	Engine.time_scale = 1.0
+	Input.emulate_mouse_from_touch = _saved_mouse_from_touch
+	if InputMap.has_action(MOUSE_ACTION):
+		Input.action_release(MOUSE_ACTION)
+		InputMap.erase_action(MOUSE_ACTION)
 
 
 func test_key_release_arrives_when_time_scale_is_zero() -> void:

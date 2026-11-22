@@ -61,6 +61,19 @@ Nodes are targeted with selectors — see the [selector guide](selectors.md).
   error whose `next_action` lists similar names from the game's `InputMap`.
 - **`godot_type_text` sends `\n` as the Enter key**, so it submits a `LineEdit`
   and inserts a line break in a `TextEdit`.
+- **Pointer events go straight to the viewport, not through `Input`.** That is
+  what keeps clicks accurate under content-scale stretch and `--headless`, but
+  it means `Input` only partly tracks them. Actions bound to a mouse button do
+  follow clicks, so `Input.is_action_pressed` / `is_action_just_pressed` work.
+  `Input.is_mouse_button_pressed` and `Input.get_mouse_button_mask` do
+  **not** — a game that polls raw mouse state
+  instead of handling `_input` / `_gui_input` events or actions won't see
+  simulated clicks.
+- **`godot_touch` also drives the emulated mouse** when the project has
+  `input_devices/pointing/emulate_mouse_from_touch` on (Godot's default):
+  finger `index` 0 additionally sends left-button press/release and
+  button-held motion events (device `InputEvent.DEVICE_ID_EMULATION`), so a
+  tap presses a `Button`. Other fingers send touch events only.
 
 ## Derived call deadlines
 
