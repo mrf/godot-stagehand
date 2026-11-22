@@ -22,6 +22,9 @@ type Session struct {
 	Engine   string
 	Addon    string
 	Protocol string
+	// Warnings are launch-time notices the report must carry, e.g. the game
+	// listening off-loopback.
+	Warnings []string
 
 	close func() error
 }
@@ -99,12 +102,25 @@ func launchSession(ctx context.Context, sc *Scenario, opts Options, logs io.Writ
 		Engine:   result.EngineVersion,
 		Addon:    result.StagehandVersion,
 		Protocol: gwp.ProtocolID,
+		Warnings: sessionWarnings(result),
 		close: func() error {
 			_ = result.Conn.Close()
 			return result.Kill()
 		},
 	}
 	return session, nil
+}
+
+// sessionWarnings collects the launch notices a report must not drop.
+func sessionWarnings(result *launch.LaunchResult) []string {
+	var warnings []string
+	if result.BindWarning != "" {
+		warnings = append(warnings, result.BindWarning)
+	}
+	if result.UserDataWarning != "" {
+		warnings = append(warnings, result.UserDataWarning)
+	}
+	return warnings
 }
 
 func connectSession(ctx context.Context, sc *Scenario, opts Options) (*Session, error) {
