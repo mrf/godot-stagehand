@@ -24,8 +24,8 @@ type Scenario struct {
 	Description string `json:"description,omitempty"`
 	// Target says how to obtain a Godot session.
 	Target Target `json:"target"`
-	// BaselineDir holds screenshot baselines. Relative paths resolve against
-	// the scenario file's directory so a scenario is portable.
+	// BaselineDir holds screenshot baselines. It must stay inside the scenario
+	// file's directory and resolves against it, so a scenario is portable.
 	BaselineDir string `json:"baseline_dir,omitempty"`
 	// Steps run in order. The first failure stops the run unless the step
 	// opts into continue_on_failure.
@@ -167,6 +167,9 @@ func (s *Scenario) Validate() error {
 	if err := s.Target.validate(); err != nil {
 		return err
 	}
+	if err := validateBaselineDir(s.BaselineDir); err != nil {
+		return err
+	}
 	if len(s.Steps) == 0 {
 		return fmt.Errorf("scenario has no steps")
 	}
@@ -222,6 +225,22 @@ func (t *Target) validate() error {
 	// already-expired deadline.
 	if t.TimeoutMs < 0 {
 		return fmt.Errorf("target.timeout_ms %d must be positive", t.TimeoutMs)
+	}
+	return nil
+}
+
+// validateBaselineDir confines a scenario's baseline_dir to the scenario's own
+// directory, since save_baseline writes there and a scenario can arrive in a
+// pull request. Backslashes and colons are refused on every OS so a file that
+// is contained on Linux cannot escape when the same scenario runs on Windows.
+// Baselines elsewhere are the operator's call, via --baseline-dir. The check is
+// lexical: a symlink inside the scenario directory is not followed.
+func validateBaselineDir(dir string) error {
+	if dir == "" {
+		return nil
+	}
+	if strings.ContainsAny(dir, `\:`) || !filepath.IsLocal(dir) {
+		return fmt.Errorf("baseline_dir %q must be a relative, forward-slash path inside the scenario file's directory; use --baseline-dir to store baselines elsewhere", dir)
 	}
 	return nil
 }
