@@ -116,8 +116,13 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 		ShareUserData: shareUserData,
 	}
 
-	// Clean up any existing entry for this instanceID before launching.
-	s.instances.remove(instanceID)
+	// The existing instance is replaced only once the new launch succeeds
+	// (instances.add closes it), so a typo'd project_path cannot destroy a
+	// working session. The exception is a pinned port the old instance
+	// still holds: the new Godot cannot bind it until the old one is gone.
+	if old := s.instances.get(instanceID); old != nil && port != 0 && old.port == port {
+		s.instances.remove(instanceID)
+	}
 
 	var result *launch.LaunchResult
 	if port == 0 {

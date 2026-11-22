@@ -172,16 +172,19 @@ func TestInstanceManager_PIDFromLaunchResult(t *testing.T) {
 }
 
 // TestCloseEntry_ReportsKillFailureOnStderr verifies that a Kill() failure
-// (e.g. a process that has already exited) is reported on stderr rather than
-// silently discarded, since it means the entry's process may have leaked.
+// (e.g. a process we are not permitted to signal) is reported on stderr rather
+// than silently discarded, since it means the entry's process may have leaked.
 func TestCloseEntry_ReportsKillFailureOnStderr(t *testing.T) {
-	cmd := exec.Command("true")
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("failed to run helper process: %v", err)
+	if os.Geteuid() == 0 {
+		t.Skip("root may signal pid 1, so no kill failure can be provoked")
 	}
-	// The process has already exited; killing it again fails with
-	// "os: process already finished", which is the error closeEntry must
-	// surface rather than swallow via `_ = e.lr.Kill()`.
+	// Signalling init as a non-root user fails with EPERM, which is the error
+	// closeEntry must surface rather than swallow via `_ = e.lr.Kill()`.
+	proc, err := os.FindProcess(1)
+	if err != nil {
+		t.Fatalf("FindProcess(1): %v", err)
+	}
+	cmd := &exec.Cmd{Process: proc}
 	lr := &launch.LaunchResult{Process: cmd}
 
 	origStderr := os.Stderr
@@ -192,7 +195,7 @@ func TestCloseEntry_ReportsKillFailureOnStderr(t *testing.T) {
 	os.Stderr = w
 	defer func() { os.Stderr = origStderr }()
 
-	closeEntry(&instanceEntry{id: "leaked", pid: cmd.Process.Pid, lr: lr})
+	closeEntry(&instanceEntry{id: "leaked", pid: 1, lr: lr})
 
 	_ = w.Close()
 	os.Stderr = origStderr

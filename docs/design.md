@@ -408,7 +408,7 @@ assertion is reported as an MCP tool error.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `recording_path` | string | yes* | | Recording file to replay |
-| `speed` | float | no | `1.0` | Playback speed multiplier (> 0) |
+| `speed` | float | no | `1.0` | Playback speed multiplier (0.01–100) |
 | `wait_for_ready` | bool | no | `true` | Wait for the current scene to finish loading first |
 
 *`input_path` is accepted as a deprecated alias for `recording_path`.*

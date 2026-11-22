@@ -405,8 +405,14 @@ func (r *LaunchResult) Kill() error {
 		r.removeOwnedUserDataDir()
 		return nil
 	}
+	// An already-exited process is a successful kill: the user-data dir must
+	// still be cleaned up, and there is nothing left to wait for.
 	if err := r.Process.Process.Kill(); err != nil {
-		return err
+		if !errors.Is(err, os.ErrProcessDone) {
+			return err
+		}
+		r.removeOwnedUserDataDir()
+		return nil
 	}
 	if !waitForProcessExit(r.waitChan, processExitWaitTimeout) {
 		return fmt.Errorf("timed out waiting for Godot process to exit")
