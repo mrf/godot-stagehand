@@ -54,7 +54,13 @@ type Config struct {
 	Headless bool
 	// AllowUnsafe enables expression evaluation and arbitrary method calls.
 	AllowUnsafe bool
-	// ExtraArgs are additional command-line arguments passed to the Godot binary.
+	// Scene is a scene path (e.g. res://scenes/tools/probe.tscn) booted as the
+	// main scene instead of the project's configured one. It lands before the
+	// "--" separator, where Godot treats it as an engine argument.
+	Scene string
+	// ExtraArgs are additional arguments appended after "--", where Godot treats
+	// them as user arguments for the game (it does not interpret them). Use
+	// Scene to choose the boot scene.
 	ExtraArgs []string
 	// TimeoutMs is the maximum time to wait for Godot to start and become ready, in milliseconds.
 	TimeoutMs int
@@ -398,15 +404,20 @@ func normalizeHost(host string) string {
 
 // newInstanceToken returns a random hex token used to prove that the process we
 // spawn is the one we end up connected to.
-// godotArgs builds the engine command line. Everything after "--" is user
-// args, which an own-cli-parser host validates, so "--" is emitted only when
-// there is something to put after it.
+// godotArgs builds the engine command line. Engine arguments, including the
+// boot scene, precede "--". Everything after "--" is user args that Godot
+// ignores and the game reads via OS.get_cmdline_user_args(); an own-cli-parser
+// host validates them, so "--" is emitted only when there is something to put
+// after it.
 func godotArgs(cfg Config) []string {
 	var args []string
 	if cfg.Headless {
 		args = append(args, "--headless")
 	}
 	args = append(args, "--path", cfg.ProjectPath)
+	if cfg.Scene != "" {
+		args = append(args, cfg.Scene)
+	}
 	var user []string
 	if !cfg.EnvOnlyActivation {
 		user = append(user, "--stagehand")

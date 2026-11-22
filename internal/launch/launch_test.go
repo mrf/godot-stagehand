@@ -28,6 +28,13 @@ func TestGodotArgsActivationFlag(t *testing.T) {
 			[]string{"--path", "p"}},
 		{"env-only keeps the host's own args", Config{ProjectPath: "p", EnvOnlyActivation: true, ExtraArgs: []string{"--x"}},
 			[]string{"--path", "p", "--", "--x"}},
+		// Godot reads a scene path only before "--"; after it, it is a user arg.
+		{"scene lands before the separator", Config{ProjectPath: "p", Headless: true, Scene: "res://scenes/tools/probe.tscn", ExtraArgs: []string{"--user-flag"}},
+			[]string{"--headless", "--path", "p", "res://scenes/tools/probe.tscn", "--", "--stagehand", "--user-flag"}},
+		{"scene without user args emits no separator when env-only", Config{ProjectPath: "p", Scene: "res://a.tscn", EnvOnlyActivation: true},
+			[]string{"--path", "p", "res://a.tscn"}},
+		{"scene absent keeps extra args after the separator", Config{ProjectPath: "p", ExtraArgs: []string{"res://x.tscn"}},
+			[]string{"--path", "p", "--", "--stagehand", "res://x.tscn"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

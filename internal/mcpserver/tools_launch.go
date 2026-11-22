@@ -67,8 +67,13 @@ var launchTool = mcp.NewTool("godot_launch",
 			"Set true for a host project that parses its own command line and rejects unknown flags."),
 		mcp.DefaultBool(false),
 	),
+	mcp.WithString("scene",
+		mcp.Description("Scene to boot as the main scene instead of the project's configured one (for example res://scenes/tools/probe.tscn). "+
+			`Passed to Godot before "--", as an engine argument. A scene given in extra_args does NOT work: it lands after "--" and Godot ignores it.`),
+	),
 	mcp.WithArray("extra_args",
-		mcp.Description("Extra command-line arguments to pass to the Godot binary"),
+		mcp.Description(`Extra arguments appended after "--" on the Godot command line, where Godot treats them as user arguments for the game `+
+			`(read via OS.get_cmdline_user_args()) and does not interpret them. Engine flags and scene paths placed here have no effect; use scene to choose the boot scene.`),
 		mcp.WithStringItems(),
 	),
 	mcp.WithNumber("timeout_ms",
@@ -100,6 +105,7 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 	expectScreenshots := req.GetBool("expect_screenshots", false)
 	allowUnsafe := req.GetBool("allow_unsafe", false)
 	shareUserData := req.GetBool("share_user_data", false)
+	scene := req.GetString("scene", "")
 	extraArgs := req.GetStringSlice("extra_args", nil)
 	timeoutMs, errResult := boundedInt(req, "timeout_ms", 30000, 1000, maxUnboundedMs)
 	if errResult != nil {
@@ -131,6 +137,7 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 		Port:              port,
 		Headless:          headless,
 		AllowUnsafe:       allowUnsafe,
+		Scene:             scene,
 		ExtraArgs:         extraArgs,
 		TimeoutMs:         timeoutMs,
 		ImportTimeoutMs:   importTimeoutMs,
