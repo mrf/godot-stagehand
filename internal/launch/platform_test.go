@@ -29,30 +29,6 @@ func TestIsWindowsBinaryFromNonWindowsHost(t *testing.T) {
 	}
 }
 
-func TestIsLoopbackHost(t *testing.T) {
-	cases := []struct {
-		host string
-		want bool
-	}{
-		{"", true},
-		{"127.0.0.1", true},
-		{"localhost", true},
-		{"LOCALHOST", true},
-		{"::1", true},
-		{"172.25.224.1", false},
-		{"example.com", false},
-		{"0.0.0.0", false},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.host, func(t *testing.T) {
-			if got := isLoopbackHost(tc.host); got != tc.want {
-				t.Fatalf("isLoopbackHost(%q) = %v, want %v", tc.host, got, tc.want)
-			}
-		})
-	}
-}
-
 func TestStagehandEnvNames(t *testing.T) {
 	env := []string{
 		"STAGEHAND_ENABLED=1",
@@ -105,7 +81,7 @@ func TestWslenvValue(t *testing.T) {
 }
 
 func TestPlanBindLoopbackSetsNothing(t *testing.T) {
-	for _, host := range []string{"", "127.0.0.1", "localhost", "::1"} {
+	for _, host := range []string{"", "127.0.0.1", "localhost", "LOCALHOST"} {
 		t.Run(host, func(t *testing.T) {
 			plan, err := planBind(host, false)
 			if err != nil {
@@ -113,6 +89,34 @@ func TestPlanBindLoopbackSetsNothing(t *testing.T) {
 			}
 			if len(plan.env) != 0 || plan.warning != "" {
 				t.Fatalf("planBind(%q) = %+v, want an empty plan", host, plan)
+			}
+		})
+	}
+}
+
+// TestPlanBindLoopbackLiteralsBindRequestedIP: the addon's default bind is
+// 127.0.0.1, so any other loopback literal must be passed through or the
+// launcher dials an address nothing listens on. Loopback needs no opt-in, no
+// ALLOW_REMOTE, and no off-loopback warning.
+func TestPlanBindLoopbackLiteralsBindRequestedIP(t *testing.T) {
+	cases := []struct{ host, addr string }{
+		{"::1", "::1"},
+		{"0:0:0:0:0:0:0:1", "::1"},
+		{"127.0.0.2", "127.0.0.2"},
+		{"127.255.255.254", "127.255.255.254"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.host, func(t *testing.T) {
+			plan, err := planBind(tc.host, false)
+			if err != nil {
+				t.Fatalf("planBind(%q) error: %v", tc.host, err)
+			}
+			want := []string{"STAGEHAND_BIND_ADDRESS=" + tc.addr}
+			if strings.Join(plan.env, " ") != strings.Join(want, " ") {
+				t.Fatalf("planBind(%q).env = %v, want %v", tc.host, plan.env, want)
+			}
+			if plan.warning != "" {
+				t.Fatalf("planBind(%q) warned for a loopback host: %q", tc.host, plan.warning)
 			}
 		})
 	}
