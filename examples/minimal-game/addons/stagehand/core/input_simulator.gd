@@ -348,12 +348,36 @@ static func focus_window(tree: SceneTree, params: Dictionary) -> Dictionary:
 ## content-scale-stretch case (godot-stagehand-phase3-vrj.19) and the
 ## headless case, making the separate window/canvas stretch-transform mapping
 ## this addon previously needed unnecessary.
+##
+## The cost is that [Input] never sees the event, so its polled state is not
+## updated. Actions bound to a mouse button are synced by hand (see
+## [method _sync_polled_actions]); [method Input.is_mouse_button_pressed] and
+## [method Input.get_mouse_button_mask] cannot be, because [Input] can only
+## learn them from [method Input.parse_input_event], which would dispatch the
+## event a second time.
 static func _push(viewport: Viewport, event: InputEvent) -> void:
 	if viewport == null:
 		Input.parse_input_event(event)
 		return
 	_ensure_headless_window_sized(viewport)
 	viewport.push_input(event, true)
+	var button: InputEventMouseButton = event as InputEventMouseButton
+	if button != null:
+		_sync_polled_actions(button)
+
+
+## Presses or releases every action [param event] matches, so
+## [method Input.is_action_pressed] reflects a click delivered by
+## [method Viewport.push_input]. [method Input.action_press] updates only the
+## polled state; the event itself already reached [code]_input[/code].
+static func _sync_polled_actions(event: InputEventMouseButton) -> void:
+	for action: StringName in InputMap.get_actions():
+		if not InputMap.event_is_action(event, action):
+			continue
+		if event.pressed:
+			Input.action_press(action)
+		else:
+			Input.action_release(action)
 
 
 ## Corrects the degenerate root-[Window] size stub described on [method _push]
@@ -402,13 +426,17 @@ static func _push_mouse_motion(viewport: Viewport, pos: Vector2) -> void:
 
 
 static func _push_mouse_button(viewport: Viewport, pos: Vector2, btn: int, pressed: bool, double_click: bool) -> void:
+	_push(viewport, _mouse_button_event(pos, btn, pressed, double_click))
+
+
+static func _mouse_button_event(pos: Vector2, btn: int, pressed: bool, double_click: bool) -> InputEventMouseButton:
 	var ev: InputEventMouseButton = InputEventMouseButton.new()
 	ev.position = pos
 	ev.global_position = pos
 	ev.button_index = btn as MouseButton
 	ev.pressed = pressed
 	ev.double_click = double_click
-	_push(viewport, ev)
+	return ev
 
 
 ## Best-effort confirmation that a click at [param target]'s position will
@@ -449,6 +477,8 @@ static func _release_mouse_after(tree: SceneTree, viewport: Viewport, pos: Vecto
 	var _err: int = timer.timeout.connect(func() -> void:
 		var live: Viewport = viewport_ref.get_ref()
 		if live == null:
+			# Nothing left to deliver to, but a held action must not stay stuck.
+			_sync_polled_actions(_mouse_button_event(pos, btn, false, false))
 			return
 		_push_mouse_button(live, pos, btn, false, false)
 	)
@@ -603,7 +633,7 @@ static func input_touch(tree: SceneTree, params: Dictionary) -> Dictionary:
 
 	match action:
 		"tap":
-			_touch_press(viewport, pos, index)
+			_push_touch(viewport, pos, index, true)
 			if params.has("drag_to"):
 				var dt: Dictionary = params["drag_to"]
 				var drag_pos: Vector2 = Vector2(_v_float(dt.get("x", 0.0)), _v_float(dt.get("y", 0.0)))
@@ -618,7 +648,7 @@ static func input_touch(tree: SceneTree, params: Dictionary) -> Dictionary:
 			_touch_release_after(tree, viewport, pos, index, duration_ms / 1000.0)
 			return {"success": true, "position": {"x": pos.x, "y": pos.y}, "index": index}
 		"begin":
-			_touch_press(viewport, pos, index)
+			_push_touch(viewport, pos, index, true)
 			return {"success": true, "position": {"x": pos.x, "y": pos.y}, "index": index, "action": "begin"}
 		"move":
 			if not params.has("drag_to"):
@@ -637,7 +667,7 @@ static func input_touch(tree: SceneTree, params: Dictionary) -> Dictionary:
 				"action": "move",
 			}
 		"end":
-			_touch_release(viewport, pos, index)
+			_push_touch(viewport, pos, index, false)
 			return {"success": true, "position": {"x": pos.x, "y": pos.y}, "index": index, "action": "end"}
 		_:
 			return ERRORS.make(ERRORS.INVALID_PARAMS, "Unknown action: %s" % action, {
@@ -646,26 +676,33 @@ static func input_touch(tree: SceneTree, params: Dictionary) -> Dictionary:
 			})
 
 
-static func _touch_press(viewport: Viewport, pos: Vector2, index: int) -> void:
+static func _push_touch(viewport: Viewport, pos: Vector2, index: int, pressed: bool) -> void:
 	var ev: InputEventScreenTouch = InputEventScreenTouch.new()
 	ev.position = pos
 	ev.index = index
-	ev.pressed = true
+	ev.pressed = pressed
 	_push(viewport, ev)
+	if not _emulates_mouse(index):
+		return
+	var mouse: InputEventMouseButton = _mouse_button_event(pos, MOUSE_BUTTON_LEFT, pressed, false)
+	mouse.device = InputEvent.DEVICE_ID_EMULATION
+	if pressed:
+		mouse.button_mask = MOUSE_BUTTON_MASK_LEFT
+	_push(viewport, mouse)
 
 
-static func _touch_release(viewport: Viewport, pos: Vector2, index: int) -> void:
-	var ev: InputEventScreenTouch = InputEventScreenTouch.new()
-	ev.position = pos
-	ev.index = index
-	ev.pressed = false
-	_push(viewport, ev)
+## Mirrors the touch-to-mouse emulation [method Input.parse_input_event]
+## performs, which [method Viewport.push_input] skips: without it a tap never
+## reaches a mouse-only [Control] such as [Button]. Only the first finger
+## drives the emulated mouse.
+static func _emulates_mouse(index: int) -> bool:
+	return index == 0 and Input.emulate_mouse_from_touch
 
 
 static func _touch_release_after(tree: SceneTree, viewport: Viewport, pos: Vector2, index: int, delay_sec: float) -> void:
 	var timer: SceneTreeTimer = tree.create_timer(delay_sec, true, false, true)
 	var _err: int = timer.timeout.connect(func() -> void:
-		_touch_release(viewport, pos, index)
+		_push_touch(viewport, pos, index, false)
 	)
 
 
@@ -676,6 +713,15 @@ static func _touch_drag(viewport: Viewport, from: Vector2, to: Vector2, index: i
 	ev.relative = to - from
 	ev.velocity = Vector2.ZERO
 	_push(viewport, ev)
+	if not _emulates_mouse(index):
+		return
+	var motion: InputEventMouseMotion = InputEventMouseMotion.new()
+	motion.device = InputEvent.DEVICE_ID_EMULATION
+	motion.position = to
+	motion.global_position = to
+	motion.relative = to - from
+	motion.button_mask = MOUSE_BUTTON_MASK_LEFT
+	_push(viewport, motion)
 
 
 ## Moves mouse cursor to specified position without clicking
