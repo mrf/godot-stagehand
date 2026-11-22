@@ -355,11 +355,28 @@ func (r *runState) doSaveBaseline(ctx context.Context, step Step) (stepOutcome, 
 	if err != nil {
 		return stepOutcome{}, err
 	}
-	outcome, err := visual.SaveBaseline(r.baselineDir, asString(step.With["name"]), nodeSelector, shot)
+	name := asString(step.With["name"])
+	if err := r.confineBaseline(name); err != nil {
+		return stepOutcome{}, err
+	}
+	outcome, err := visual.SaveBaseline(r.baselineDir, name, nodeSelector, shot)
 	if err != nil {
 		return stepOutcome{}, err
 	}
 	return stepOutcome{result: mustJSON(outcome), artifacts: []string{outcome.Path}}, nil
+}
+
+// confineBaseline refuses a write that a symlink would carry out of the
+// scenario directory. It applies only to a baseline dir the scenario chose; an
+// operator's --baseline-dir is trusted wherever it points.
+func (r *runState) confineBaseline(name string) error {
+	if r.opts.BaselineDir != "" || r.sc.dir == "" {
+		return nil
+	}
+	if err := resolvesInside(r.sc.dir, r.baselineDir); err != nil {
+		return err
+	}
+	return resolvesInside(r.sc.dir, filepath.Join(r.baselineDir, name+".png"))
 }
 
 func (r *runState) doScreenshotDiff(ctx context.Context, step Step) (stepOutcome, error) {

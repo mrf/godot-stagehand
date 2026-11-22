@@ -95,6 +95,8 @@ applies to an MCP caller of `godot_launch`, which can pass `godot_bin` and
 What the runner does confine is where a scenario writes: `baseline_dir` must be
 a relative path inside the scenario file's directory, and screenshot outputs and
 baseline names cannot escape the run's directories (see [CLI](cli.md)). The
-check is lexical, so a symlink committed inside the scenario directory is
-followed. Baselines outside the scenario directory need the operator's
-`--baseline-dir` flag.
+parse-time check is lexical, so `save_baseline` also resolves symlinks before
+writing and refuses a baseline directory or file that resolves outside the
+scenario directory. Baselines outside the scenario directory need the
+operator's `--baseline-dir` flag, which is trusted and may point through
+symlinks.

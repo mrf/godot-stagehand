@@ -236,7 +236,7 @@ func (t *Target) validate() error {
 // pull request. Backslashes and colons are refused on every OS so a file that
 // is contained on Linux cannot escape when the same scenario runs on Windows.
 // Baselines elsewhere are the operator's call, via --baseline-dir. The check is
-// lexical: a symlink inside the scenario directory is not followed.
+// lexical; symlinks are refused at write time by runState.confineBaseline.
 func validateBaselineDir(dir string) error {
 	if dir == "" {
 		return nil
