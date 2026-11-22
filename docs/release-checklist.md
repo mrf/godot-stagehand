@@ -13,7 +13,7 @@ Published assets use **version-less bare binary names**: `godot-stagehand-{platf
 | `godot-stagehand-darwin-arm64` | bare binary | `releases/latest/download/godot-stagehand-darwin-arm64` |
 | `godot-stagehand-windows-amd64.exe` | bare binary | `releases/latest/download/godot-stagehand-windows-amd64.exe` |
 
-`build-release.sh` outputs these names directly into `build/`, plus a
+`./build-release.sh` (repo root) outputs these names directly into `build/`, plus a
 `SHA256SUMS` file (`<sha256>  <asset>` per binary) that the release publishes
 next to them. The Claude Code plugin's launcher verifies its download against
 it. The `release.yml` workflow publishes the same bare files, then downloads
