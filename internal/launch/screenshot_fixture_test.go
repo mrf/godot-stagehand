@@ -17,7 +17,9 @@ package launch
 //      the expected colors. Only a genuinely rendered frame can satisfy this.
 //
 // Gating (so it is honest on headless/no-GPU CI, see docs/screenshot-pixel-proof.md):
-//   - short mode / no Godot binary / no display server  -> t.Skip (frame not obtainable here).
+//   - short mode / STAGEHAND_WINDOWED_TESTS!=1 / no Godot binary / no display
+//     server -> t.Skip. The opt-in is required because the test opens a real
+//     window, and DISPLAY alone (always set under WSLg) must not trigger that.
 //   - addon reports it could not produce a frame (viewport_image_empty etc.)
 //     -> t.Skip with the addon's own diagnostic (no real render on this path).
 //   - addon returns image DATA but pixels are blank/black/transparent/uniform
@@ -79,14 +81,26 @@ var fixtureQuadrants = []quadrant{
 // and differ from each other and from black/grey by far more than this).
 const colorTolerance uint8 = 24
 
-func displayServerAvailable() (bool, string) {
-	switch runtime.GOOS {
+// windowedOptInEnv must be "1" for any test that opens a visible Godot window.
+// A display server alone is not consent: WSLg exports DISPLAY and
+// WAYLAND_DISPLAY in every shell, so keying on them put a window on the
+// developer's desktop for a plain `go test ./...`.
+const windowedOptInEnv = "STAGEHAND_WINDOWED_TESTS"
+
+// windowedTestsAllowed reports whether a headed Godot may be launched: the
+// explicit opt-in is set AND a display server is available. When it is not,
+// the string says why.
+func windowedTestsAllowed(goos string, getenv func(string) string) (bool, string) {
+	if getenv(windowedOptInEnv) != "1" {
+		return false, windowedOptInEnv + "=1 not set (a display server alone does not opt in to opening a window)"
+	}
+	switch goos {
 	case "windows", "darwin":
 		// These platforms always have a window server for a headed process.
 		return true, ""
 	default:
 		// X11 / Wayland (including WSLg, which exports both).
-		if os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != "" {
+		if getenv("DISPLAY") != "" || getenv("WAYLAND_DISPLAY") != "" {
 			return true, ""
 		}
 		return false, "no DISPLAY or WAYLAND_DISPLAY set"
@@ -99,17 +113,19 @@ func TestScreenshotPixelFixtureProvesRealRender(t *testing.T) {
 		t.Skip("skipping screenshot pixel fixture in short mode")
 	}
 
+	// Opt-in is checked before anything that could launch Godot.
+	if ok, why := windowedTestsAllowed(runtime.GOOS, os.Getenv); !ok {
+		t.Skipf("windowed screenshot proof not enabled (%s); it opens a visible Godot window, so it needs %s=1 "+
+			"and a headed display server (local desktop, WSLg, or an X server such as Xvfb with a GPU/software rasterizer). "+
+			"See docs/screenshot-pixel-proof.md.", why, windowedOptInEnv)
+	}
+
 	godotBin, err := FindGodotBinary()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if godotBin == "" {
 		t.Skip("Godot binary not found; set GODOT_BIN, GODOT_PATH, or STAGEHAND_GODOT_BIN, or put godot/godot4 in PATH")
-	}
-
-	if ok, why := displayServerAvailable(); !ok {
-		t.Skipf("no visible display available (%s); the screenshot pixel proof requires a headed Godot on a real display server "+
-			"(local desktop, WSLg, or an X server such as Xvfb with a GPU/software rasterizer). See docs/screenshot-pixel-proof.md.", why)
 	}
 
 	projectRoot := findProjectRoot(t)

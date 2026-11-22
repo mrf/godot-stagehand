@@ -55,8 +55,11 @@ pixels; the addon reports `viewport_image_empty` in that case.
 The proof is deliberately *not* behind the `integration` build tag — it runs in
 the normal `go test ./...` and self-skips where a real frame cannot exist:
 
-- short mode / no Godot binary / no display server → **skip** (frame not
-  obtainable here).
+- short mode / `STAGEHAND_WINDOWED_TESTS` not `1` / no Godot binary / no display
+  server → **skip** (frame not obtainable here, or no consent to open a window).
+  The test opens a visible window, so a display server alone is not enough —
+  WSLg sets `DISPLAY` in every shell. Run it with
+  `STAGEHAND_WINDOWED_TESTS=1 go test ./internal/launch -run TestScreenshotPixelFixture`.
 - addon reports it could not produce a frame (`viewport_image_empty`, etc.) →
   **skip**, surfacing the addon diagnostic (no real render on this path —
   headless dummy driver / no GPU).
