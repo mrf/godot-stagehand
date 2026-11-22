@@ -94,7 +94,9 @@ build_target() {
     local goarch="$2"
     local asset_name="$3"
     echo "Building $asset_name..."
-    CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -o "$BUILD_DIR/$asset_name" .
+    # -trimpath and an empty -buildid keep runner paths and per-build IDs out
+    # of the binary, so the same commit builds the same bytes.
+    CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags="-s -w -buildid=" -o "$BUILD_DIR/$asset_name" .
     BUILT_ASSETS+=("$asset_name")
 }
 

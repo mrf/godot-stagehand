@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: ["main"]
 
+permissions:
+  contents: read
+
 env:
   GODOT_CACHE_DIR: ~/.cache/godot-ci
 
@@ -137,7 +140,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ env.GODOT_CACHE_DIR }}
-          key: godot-${{ matrix.godot-version }}-linux
+          key: godot-${{ matrix.godot-version }}-linux-${{ hashFiles('scripts/ci-install-godot.sh') }}
 
       - name: Install Godot
         if: steps.godot-cache.outputs.cache-hit != 'true'
@@ -211,7 +214,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ env.GODOT_CACHE_DIR }}
-          key: godot-4.6.2.stable-linux
+          key: godot-4.6.2.stable-linux-${{ hashFiles('scripts/ci-install-godot.sh') }}
 
       - name: Install Godot
         if: steps.godot-cache.outputs.cache-hit != 'true'
@@ -273,7 +276,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ env.GODOT_CACHE_DIR }}
-          key: godot-4.6.2.stable-linux
+          key: godot-4.6.2.stable-linux-${{ hashFiles('scripts/ci-install-godot.sh') }}
 
       - name: Install Godot
         if: steps.godot-cache.outputs.cache-hit != 'true'
@@ -340,7 +343,8 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
-        run: go build -o ${{ matrix.artifact }} .
+          ARTIFACT: ${{ matrix.artifact }}
+        run: go build -o "$ARTIFACT" .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7

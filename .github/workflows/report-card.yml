@@ -7,8 +7,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -51,7 +49,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ env.GODOT_CACHE_DIR }}
-          key: godot-${{ env.GODOT_VERSION }}-linux
+          key: godot-${{ env.GODOT_VERSION }}-linux-${{ hashFiles('scripts/ci-install-godot.sh') }}
 
       - name: Install Godot
         if: steps.godot-cache.outputs.cache-hit != 'true'
@@ -75,10 +73,6 @@ jobs:
           --config reportcard/config.toml
           --output _site
           --github-output "$GITHUB_OUTPUT"
-
-      - name: Configure GitHub Pages
-        if: ${{ github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch }}
-        uses: actions/configure-pages@v6
 
       - name: Upload GitHub Pages artifact
         if: ${{ github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch }}
@@ -154,10 +148,18 @@ jobs:
     needs: analyze
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # Here rather than in analyze: it reads the Pages API, and analyze runs
+      # on every branch with a read-only token.
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5

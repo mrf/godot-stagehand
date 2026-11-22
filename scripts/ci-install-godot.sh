@@ -25,17 +25,36 @@ _dotver="${_ver}"                   # e.g. "4.3" or "4.3.1"
 
 GODOT_FILENAME="Godot_v${_dotver}-stable_linux.x86_64"
 GODOT_ZIP="${GODOT_FILENAME}.zip"
-GODOT_DOWNLOAD_URL="https://github.com/godotengine/godot/releases/download/${_dotver}-stable/${GODOT_ZIP}"
+GODOT_RELEASE_URL="https://github.com/godotengine/godot/releases/download/${_dotver}-stable"
+GODOT_DOWNLOAD_URL="${GODOT_RELEASE_URL}/${GODOT_ZIP}"
+GODOT_SUMS_URL="${GODOT_RELEASE_URL}/SHA512-SUMS.txt"
 
 GODOT_BIN="${GODOT_CACHE_DIR}/${GODOT_FILENAME}"
 
+# The CI cache key includes this script's hash, so a cached binary was
+# verified by the current version of the check below.
 if [[ -x "${GODOT_BIN}" ]]; then
     echo "Godot ${GODOT_VERSION} already cached at ${GODOT_BIN}"
 else
     echo "Downloading Godot ${GODOT_VERSION} from ${GODOT_DOWNLOAD_URL} ..."
     mkdir -p "${GODOT_CACHE_DIR}"
     tmp_zip="${GODOT_CACHE_DIR}/${GODOT_ZIP}"
-    curl -fsSL --retry 3 --retry-delay 5 -o "${tmp_zip}" "${GODOT_DOWNLOAD_URL}"
+    tmp_sums="${GODOT_CACHE_DIR}/SHA512-SUMS.txt"
+    if ! curl -fsSL --retry 3 --retry-delay 5 -o "${tmp_sums}" "${GODOT_SUMS_URL}" \
+        || ! curl -fsSL --retry 3 --retry-delay 5 -o "${tmp_zip}" "${GODOT_DOWNLOAD_URL}"; then
+        rm -f "${tmp_zip}" "${tmp_sums}"
+        echo "Error: failed to download Godot ${GODOT_VERSION} or its SHA512-SUMS.txt" >&2
+        exit 1
+    fi
+    expected_sha512=$(awk -v name="${GODOT_ZIP}" '$2 == name { print $1 }' "${tmp_sums}")
+    actual_sha512=$(sha512sum "${tmp_zip}" | cut -d ' ' -f 1)
+    rm -f "${tmp_sums}"
+    if [[ -z "${expected_sha512}" || "${expected_sha512}" != "${actual_sha512}" ]]; then
+        rm -f "${tmp_zip}"
+        echo "Error: ${GODOT_ZIP} SHA-512 '${actual_sha512}' does not match SHA512-SUMS.txt entry '${expected_sha512:-<missing>}'" >&2
+        exit 1
+    fi
+    echo "Verified ${GODOT_ZIP} against SHA512-SUMS.txt"
     unzip -q "${tmp_zip}" -d "${GODOT_CACHE_DIR}"
     rm -f "${tmp_zip}"
     chmod +x "${GODOT_BIN}"
