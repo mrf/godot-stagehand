@@ -202,7 +202,13 @@ Actions fall into three groups:
   `wait_for_node`,
   `wait_for_signal`, `wait_for_property`, `get_performance`,
   `assert_performance`, `record_start`, `record_stop`, `replay`, `ping`,
-  `game_state`. Parameters match the MCP tool arguments.
+  `game_state`. Parameters match the MCP tool arguments (minus
+  `instance_id`, and `full_page` on `screenshot`) — enforced by a parity test
+  in `internal/mcpserver`. Pre-parity spellings still work: `tree`'s
+  `properties` (now `include_properties`) and `replay`'s `input_path` (now
+  `recording_path`). Supplying both spellings of one setting is a usage error.
+  `replay` takes `speed` (0.01–100) and `wait_for_ready`; `record_start`
+  takes `include_mouse_move`, and its `output_path` is optional.
 - **Assertions** — `assert_property` and `assert_node_count` read once and
   compare, failing the run with exit 5. `assert_performance` fails the step
   when the addon's verdict is false; it defaults to one instantaneous sample,

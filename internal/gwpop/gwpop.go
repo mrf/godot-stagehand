@@ -146,6 +146,12 @@ type Spec struct {
 	// list-typed parameter (e.g. get_performance's "monitors"); every element
 	// supplied must be in the list, checked before the dial.
 	ListEnums map[string][]string
+	// Aliases maps an accepted spelling onto the wire parameter it stands for,
+	// e.g. the MCP argument name onto the name the addon reads. Supplying an
+	// alias together with its wire name is a usage error.
+	Aliases map[string]string
+	// NumberRanges maps a numeric parameter to its inclusive [min, max].
+	NumberRanges map[string][2]float64
 	// TimeoutParam, when set, names the millisecond parameter that bounds the
 	// remote operation. The Go-side deadline is that value plus DeadlineBuffer.
 	TimeoutParam string
@@ -163,6 +169,13 @@ type Spec struct {
 // would hang the caller indefinitely.
 const DeadlineBuffer = 2 * time.Second
 
+// A near-zero replay speed stretches a recording into an effectively endless
+// replay, so out-of-range speeds are rejected rather than clamped.
+const (
+	MinReplaySpeed = 0.01
+	MaxReplaySpeed = 100.0
+)
+
 var specs = buildSpecs()
 
 func buildSpecs() map[string]Spec {
@@ -173,6 +186,7 @@ func buildSpecs() map[string]Spec {
 			Summary: "Report the current scene, FPS, physics state and window size"},
 		{Action: "tree", Method: "get_tree", Capability: gwp.CapabilityCore,
 			Optional: []string{"root_path", "max_depth", "properties"}, Selectors: []string{"root_path"},
+			Aliases:         map[string]string{"include_properties": "properties"},
 			NonNegativeInts: []string{"max_depth"},
 			Summary:         "Snapshot the scene tree"},
 		{Action: "find", Method: "query_nodes", Capability: gwp.CapabilityCore,
@@ -269,7 +283,7 @@ func buildSpecs() map[string]Spec {
 			Summary:          "Assert a performance monitor against a threshold"},
 
 		{Action: "record_start", Method: "record_start", Capability: gwp.CapabilityRecording,
-			Required:         []string{"output_path"},
+			Optional:         []string{"output_path", "include_mouse_move"},
 			RequiredNonEmpty: []string{"output_path"},
 			RecordingPaths:   []string{"output_path"},
 			Summary:          "Start recording input"},
@@ -277,6 +291,9 @@ func buildSpecs() map[string]Spec {
 			Summary: "Stop the active recording"},
 		{Action: "replay", Method: "replay", Capability: gwp.CapabilityRecording,
 			Required:         []string{"input_path"},
+			Optional:         []string{"speed", "wait_for_ready"},
+			Aliases:          map[string]string{"recording_path": "input_path"},
+			NumberRanges:     map[string][2]float64{"speed": {MinReplaySpeed, MaxReplaySpeed}},
 			RequiredNonEmpty: []string{"input_path"},
 			RecordingPaths:   []string{"input_path"},
 			Summary:          "Replay a recorded input session"},
@@ -368,12 +385,29 @@ func (s Spec) Params(supplied map[string]any) (map[string]any, error) {
 		if !slices.Contains(allowed, name) {
 			return nil, newError(KindUsage, s.Action, "unknown parameter %q (accepted: %s)", name, strings.Join(allowed, ", "))
 		}
-		out[name] = value
+		wire := name
+		if target, aliased := s.Aliases[name]; aliased {
+			wire = target
+			if _, dup := supplied[wire]; dup && supplied[wire] != nil {
+				return nil, newError(KindUsage, s.Action, "parameters %q and %q are the same setting; supply one", name, wire)
+			}
+		}
+		out[wire] = value
 	}
 
 	for _, name := range s.Required {
 		if _, ok := out[name]; !ok {
-			return nil, newError(KindUsage, s.Action, "missing required parameter %q", name)
+			return nil, newError(KindUsage, s.Action, "missing required parameter %s", s.spellings(name))
+		}
+	}
+	for name, bounds := range s.NumberRanges {
+		raw, ok := out[name]
+		if !ok {
+			continue
+		}
+		n, ok := asFloat(raw)
+		if !ok || !(n >= bounds[0] && n <= bounds[1]) {
+			return nil, newError(KindUsage, s.Action, "parameter %q must be a number between %v and %v, got %v", name, bounds[0], bounds[1], raw)
 		}
 	}
 	for _, name := range s.RequiredNonEmpty {
@@ -526,7 +560,34 @@ func (s Spec) acceptedParams(includeRequired bool) []string {
 	for _, group := range s.OneOf {
 		all = append(all, group...)
 	}
-	return dedupe(all)
+	aliases := make([]string, 0, len(s.Aliases))
+	for alias := range s.Aliases {
+		aliases = append(aliases, alias)
+	}
+	sort.Strings(aliases)
+	return dedupe(append(all, aliases...))
+}
+
+// spellings renders a wire parameter together with every alias for it, for
+// error messages that must name what the caller can actually type.
+func (s Spec) spellings(wire string) string {
+	names := []string{wire}
+	for alias, target := range s.Aliases {
+		if target == wire {
+			names = append(names, alias)
+		}
+	}
+	sort.Strings(names[1:])
+	quoted := make([]string, len(names))
+	for i, name := range names {
+		quoted[i] = fmt.Sprintf("%q", name)
+	}
+	return strings.Join(quoted, " or ")
+}
+
+// AcceptsParam reports whether a step may supply name, aliases included.
+func (s Spec) AcceptsParam(name string) bool {
+	return slices.Contains(s.acceptedParams(true), name)
 }
 
 func hasAny(params map[string]any, names []string) bool {

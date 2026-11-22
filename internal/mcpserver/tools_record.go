@@ -70,21 +70,14 @@ var replayTool = mcp.NewTool("godot_replay",
 	mcp.WithNumber("speed",
 		mcp.Description("Playback speed multiplier. 2.0 replays twice as fast; use it to shorten CI runs. Between 0.01 and 100."),
 		mcp.DefaultNumber(1),
-		mcp.Min(minReplaySpeed),
-		mcp.Max(maxReplaySpeed),
+		mcp.Min(gwpop.MinReplaySpeed),
+		mcp.Max(gwpop.MaxReplaySpeed),
 	),
 	mcp.WithBoolean("wait_for_ready",
 		mcp.Description("Wait for the current scene to finish loading before injecting the first event."),
 		mcp.DefaultBool(true),
 	),
 	instanceIDOpt,
-)
-
-// A near-zero replay speed stretches a recording into an effectively endless
-// replay, so it is rejected rather than clamped.
-const (
-	minReplaySpeed = 0.01
-	maxReplaySpeed = 100.0
 )
 
 // recordingKey identifies a recording within one Godot instance's user://.
@@ -140,7 +133,7 @@ func (s *Server) handleReplay(ctx context.Context, req mcp.CallToolRequest) (*mc
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	speed, errResult := boundedNumber(req, "speed", 1.0, minReplaySpeed, maxReplaySpeed)
+	speed, errResult := boundedNumber(req, "speed", 1.0, gwpop.MinReplaySpeed, gwpop.MaxReplaySpeed)
 	if errResult != nil {
 		return errResult, nil
 	}
