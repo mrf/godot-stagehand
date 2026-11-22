@@ -5,7 +5,7 @@
 ##   "name:*Button*"      — recursive find_children() with glob matching
 ##   "class:Button"       — tree walk + is_class()
 ##   "group:interactive"  — get_nodes_in_group()
-##   "role:button"        — derived accessibility role (Godot 4.5+)
+##   "role:button"        — derived accessibility role
 ##
 ## Phase 2 adds text:, meta:, unique:, and >> chaining.
 class_name SelectorEngine
