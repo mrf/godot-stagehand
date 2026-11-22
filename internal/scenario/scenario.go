@@ -68,6 +68,9 @@ type Target struct {
 	ShareUserData bool `json:"share_user_data,omitempty"`
 	// ExtraArgs are passed through to the game after "--".
 	ExtraArgs []string `json:"extra_args,omitempty"`
+	// EnvOnlyActivation activates the addon by STAGEHAND_ENABLED alone,
+	// without passing --stagehand, for hosts that reject unknown user args.
+	EnvOnlyActivation bool `json:"env_only_activation,omitempty"`
 
 	// ── connect mode ──────────────────────────────────────────────────────
 	// Token authenticates against an already-running session. Prefer TokenEnv
@@ -205,8 +208,8 @@ func (t *Target) validate() error {
 			return fmt.Errorf("target.token/token_env are only valid in %q mode; a launched instance mints its own session secret", ModeConnect)
 		}
 	case ModeConnect:
-		if t.ProjectPath != "" || t.GodotBin != "" || t.Headless != nil || len(t.ExtraArgs) > 0 {
-			return fmt.Errorf("launch settings (project_path, godot_bin, headless, extra_args) are only valid in %q mode", ModeLaunch)
+		if t.ProjectPath != "" || t.GodotBin != "" || t.Headless != nil || len(t.ExtraArgs) > 0 || t.EnvOnlyActivation {
+			return fmt.Errorf("launch settings (project_path, godot_bin, headless, extra_args, env_only_activation) are only valid in %q mode", ModeLaunch)
 		}
 		if t.Port == nil {
 			return fmt.Errorf("target.port is required in %q mode; the shared default 26700 may belong to another agent's game", ModeConnect)

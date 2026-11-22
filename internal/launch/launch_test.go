@@ -6,10 +6,37 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestGodotArgsActivationFlag(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  Config
+		want []string
+	}{
+		{"default passes --stagehand", Config{ProjectPath: "p", Headless: true},
+			[]string{"--headless", "--path", "p", "--", "--stagehand"}},
+		{"extra args follow the flag", Config{ProjectPath: "p", ExtraArgs: []string{"--x"}},
+			[]string{"--path", "p", "--", "--stagehand", "--x"}},
+		// An own-cli-parser host rejects any user arg it does not know, so the
+		// env-only path must not even emit the bare "--".
+		{"env-only omits the flag and separator", Config{ProjectPath: "p", EnvOnlyActivation: true},
+			[]string{"--path", "p"}},
+		{"env-only keeps the host's own args", Config{ProjectPath: "p", EnvOnlyActivation: true, ExtraArgs: []string{"--x"}},
+			[]string{"--path", "p", "--", "--x"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := godotArgs(tc.cfg); !slices.Equal(got, tc.want) {
+				t.Errorf("godotArgs = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestConfigDefaults(t *testing.T) {
 	cfg := Config{

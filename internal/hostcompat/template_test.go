@@ -18,7 +18,8 @@ const (
   "clickable": "name:SampleButton",
   "extra_args": ["--sample-flag", "--other=1"],
   "min_subwindows": 2,
-  "timeout_ms": 90000
+  "timeout_ms": 90000,
+  "env_only_activation": true
 }`
 )
 
@@ -90,7 +91,7 @@ func TestParseOverrideMinimalFileIsTenLinesOrFewer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("minimal override rejected: %v", err)
 	}
-	if ov.MinSubwindows != 0 || len(ov.ExtraArgs) != 0 || ov.TimeoutMs != 0 {
+	if ov.MinSubwindows != 0 || len(ov.ExtraArgs) != 0 || ov.TimeoutMs != 0 || ov.EnvOnlyActivation {
 		t.Errorf("optional fields should default to zero, got %+v", *ov)
 	}
 }
@@ -112,6 +113,9 @@ func TestRenderThreadsEveryOverrideFieldIntoTheScenario(t *testing.T) {
 	}
 	if sc.Target.TimeoutMs != 90000 {
 		t.Errorf("timeout_ms = %d, want 90000", sc.Target.TimeoutMs)
+	}
+	if !sc.Target.EnvOnlyActivation {
+		t.Error("env_only_activation = false, want the override's true")
 	}
 
 	waits := stepsByAction(sc, "wait_for_node")

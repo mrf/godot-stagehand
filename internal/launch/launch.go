@@ -80,6 +80,10 @@ type Config struct {
 	// defaultImportTimeout, which is deliberately longer than TimeoutMs because
 	// a cold import of a large project dwarfs the readiness wait.
 	ImportTimeoutMs int
+	// EnvOnlyActivation omits the --stagehand user arg, leaving the
+	// STAGEHAND_ENABLED=1 env var (always set) as the only activation signal.
+	// Needed for hosts that parse their own argv and reject unknown flags.
+	EnvOnlyActivation bool
 	// LogWriter receives the launched process's stdout and stderr. Nil
 	// discards them, which is the right default for an interactive MCP
 	// session; a CI scenario run supplies a file so a failure comes with the
@@ -223,18 +227,7 @@ func Launch(ctx context.Context, cfg Config) (*LaunchResult, error) {
 		return nil, fmt.Errorf("failed to generate authentication token: %w", err)
 	}
 
-	// Prepare command line arguments.
-	args := []string{}
-	if cfg.Headless {
-		args = append(args, "--headless")
-	}
-	args = append(args, "--path", cfg.ProjectPath)
-	// Separate Godot arguments from stagehand arguments by "--"
-	args = append(args, "--")
-	args = append(args, "--stagehand")
-	if len(cfg.ExtraArgs) > 0 {
-		args = append(args, cfg.ExtraArgs...)
-	}
+	args := godotArgs(cfg)
 
 	unsafeSetting := "0"
 	if cfg.AllowUnsafe {
@@ -404,6 +397,27 @@ func normalizeHost(host string) string {
 
 // newInstanceToken returns a random hex token used to prove that the process we
 // spawn is the one we end up connected to.
+// godotArgs builds the engine command line. Everything after "--" is user
+// args, which an own-cli-parser host validates, so "--" is emitted only when
+// there is something to put after it.
+func godotArgs(cfg Config) []string {
+	var args []string
+	if cfg.Headless {
+		args = append(args, "--headless")
+	}
+	args = append(args, "--path", cfg.ProjectPath)
+	var user []string
+	if !cfg.EnvOnlyActivation {
+		user = append(user, "--stagehand")
+	}
+	user = append(user, cfg.ExtraArgs...)
+	if len(user) > 0 {
+		args = append(args, "--")
+		args = append(args, user...)
+	}
+	return args
+}
+
 func newInstanceToken() (string, error) {
 	buf := make([]byte, 16)
 	if _, err := rand.Read(buf); err != nil {

@@ -6,7 +6,8 @@
     "project_path": "${project_path}",
     "headless": false,
     "extra_args": "${extra_args}",
-    "timeout_ms": "${timeout_ms}"
+    "timeout_ms": "${timeout_ms}",
+    "env_only_activation": "${env_only_activation}"
   },
   "steps": [
     {

@@ -50,6 +50,29 @@ func openSession(ctx context.Context, sc *Scenario, opts Options, logs io.Writer
 	}
 }
 
+// launchConfig maps the launch-mode target onto launch.Config. A non-empty
+// godotBinOverride (Options.GodotBin) wins over target.godot_bin.
+func (sc *Scenario) launchConfig(godotBinOverride string, port int, logs io.Writer) launch.Config {
+	target := sc.Target
+	godotBin := target.GodotBin
+	if godotBinOverride != "" {
+		godotBin = godotBinOverride
+	}
+	return launch.Config{
+		ProjectPath:       sc.resolve(target.ProjectPath),
+		GodotBin:          godotBin,
+		Host:              target.Host,
+		Port:              port,
+		Headless:          target.headless(),
+		AllowUnsafe:       target.AllowUnsafe,
+		ShareUserData:     target.ShareUserData,
+		ExtraArgs:         target.ExtraArgs,
+		EnvOnlyActivation: target.EnvOnlyActivation,
+		TimeoutMs:         target.TimeoutMs,
+		LogWriter:         logs,
+	}
+}
+
 func launchSession(ctx context.Context, sc *Scenario, opts Options, logs io.Writer) (*Session, error) {
 	target := sc.Target
 	port := 0
@@ -64,23 +87,7 @@ func launchSession(ctx context.Context, sc *Scenario, opts Options, logs io.Writ
 		port = free
 	}
 
-	godotBin := target.GodotBin
-	if opts.GodotBin != "" {
-		godotBin = opts.GodotBin
-	}
-
-	result, err := launch.Launch(ctx, launch.Config{
-		ProjectPath:   sc.resolve(target.ProjectPath),
-		GodotBin:      godotBin,
-		Host:          target.Host,
-		Port:          port,
-		Headless:      target.headless(),
-		AllowUnsafe:   target.AllowUnsafe,
-		ShareUserData: target.ShareUserData,
-		ExtraArgs:     target.ExtraArgs,
-		TimeoutMs:     target.TimeoutMs,
-		LogWriter:     logs,
-	})
+	result, err := launch.Launch(ctx, sc.launchConfig(opts.GodotBin, port, logs))
 	if err != nil {
 		return nil, err
 	}

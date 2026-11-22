@@ -534,19 +534,18 @@ the per-host file, parsed by `hostcompat.ParseOverride` (unknown fields
 rejected, no `steps` field — a gap is fixed in the template) and rendered by
 `hostcompat.RenderScenario`, which also runs `ValidateScenario`. Override
 fields: `root_node` and `clickable` (required), `extra_args`, `min_subwindows`,
-`timeout_ms`. `testdata/hostcompat/test_project/override.json` runs green on
-real Godot (`template_godot_test.go`; the template is headed, so use
-`xvfb-run -a`). Two honest limits:
+`timeout_ms`, `env_only_activation` (an own-cli-parser host sets it to drop
+`--stagehand` and activate by `STAGEHAND_ENABLED=1` alone; it maps to
+`target.env_only_activation` and `launch.Config.EnvOnlyActivation`).
+`testdata/hostcompat/test_project/override.json` runs green on real Godot
+(`template_godot_test.go`; the template is headed, so use `xvfb-run -a`). One
+honest limit:
 
 - **"See a subwindow" is weak on a host with none.** `find class:Window`
   returns `/root` (itself a `Window`), so the default assertion
   (`greater_than 0`) passes on any host and proves only that Stagehand
   enumerates `Window`-class nodes. `min_subwindows: N` raises it to
   `greater_than N` for a host known to show subwindows.
-- **Env-var-only activation is not expressible yet.** `launch.Launch` always
-  appends `--stagehand` after `--`, so an own-cli-parser host's override can
-  carry `extra_args` but cannot drop the flag. Needs a launch option; filed as
-  a follow-up.
 
 Nothing consumes the template from the manifest or `hostcompat-run.sh` yet; the
 per-project `scenario` field there still points at a file.
