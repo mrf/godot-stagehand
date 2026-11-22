@@ -235,6 +235,23 @@ func TestParseValidatesAssertPropertyTolerance(t *testing.T) {
 	}
 }
 
+func TestParseValidatesWaitForPropertyTolerance(t *testing.T) {
+	step := func(tolerance string) string {
+		return `{
+			"target": {"mode": "launch", "project_path": "p"},
+			"steps": [{"action": "wait_for_property", "with": {"selector": "name:X", "property": "p", "operator": "equals", "expected_value": 1, "tolerance": ` + tolerance + `}}]
+		}`
+	}
+	if _, err := Parse([]byte(step("0.001"))); err != nil {
+		t.Errorf("Parse rejected a valid tolerance: %v", err)
+	}
+	for _, bad := range []string{"-0.1", `"loose"`} {
+		if _, err := Parse([]byte(step(bad))); err == nil {
+			t.Errorf("Parse accepted tolerance %s", bad)
+		}
+	}
+}
+
 func TestRunContinueOnFailureKeepsGoing(t *testing.T) {
 	godot := &stubGodot{results: map[string]any{
 		"get_property": map[string]any{"value": "Loading", "type": "String"},

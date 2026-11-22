@@ -51,6 +51,8 @@ func TestNumericParamsEnforceDeclaredBounds(t *testing.T) {
 			map[string]any{"selector": "/root", "property": "x", "operator": "exists", "timeout_ms": -1.0}, "timeout_ms"},
 		{"wait_for_property poll_interval_ms above max", s.handleWaitForProperty,
 			map[string]any{"selector": "/root", "property": "x", "operator": "exists", "poll_interval_ms": 6000.0}, "poll_interval_ms"},
+		{"wait_for_property tolerance negative", s.handleWaitForProperty,
+			map[string]any{"selector": "/root", "property": "x", "operator": "equals", "expected_value": 1.0, "tolerance": -0.5}, "tolerance"},
 		{"get_accessibility_tree max_depth above max", s.handleGetAccessibilityTree,
 			map[string]any{"max_depth": 1e6}, "max_depth"},
 		{"find_nodes limit zero", s.handleFindNodes,

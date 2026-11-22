@@ -389,6 +389,7 @@ var cmdWait = &command{
 
 		var state, operator, expected string
 		var timeoutMs, pollMs int
+		var tolerance float64
 		bind := func(fset *flag.FlagSet) {
 			fset.IntVar(&timeoutMs, "timeout-ms", 0, "maximum wait in milliseconds")
 			switch sub {
@@ -399,6 +400,7 @@ var cmdWait = &command{
 				fset.StringVar(&operator, "operator", "", "equals, not_equals, exists, contains, greater_than, less_than")
 				fset.StringVar(&expected, "expected", "", "value to compare against (JSON, or a plain string)")
 				fset.IntVar(&pollMs, "poll-ms", 0, "poll interval in milliseconds")
+				fset.Float64Var(&tolerance, "tolerance", 0, "numeric tolerance for equals/not_equals/greater_than/less_than (default 1e-6; 0 is exact)")
 			}
 		}
 
@@ -435,6 +437,7 @@ var cmdWait = &command{
 				params["selector"] = fset.Arg(0)
 				params["property"] = fset.Arg(1)
 				params["operator"] = operator
+				setIf(params, "tolerance", tolerance, wasSet(fset, "tolerance"))
 				if operator != "exists" {
 					if !wasSet(fset, "expected") {
 						return usagef(fmt.Errorf("operator %q requires --expected", operator))

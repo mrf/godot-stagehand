@@ -482,6 +482,37 @@ func TestExecuteRejectsUnknownWaitOperator(t *testing.T) {
 	}
 }
 
+func TestWaitForPropertyForwardsTolerance(t *testing.T) {
+	caller := &recordingCaller{}
+	_, err := Execute(context.Background(), caller, Op{
+		Action: "wait_for_property",
+		Params: map[string]any{"selector": "name:X", "property": "p", "operator": "equals", "expected_value": 0.1, "tolerance": 0.5},
+	})
+	if err != nil {
+		t.Fatalf("Execute rejected a valid tolerance: %v", err)
+	}
+	params, _ := caller.params.(map[string]any)
+	if got := params["tolerance"]; got != 0.5 {
+		t.Errorf("tolerance on the wire = %v, want 0.5", got)
+	}
+}
+
+func TestWaitForPropertyRejectsInvalidTolerance(t *testing.T) {
+	for _, bad := range []any{-0.1, math.NaN(), math.Inf(1), "loose"} {
+		caller := &recordingCaller{}
+		_, err := Execute(context.Background(), caller, Op{
+			Action: "wait_for_property",
+			Params: map[string]any{"selector": "name:X", "property": "p", "operator": "equals", "expected_value": 1, "tolerance": bad},
+		})
+		if err == nil || KindOf(err) != KindUsage {
+			t.Errorf("tolerance %v: err = %v, want a usage error", bad, err)
+		}
+		if caller.calls != 0 {
+			t.Errorf("tolerance %v reached the wire", bad)
+		}
+	}
+}
+
 func TestActionsAreSortedAndCoverThePublicSurface(t *testing.T) {
 	actions := Actions()
 	for _, want := range []string{

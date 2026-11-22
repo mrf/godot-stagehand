@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -164,6 +165,10 @@ var waitForPropertyTool = mcp.NewTool("godot_wait_for_property",
 		mcp.Description("Value to compare against based on operator. Send the property's native JSON type — a bare mcp.WithAny leaves clients no type to marshal against, and a stringified \"5\" never compares equal to an int 5."),
 		withJSONTypeUnion("boolean", "integer", "number", "string", "object", "array", "null"),
 	),
+	mcp.WithNumber("tolerance",
+		mcp.Description("Numeric tolerance for equals, not_equals, greater_than and less_than: two numbers are equal when |a-b| <= tolerance * max(1, |a|, |b|), so Godot's float32 values (0.1 reads back as 0.10000000149…) match the literal you wrote. Default 1e-6; 0 is exact."),
+		mcp.Min(0),
+	),
 	instanceIDOpt,
 )
 
@@ -202,6 +207,13 @@ func (s *Server) handleWaitForProperty(ctx context.Context, req mcp.CallToolRequ
 		"operator":         operator,
 		"timeout_ms":       timeoutMs,
 		"poll_interval_ms": pollIntervalMs,
+	}
+	if _, present, _ := argFloat(req, "tolerance"); present {
+		tolerance, errResult := boundedNumber(req, "tolerance", 0, 0, math.MaxFloat64)
+		if errResult != nil {
+			return errResult, nil
+		}
+		params["tolerance"] = tolerance
 	}
 
 	// Add expected_value if provided

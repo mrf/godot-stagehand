@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -251,11 +252,12 @@ func buildSpecs() map[string]Spec {
 			RequiredNonEmpty: []string{"signal_name"},
 			Summary:          "Wait for a signal emission"},
 		{Action: "wait_for_property", Method: "wait_for_property", Capability: gwp.CapabilityWait,
-			Required: []string{"selector", "property", "operator"}, Optional: []string{"expected_value", "timeout_ms", "poll_interval_ms"}, Selectors: []string{"selector"},
+			Required: []string{"selector", "property", "operator"}, Optional: []string{"expected_value", "timeout_ms", "poll_interval_ms", "tolerance"}, Selectors: []string{"selector"},
 			TimeoutParam: "timeout_ms", DefaultTimeoutMs: 10000,
 			RequiredNonEmpty: []string{"property"}, NonNegativeInts: []string{"poll_interval_ms"},
-			Enums:   map[string][]string{"operator": Operators},
-			Summary: "Wait for a property to satisfy a condition"},
+			NumberRanges: map[string][2]float64{"tolerance": {0, math.MaxFloat64}},
+			Enums:        map[string][]string{"operator": Operators},
+			Summary:      "Wait for a property to satisfy a condition"},
 
 		// "screenshot" is registered here only so Capture (which always calls
 		// Execute with action "screenshot") resolves a spec; the scenario

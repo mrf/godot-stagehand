@@ -217,6 +217,83 @@ func test_greater_than_operator_on_numbers() -> void:
 	).is_false()
 
 
+func _float32(v: float) -> float:
+	return PackedFloat32Array([v])[0]
+
+
+func test_equals_tolerates_float32_widening() -> void:
+	# float32(0.1) reads back as 0.10000000149011612; exact == never matches 0.1.
+	var node: Node2D = auto_free(Node2D.new())
+	node.rotation = _float32(0.1)
+	add_child(node)
+	assert_bool(_waiter.evaluate_property_condition(node, "rotation", "equals", 0.1)).is_true()
+	assert_bool(_waiter.evaluate_property_condition(node, "rotation", "not_equals", 0.1)).is_false()
+
+
+func test_equals_tolerance_zero_is_exact() -> void:
+	var node: Node2D = auto_free(Node2D.new())
+	node.rotation = _float32(0.1)
+	add_child(node)
+	assert_bool(_waiter.evaluate_property_condition(node, "rotation", "equals", 0.1, 0.0)).is_false()
+	assert_bool(_waiter.evaluate_property_condition(node, "rotation", "not_equals", 0.1, 0.0)).is_true()
+
+
+func test_equals_rejects_difference_beyond_tolerance() -> void:
+	var node: Node2D = auto_free(Node2D.new())
+	node.rotation = 0.5
+	add_child(node)
+	assert_bool(_waiter.evaluate_property_condition(node, "rotation", "equals", 0.51)).is_false()
+	assert_bool(_waiter.evaluate_property_condition(node, "rotation", "equals", 0.51, 0.05)).is_true()
+
+
+func test_tolerance_is_relative_for_large_magnitudes() -> void:
+	var node: Node2D = auto_free(Node2D.new())
+	node.rotation = 1000.0
+	add_child(node)
+	# |a-b| = 9 <= 0.01 * max(1, 1000, 1009)
+	assert_bool(_waiter.evaluate_property_condition(node, "rotation", "equals", 1009.0, 0.01)).is_true()
+	assert_bool(_waiter.evaluate_property_condition(node, "rotation", "equals", 1009.0, 0.001)).is_false()
+
+
+func test_ordering_excludes_values_equal_under_tolerance() -> void:
+	var node: Node2D = auto_free(Node2D.new())
+	node.rotation = _float32(0.1)
+	add_child(node)
+	assert_bool(_waiter.evaluate_property_condition(node, "rotation", "greater_than", 0.1)).is_false()
+	assert_bool(_waiter.evaluate_property_condition(node, "rotation", "less_than", 0.1)).is_false()
+	assert_bool(_waiter.evaluate_property_condition(node, "rotation", "greater_than", 0.1, 0.0)).is_true()
+
+
+func test_ordering_still_passes_for_clear_differences() -> void:
+	var node: Node2D = auto_free(Node2D.new())
+	node.rotation = 1.0
+	add_child(node)
+	assert_bool(_waiter.evaluate_property_condition(node, "rotation", "greater_than", 0.5)).is_true()
+	assert_bool(_waiter.evaluate_property_condition(node, "rotation", "less_than", 2.0)).is_true()
+
+
+func test_wait_for_property_matches_float32_value_with_default_tolerance() -> void:
+	var node: Node2D = auto_free(Node2D.new())
+	node.name = "FloatWaitProbe"
+	node.rotation = _float32(0.1)
+	add_child(node)
+	var result: Dictionary = await _waiter.wait_for_property(
+		"name:FloatWaitProbe", "rotation", "equals", 0.1, TIMEOUT_MS, POLL_MS
+	)
+	assert_bool(result.get("success", false)).is_true()
+
+
+func test_wait_for_property_tolerance_zero_requires_exact_match() -> void:
+	var node: Node2D = auto_free(Node2D.new())
+	node.name = "ExactWaitProbe"
+	node.rotation = _float32(0.1)
+	add_child(node)
+	var result: Dictionary = await _waiter.wait_for_property(
+		"name:ExactWaitProbe", "rotation", "equals", 0.1, TIMEOUT_MS, POLL_MS, 0.0
+	)
+	assert_bool(result.get("success", false)).is_false()
+
+
 func test_property_condition_never_invokes_get_method() -> void:
 	var node: Node = auto_free(Node.new())
 	node.set_script(preload("res://scripts/getter_side_effect.gd"))
