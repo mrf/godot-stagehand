@@ -43,7 +43,7 @@ keeps its relative timing instead of accumulating per-event drift.
 
 | `type` | InputEvent | Fields beyond `t_ms`/`type` |
 | --- | --- | --- |
-| `key` | `InputEventKey` | `keycode`, `physical_keycode`, `key_label`, `unicode`, `pressed`, `shift`, `ctrl`, `alt`, `meta` |
+| `key` | `InputEventKey` | `keycode`, `physical_keycode`, `key_label`, `unicode`, `pressed`, `echo`, `shift`, `ctrl`, `alt`, `meta` |
 | `mouse_button` | `InputEventMouseButton` | `position {x,y}`, `button_index`, `pressed`, `double_click` |
 | `mouse_motion` | `InputEventMouseMotion` | `position {x,y}`, `relative {x,y}` |
 | `action` | `InputEventAction` | `action`, `strength`, `pressed` |
@@ -57,6 +57,34 @@ a newer build still replays its understood events on an older one.
 `mouse_motion` is **not** captured unless `godot_record_start` is called with
 `include_mouse_move: true`. Motion dominates a recording's size and is rarely
 what a repro depends on.
+
+### Capture point
+
+Events are captured at the front of the root viewport's `_input` pass, before
+any game node sees them, so input the game consumes with
+`set_input_as_handled()` (a pause menu's Escape) is still recorded. Capture
+keeps running while the tree is paused. Events delivered to a separate OS
+window are not captured.
+
+### Coordinates
+
+`position` and `relative` are in the root viewport's canvas space — the
+coordinates a game's `_input` receives, after content-scale stretch — not
+window pixels. Replay pushes pointer events (`mouse_button`, `mouse_motion`,
+`screen_touch`, `screen_drag`) back through `Viewport.push_input` in that
+same space, the path `godot_click` uses, so a recording replays onto the same
+`Control` whatever the window size or stretch factor. Touch is not re-emulated
+as mouse on replay; any emulated mouse events were recorded alongside the
+touch. `key` and `action` events replay through `Input.parse_input_event`, which
+delivers them to the focused window.
+
+### Key echo
+
+`echo` is `true` for an OS key-repeat event while a key is held. Replay sets it
+on the injected event, so a held key reproduces as one press followed by
+repeats rather than a burst of fresh presses. Entries without `echo` — every
+recording made before it was added — replay as non-echo, as before; it is
+additive and did not bump `FORMAT_VERSION`.
 
 ### Numbers are read leniently
 

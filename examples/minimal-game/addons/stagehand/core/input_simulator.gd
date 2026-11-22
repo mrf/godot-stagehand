@@ -355,7 +355,7 @@ static func focus_window(tree: SceneTree, params: Dictionary) -> Dictionary:
 ## [method Input.get_mouse_button_mask] cannot be, because [Input] can only
 ## learn them from [method Input.parse_input_event], which would dispatch the
 ## event a second time.
-static func _push(viewport: Viewport, event: InputEvent) -> void:
+static func push_local(viewport: Viewport, event: InputEvent) -> void:
 	if viewport == null:
 		Input.parse_input_event(event)
 		return
@@ -380,7 +380,7 @@ static func _sync_polled_actions(event: InputEventMouseButton) -> void:
 			Input.action_release(action)
 
 
-## Corrects the degenerate root-[Window] size stub described on [method _push]
+## Corrects the degenerate root-[Window] size stub described on [method push_local]
 ## so GUI input dispatch has real bounds to hit-test synthesized pointer
 ## events against. Gated on [method DisplayServer.get_name] == "headless"
 ## (confirmed the reported name under --headless) so a real windowed
@@ -422,11 +422,11 @@ static func _push_mouse_motion(viewport: Viewport, pos: Vector2) -> void:
 	ev.position = pos
 	ev.global_position = pos
 	ev.relative = Vector2.ZERO
-	_push(viewport, ev)
+	push_local(viewport, ev)
 
 
 static func _push_mouse_button(viewport: Viewport, pos: Vector2, btn: int, pressed: bool, double_click: bool) -> void:
-	_push(viewport, _mouse_button_event(pos, btn, pressed, double_click))
+	push_local(viewport, _mouse_button_event(pos, btn, pressed, double_click))
 
 
 static func _mouse_button_event(pos: Vector2, btn: int, pressed: bool, double_click: bool) -> InputEventMouseButton:
@@ -681,14 +681,14 @@ static func _push_touch(viewport: Viewport, pos: Vector2, index: int, pressed: b
 	ev.position = pos
 	ev.index = index
 	ev.pressed = pressed
-	_push(viewport, ev)
+	push_local(viewport, ev)
 	if not _emulates_mouse(index):
 		return
 	var mouse: InputEventMouseButton = _mouse_button_event(pos, MOUSE_BUTTON_LEFT, pressed, false)
 	mouse.device = InputEvent.DEVICE_ID_EMULATION
 	if pressed:
 		mouse.button_mask = MOUSE_BUTTON_MASK_LEFT
-	_push(viewport, mouse)
+	push_local(viewport, mouse)
 
 
 ## Mirrors the touch-to-mouse emulation [method Input.parse_input_event]
@@ -712,7 +712,7 @@ static func _touch_drag(viewport: Viewport, from: Vector2, to: Vector2, index: i
 	ev.index = index
 	ev.relative = to - from
 	ev.velocity = Vector2.ZERO
-	_push(viewport, ev)
+	push_local(viewport, ev)
 	if not _emulates_mouse(index):
 		return
 	var motion: InputEventMouseMotion = InputEventMouseMotion.new()
@@ -721,7 +721,7 @@ static func _touch_drag(viewport: Viewport, from: Vector2, to: Vector2, index: i
 	motion.global_position = to
 	motion.relative = to - from
 	motion.button_mask = MOUSE_BUTTON_MASK_LEFT
-	_push(viewport, motion)
+	push_local(viewport, motion)
 
 
 ## Moves mouse cursor to specified position without clicking

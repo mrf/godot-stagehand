@@ -262,28 +262,28 @@ func test_stop_recording_without_start_is_an_error() -> void:
 
 func test_mouse_motion_is_dropped_by_default() -> void:
 	var _start: Dictionary = _recorder.start_recording(_tmp_path("run.json"), false)
-	_recorder._input(_motion_event())
-	_recorder._input(_key_event(KEY_W))
+	_recorder.capture(_motion_event())
+	_recorder.capture(_key_event(KEY_W))
 	assert_int(_recorder.pending_event_count()).is_equal(1)
 
 
 func test_mouse_motion_is_captured_when_requested() -> void:
 	var _start: Dictionary = _recorder.start_recording(_tmp_path("run.json"), true)
-	_recorder._input(_motion_event())
-	_recorder._input(_key_event(KEY_W))
+	_recorder.capture(_motion_event())
+	_recorder.capture(_key_event(KEY_W))
 	assert_int(_recorder.pending_event_count()).is_equal(2)
 
 
 func test_events_outside_a_recording_are_ignored() -> void:
-	_recorder._input(_key_event(KEY_W))
+	_recorder.capture(_key_event(KEY_W))
 	assert_int(_recorder.pending_event_count()).is_equal(0)
 
 
 func test_stop_recording_reports_counts_and_writes_the_file() -> void:
 	var path: String = _tmp_path("run.json")
 	var _start: Dictionary = _recorder.start_recording(path, false)
-	_recorder._input(_key_event(KEY_W))
-	_recorder._input(_key_event(KEY_A))
+	_recorder.capture(_key_event(KEY_W))
+	_recorder.capture(_key_event(KEY_A))
 	var result: Dictionary = _recorder.stop_recording()
 	assert_int(result.get("events_count")).is_equal(2)
 	assert_str(str(result.get("path"))).is_equal(path)
@@ -402,6 +402,99 @@ func test_start_recording_accepts_paths_inside_the_recording_dir() -> void:
 		assert_bool(FileAccess.file_exists(_tmp_path("ok.json"))).is_true()
 
 
+func test_replayed_click_hits_the_same_control_under_content_scale() -> void:
+	var root: Window = get_tree().root
+	var saved_size: Vector2i = root.size
+	var saved_scale: float = root.content_scale_factor
+	root.size = Vector2i(1152, 648)
+	root.content_scale_factor = 2.0
+	var button: Button = auto_free(Button.new())
+	button.position = Vector2(300.0, 200.0)
+	button.size = Vector2(120.0, 40.0)
+	button.add_to_group(&"recorder_stretch_target")
+	var presses: Array[int] = [0]
+	button.pressed.connect(func() -> void: presses[0] += 1)
+	add_child(button)
+	await get_tree().process_frame
+
+	var path: String = _tmp_path("stretch.json")
+	var _start: Dictionary = _recorder.start_recording(path, false)
+	var clicked: Dictionary = StagehandInputSimulator.input_mouse(
+		get_tree(), {"selector": "group:recorder_stretch_target", "hold_ms": 0}
+	)
+	assert_bool(clicked.get("success", false)).is_true()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var stopped: Dictionary = _recorder.stop_recording()
+	assert_int(presses[0]).override_failure_message("live click missed").is_equal(1)
+	assert_int(stopped.get("events_count")).is_greater_equal(2)
+
+	presses[0] = 0
+	var replayed: Dictionary = await _recorder.start_replay(path, 1.0, false)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	root.content_scale_factor = saved_scale
+	root.size = saved_size
+	assert_bool(replayed.get("replayed", false)).is_true()
+	assert_int(presses[0]).override_failure_message("replayed click missed the button").is_equal(1)
+
+
+func test_recorder_captures_input_a_game_node_consumes_in_its_input() -> void:
+	var consumer: _InputConsumer = auto_free(_InputConsumer.new())
+	get_tree().root.add_child(consumer)
+	var _start: Dictionary = _recorder.start_recording(_tmp_path("consumed.json"), false)
+	await get_tree().process_frame
+	get_tree().root.push_input(_key_event(KEY_ESCAPE))
+	assert_int(consumer.seen).override_failure_message("consumer never saw the key").is_equal(1)
+	assert_int(_recorder.pending_event_count()).is_equal(1)
+
+
+func test_recorder_keeps_capturing_first_after_a_node_joins_the_root() -> void:
+	var _start: Dictionary = _recorder.start_recording(_tmp_path("late.json"), false)
+	var consumer: _InputConsumer = auto_free(_InputConsumer.new())
+	get_tree().root.add_child(consumer)
+	await get_tree().process_frame
+	get_tree().root.push_input(_key_event(KEY_ESCAPE))
+	assert_int(consumer.seen).is_equal(1)
+	assert_int(_recorder.pending_event_count()).is_equal(1)
+
+
+func test_recorder_captures_input_while_the_tree_is_paused() -> void:
+	# The pause-menu case: the tree is paused and an always-processing menu
+	# swallows the key. Pushed and unpaused without yielding a frame, so the
+	# test runner itself never runs paused.
+	var consumer: _InputConsumer = auto_free(_InputConsumer.new())
+	consumer.process_mode = Node.PROCESS_MODE_ALWAYS
+	get_tree().root.add_child(consumer)
+	var _start: Dictionary = _recorder.start_recording(_tmp_path("paused.json"), false)
+	get_tree().paused = true
+	get_tree().root.push_input(_key_event(KEY_ESCAPE))
+	get_tree().paused = false
+	assert_int(consumer.seen).is_equal(1)
+	assert_int(_recorder.pending_event_count()).is_equal(1)
+
+
+func test_serialize_key_event_records_echo() -> void:
+	var event: InputEventKey = _key_event(KEY_DOWN)
+	event.echo = true
+	var out: Dictionary = RECORDER.serialize_event(event)
+	assert_bool(out.get("echo", false)).is_true()
+
+
+func test_round_trip_preserves_key_echo() -> void:
+	var event: InputEventKey = _key_event(KEY_DOWN)
+	event.echo = true
+	var restored: InputEventKey = RECORDER.deserialize_event(RECORDER.serialize_event(event))
+	assert_bool(restored.echo).is_true()
+
+
+func test_deserialize_legacy_key_entry_without_echo_is_not_an_echo() -> void:
+	var restored: InputEventKey = RECORDER.deserialize_event(
+		{"type": "key", "keycode": KEY_DOWN, "pressed": true}
+	)
+	assert_bool(restored.echo).is_false()
+
+
 func test_replay_rejects_paths_outside_the_recording_dir() -> void:
 	# Real, readable files: the refusal must come before the open, so replay is
 	# not an existence/JSON oracle for files outside the sandbox.
@@ -422,6 +515,17 @@ func test_unsafe_mode_lifts_the_path_sandbox() -> void:
 
 
 # --- helpers -----------------------------------------------------------------
+
+
+## A game node that swallows every event in [method Node._input], the way a
+## pause menu does.
+class _InputConsumer extends Node:
+	var seen: int = 0
+
+	func _input(_event: InputEvent) -> void:
+		seen += 1
+		get_viewport().set_input_as_handled()
+
 
 
 func _key_event(keycode: Key) -> InputEventKey:
