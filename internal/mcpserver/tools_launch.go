@@ -72,6 +72,12 @@ var launchTool = mcp.NewTool("godot_launch",
 		mcp.DefaultNumber(30000),
 		mcp.Min(1000),
 	),
+	mcp.WithNumber("import_timeout_ms",
+		mcp.Description("Maximum time for the one-time headless project import that runs before the game starts, in milliseconds. "+
+			"Separate from timeout_ms, which does not bound it. Default 120000; raise it for a first launch of a large project or a slow checkout "+
+			"(for example a WSL UNC path under a Windows Godot binary), where the import can take longer. Skipped once the project has been imported."),
+		mcp.Min(1000),
+	),
 	instanceIDOpt,
 )
 
@@ -95,6 +101,14 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 	if errResult != nil {
 		return errResult, nil
 	}
+	// 0 means "not supplied": launch applies its own default import timeout.
+	importTimeoutMs := 0
+	if _, supplied := req.GetArguments()["import_timeout_ms"]; supplied {
+		importTimeoutMs, errResult = boundedInt(req, "import_timeout_ms", 0, 1000, maxUnboundedMs)
+		if errResult != nil {
+			return errResult, nil
+		}
+	}
 	instanceID := req.GetString("instance_id", "default")
 
 	if headless && expectScreenshots {
@@ -107,14 +121,15 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 	defer release()
 
 	cfg := launch.Config{
-		ProjectPath: projectPath,
-		GodotBin:    godotBin,
-		Host:        host,
-		Port:        port,
-		Headless:    headless,
-		AllowUnsafe: allowUnsafe,
-		ExtraArgs:   extraArgs,
-		TimeoutMs:   timeoutMs,
+		ProjectPath:     projectPath,
+		GodotBin:        godotBin,
+		Host:            host,
+		Port:            port,
+		Headless:        headless,
+		AllowUnsafe:     allowUnsafe,
+		ExtraArgs:       extraArgs,
+		TimeoutMs:       timeoutMs,
+		ImportTimeoutMs: importTimeoutMs,
 		// Isolation is on by default: two agents launching the same project
 		// must not share user://, and the shared res://.godot import cache is
 		// populated by one serialized headless import before the game starts.
