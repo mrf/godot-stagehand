@@ -46,6 +46,8 @@ The addon is plain GDScript, so you don't need the server program yet to complet
 With the addon enabled, click the **Setup…** button in the toolbar. This opens the Stagehand Setup wizard, which handles the rest without a terminal:
 
 1. **Server binary** — the wizard detects your OS and shows a destination path (editable, or use **Browse…**). Click **Download server binary**.
+   - The default path is in your OS user data folder, not your project (Godot's `OS.get_data_dir()` plus `godot-stagehand/` — `~/.local/share/godot-stagehand/` on Linux, the per-user application-data folder on macOS and Windows), so the binary is never imported, exported, or committed with the game.
+   - It downloads the release matching your addon version, checks it against that release's `SHA256SUMS`, and only then replaces any existing binary. A failed or tampered download leaves the old binary in place.
    - If it reports no published binary is available for your platform, see [Build from source](#build-from-source-fallback) below.
    - macOS may block the downloaded binary as from an unverified developer — open **System Settings → Privacy & Security**, scroll to the blocked-app notice, and click **Allow Anyway**.
 2. **MCP client config** — the wizard shows a JSON snippet with the binary path already filled in. Click **Copy config to clipboard**.

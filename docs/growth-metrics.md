@@ -37,8 +37,8 @@ month's downloads. That delta is the number worth looking at; the running total
 is just the bookkeeping that makes it computable.
 
 **What good looks like.** A non-zero delta every month, and a platform mix that
-isn't 100% one OS. The Setup wizard's "Download server binary" button resolves
-`/releases/latest/download/<asset>`, so these counts are the closest proxy we
+isn't 100% one OS. The Setup wizard's "Download server binary" button downloads
+`/releases/download/v<addon version>/<asset>`, so these counts are the closest proxy we
 have to "someone completed the install flow."
 
 **What bad looks like.** Delta near zero in a month where a release shipped, or
