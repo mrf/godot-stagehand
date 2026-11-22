@@ -155,6 +155,62 @@ func TestQuitOnDisconnectOptOutKeepsRunning(t *testing.T) {
 	defer reconnected.Close()
 }
 
+// TestQuitOnDisconnectHeldAfterMainLoopStall is the long-call kill: the only
+// client goes away while a long call blocks the main loop, so the game wakes
+// with nobody attached and the watchdog would quit it inside the ordinary
+// grace, losing whatever was staged. The stall must hold the quit past that
+// grace (the first-disconnect 30s one, the longest) and leave the port open
+// for a client to come back.
+func TestQuitOnDisconnectHeldAfterMainLoopStall(t *testing.T) {
+	const blockFor = 12 * time.Second
+	godotBin := requireGodotBinary(t)
+	projectDir := prepareGodotTestProject(t, findProjectRoot(t))
+	port := freeTCPPort(t)
+	ctx, cancel := context.WithTimeout(context.Background(), godotStartupTimeout+time.Minute)
+	defer cancel()
+	result, err := Launch(ctx, Config{
+		ProjectPath: projectDir,
+		GodotBin:    godotBin,
+		Host:        "127.0.0.1",
+		Port:        port,
+		Headless:    true,
+		AllowUnsafe: true,
+		TimeoutMs:   int(godotStartupTimeout.Milliseconds()),
+	})
+	if err != nil {
+		t.Fatalf("launch: %v", err)
+	}
+	defer result.Kill()
+	pid := result.Process.Process.Pid
+
+	blockEnds := time.Now().Add(blockFor)
+	blocked := make(chan struct{})
+	go func() {
+		defer close(blocked)
+		expression := fmt.Sprintf("OS.delay_msec(%d)", blockFor.Milliseconds())
+		_, _ = result.Conn.Call(ctx, "evaluate", map[string]any{"expression": expression})
+	}()
+	time.Sleep(time.Second)
+	if err := result.Conn.Close(); err != nil {
+		t.Fatalf("close connection: %v", err)
+	}
+	<-blocked
+
+	deadline := blockEnds.Add(35 * time.Second)
+	for time.Now().Before(deadline) {
+		if killErr := syscall.Kill(pid, 0); killErr != nil {
+			t.Fatalf("Godot pid %d quit %s after the block ended: the watchdog fired on a stalled session", pid, time.Since(blockEnds).Round(time.Second))
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	reconnected, err := dialGodotWhenReady(ctx, "127.0.0.1", port, nil)
+	if err != nil {
+		t.Fatalf("reconnect after the stall: %v", err)
+	}
+	defer reconnected.Close()
+}
+
 // TestQuitOnDisconnectNeverConnectedInstanceSurvives launches a real Godot
 // instance and never connects to it at all — not a WebSocket session, not
 // even a raw TCP dial — then confirms it is still alive well past the

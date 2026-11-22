@@ -474,6 +474,7 @@ starts a private instance on an auto-assigned port. See "Multiple Instances" bel
 | `expect_screenshots` | bool | no | `false` | Rejects `headless=true` (screenshots need a visible window) |
 | `allow_unsafe` | bool | no | `false` | Enables `godot_evaluate` / unrestricted `godot_call_method` for this instance |
 | `share_user_data` | bool | no | `false` | Use the project's real `user://` instead of a private, per-launch one |
+| `quit_on_disconnect` | bool | no | `true` | Quit once no client is attached; `false` keeps staged state alive until an explicit stop |
 | `extra_args` | string[] | no | `[]` | Extra Godot CLI args |
 | `timeout_ms` | int | no | `30000` | Max time to wait for Godot to become ready |
 

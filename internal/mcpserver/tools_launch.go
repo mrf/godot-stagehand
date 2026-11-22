@@ -58,6 +58,11 @@ var launchTool = mcp.NewTool("godot_launch",
 			"but nothing written to user:// survives the instance. Set true when you need persistent save data and are running only one instance."),
 		mcp.DefaultBool(false),
 	),
+	mcp.WithBoolean("quit_on_disconnect",
+		mcp.Description("Quit the game once no client has been attached for a grace period, so an abandoned launch cannot linger. "+
+			"Set false to keep staged game state alive across disconnects; the instance then runs until it is stopped explicitly."),
+		mcp.DefaultBool(true),
+	),
 	mcp.WithArray("extra_args",
 		mcp.Description("Extra command-line arguments to pass to the Godot binary"),
 		mcp.WithStringItems(),
@@ -113,7 +118,8 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 		// Isolation is on by default: two agents launching the same project
 		// must not share user://, and the shared res://.godot import cache is
 		// populated by one serialized headless import before the game starts.
-		ShareUserData: shareUserData,
+		ShareUserData:         shareUserData,
+		KeepAliveOnDisconnect: !req.GetBool("quit_on_disconnect", true),
 	}
 
 	// Clean up any existing entry for this instanceID before launching.

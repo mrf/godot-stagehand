@@ -33,6 +33,19 @@ const QUIT_ON_DISCONNECT_GRACE_MS: int = 10000
 ## godot-stagehand-mt3i). Once a second connection has been accepted, later
 ## disconnects revert to the shorter grace.
 const INITIAL_QUIT_ON_DISCONNECT_GRACE_MS: int = 30000
+## A gap this long between two _process ticks means the main loop was blocked
+## (a long synchronous call, a scene load) and nothing could reach this server.
+## Set to QUIT_ON_DISCONNECT_GRACE_MS minus the client's 5s backoff cap: any
+## shorter block still leaves a reconnecting client a full retry.
+const STALL_THRESHOLD_MS: int = 5000
+## The soonest a quit can fire after such a block ends. A client cannot answer
+## pings through a block, so past its 30s pong deadline it drops the connection
+## on its own and may exhaust its reconnect budget (~126s at the backoff cap)
+## while the game is still busy. The game then wakes with nobody attached, and
+## without this it would quit on the ordinary grace, taking the session's staged
+## state with it. Sized to clear that budget with room for an agent's
+## next turn; the hold ends on its own, so an abandoned game still goes away.
+const STALL_RECOVERY_GRACE_MS: int = 180000
 ## Replay speed used when the client does not ask for one: realtime.
 const RECORDER_SPEED_DEFAULT: float = 1.0
 ## Hard cap on concurrent client connections. Each accepted peer reserves
@@ -112,6 +125,12 @@ var _pending_quit_grace_ms: int = QUIT_ON_DISCONNECT_GRACE_MS
 ## in the same _process() frame) still correctly counts as "more than one
 ## connection has happened" — see the arm check in _poll_clients().
 var _accepted_connection_count: int = 0
+## Whether any peer ever proved the auth token. Without one there is no session
+## to save, and a launcher that gave up during boot took the only copy of the
+## token with it, so no client could attach to a held game anyway.
+var _had_authenticated_client: bool = false
+var _last_process_msec: int = 0
+var _quit_not_before_msec: int = -1
 
 
 func _ready() -> void:
@@ -180,6 +199,7 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if not _active:
 		return
+	_note_main_loop_gap(Time.get_ticks_msec())
 	_accept_new_connections()
 	_poll_clients()
 	_check_pending_quit()
@@ -311,9 +331,7 @@ func _poll_clients(now_msec: int = -1) -> void:
 ## doesn't linger as a ~500MB headless zombie. Opt out with
 ## STAGEHAND_QUIT_ON_DISCONNECT=0.
 func _check_pending_quit() -> void:
-	if _pending_quit_at_msec < 0:
-		return
-	if Time.get_ticks_msec() < _pending_quit_at_msec:
+	if not _quit_is_due(Time.get_ticks_msec()):
 		return
 	print(
 		"Stagehand: No client reconnected within %dms of the last disconnect — quitting "
@@ -321,6 +339,27 @@ func _check_pending_quit() -> void:
 		+ "(opt out with STAGEHAND_QUIT_ON_DISCONNECT=0)"
 	)
 	get_tree().quit()
+
+
+func _quit_is_due(now_msec: int) -> bool:
+	if _pending_quit_at_msec < 0:
+		return false
+	return now_msec >= maxi(_pending_quit_at_msec, _quit_not_before_msec)
+
+
+## Holds any quit for STALL_RECOVERY_GRACE_MS once a blocked main loop resumes.
+## The hold deliberately does not arm a quit or depend on one being armed: a
+## client lost during the block may only be reaped some frames later.
+func _note_main_loop_gap(now_msec: int) -> void:
+	var gap_msec: int = now_msec - _last_process_msec
+	_last_process_msec = now_msec
+	if gap_msec < STALL_THRESHOLD_MS or not _quit_on_disconnect or not _had_authenticated_client:
+		return
+	_quit_not_before_msec = now_msec + STALL_RECOVERY_GRACE_MS
+	print(
+		"Stagehand: Main loop was blocked for %dms — holding any quit-on-disconnect for %dms"
+		% [gap_msec, STALL_RECOVERY_GRACE_MS]
+	)
 
 
 func _handle_message(peer_id: int, text: String) -> void:
@@ -380,6 +419,7 @@ func _authenticate_peer(peer_id: int, id: Variant, params: Variant) -> void:
 		_reject_authentication(peer_id, id)
 		return
 	_authenticated_peers[peer_id] = true
+	_had_authenticated_client = true
 	if id != null:
 		var _auth_send_error: Error = _send_to_peer(peer_id, JSON_RPC.make_response(
 			id, {"authenticated": true}
