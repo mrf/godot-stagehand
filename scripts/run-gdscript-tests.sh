@@ -46,6 +46,21 @@ fi
 
 cd "$TEST_PROJECT"
 
+# Godot rewrites project.godot on import/load (config_version, uid:// autoloads,
+# dropped gdscript/warnings keys), which disarms the strict-warning guard test
+# and leaves a dirty tracked file. Snapshot it before anything runs Godot and
+# put it back on every exit path.
+SETTINGS_SNAPSHOT="$(mktemp)"
+cp project.godot "$SETTINGS_SNAPSHOT"
+# shellcheck disable=SC2317  # invoked indirectly via the EXIT trap below
+restore_settings() {
+    if ! cmp -s "$SETTINGS_SNAPSHOT" project.godot; then
+        cp "$SETTINGS_SNAPSHOT" project.godot
+    fi
+    rm -f "$SETTINGS_SNAPSHOT"
+}
+trap restore_settings EXIT
+
 # GdUnitCmdTool resolves GdUnit4's classes through the global class cache,
 # which only exists once the project has been imported. A fresh checkout (or a
 # cleaned .godot) therefore needs one import pass before the runner will load.
