@@ -384,6 +384,69 @@ func test_resolve_recording_path_rejects_escapes() -> void:
 			.is_equal(ERRORS.INVALID_PARAMS)
 
 
+## Plants a symlink at [param link_path] pointing at [param target]. Godot has
+## no symlink API, so this shells out; returns false where `ln` is unavailable.
+func _make_symlink(link_path: String, target: String) -> bool:
+	var exit_code: int = OS.execute("ln", ["-s", target, ProjectSettings.globalize_path(link_path)])
+	return exit_code == 0
+
+
+## Godot's remove_absolute cannot unlink a symlink to a directory.
+func _remove_symlink(link_path: String) -> void:
+	var _exit_code: int = OS.execute("rm", ["-f", ProjectSettings.globalize_path(link_path)])
+
+
+func test_symlinked_directory_inside_the_recording_dir_is_refused() -> void:
+	if OS.get_name() == "Windows":
+		return
+	var outside: String = OS.get_temp_dir().path_join("stagehand_symlink_outside_dir")
+	DirAccess.make_dir_recursive_absolute(outside)
+	var link: String = _tmp_path("linked_dir")
+	_remove_symlink(link)
+	assert_bool(_make_symlink(link, outside)).is_true()
+	for op: String in ["record", "replay"]:
+		var result: Dictionary
+		if op == "record":
+			result = _recorder.start_recording("gdunit_input_recorder/linked_dir/x.json", false)
+		else:
+			result = await _recorder.start_replay("gdunit_input_recorder/linked_dir/x.json", 1.0, false)
+		assert_str(ERRORS.code_of(result)).override_failure_message("%s followed a symlinked dir" % op) \
+			.is_equal(ERRORS.INVALID_PARAMS)
+	assert_bool(_recorder.is_recording()).is_false()
+	_remove_symlink(link)
+	DirAccess.remove_absolute(outside)
+
+
+func test_symlinked_file_inside_the_recording_dir_is_refused() -> void:
+	if OS.get_name() == "Windows":
+		return
+	var outside: String = OS.get_temp_dir().path_join("stagehand_symlink_outside.json")
+	var seed_file: FileAccess = FileAccess.open(outside, FileAccess.WRITE)
+	seed_file.store_string("{}")
+	seed_file.close()
+	var link: String = _tmp_path("linked.json")
+	assert_bool(_make_symlink(link, outside)).is_true()
+	var result: Dictionary = _recorder.start_recording("gdunit_input_recorder/linked.json", false)
+	assert_str(ERRORS.code_of(result)).is_equal(ERRORS.INVALID_PARAMS)
+	assert_bool(_recorder.is_recording()).is_false()
+	_remove_symlink(link)
+	DirAccess.remove_absolute(outside)
+
+
+func test_allow_unsafe_paths_skips_the_symlink_check() -> void:
+	if OS.get_name() == "Windows":
+		return
+	var outside: String = OS.get_temp_dir().path_join("stagehand_symlink_unsafe.json")
+	var link: String = _tmp_path("unsafe_linked.json")
+	assert_bool(_make_symlink(link, outside)).is_true()
+	_recorder.allow_unsafe_paths = true
+	var result: Dictionary = _recorder.start_recording(link, false)
+	assert_bool(ERRORS.is_error(result)).is_false()
+	var _stopped: Dictionary = _recorder.stop_recording()
+	_remove_symlink(link)
+	DirAccess.remove_absolute(outside)
+
+
 func test_start_recording_rejects_paths_outside_the_recording_dir() -> void:
 	for input: String in ["res://x.json", "user://../x.json", "/tmp/x.json"]:
 		var result: Dictionary = _recorder.start_recording(input, false)

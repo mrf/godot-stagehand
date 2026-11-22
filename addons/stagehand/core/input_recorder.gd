@@ -540,7 +540,31 @@ static func _next_session_id() -> String:
 func _resolve_path(path: String) -> Dictionary:
 	if allow_unsafe_paths:
 		return {"path": path}
-	return resolve_recording_path(path)
+	var resolved: Dictionary = resolve_recording_path(path)
+	if ERRORS.is_error(resolved):
+		return resolved
+	var link: String = find_symlink_in_recording_path(str(resolved.get("path", "")))
+	if not link.is_empty():
+		return _invalid_recording_path(path, "%s is a symlink, which could redirect the recording outside %s/" % [link, DEFAULT_RECORDING_DIR])
+	return resolved
+
+
+## The first symlink on the way from [constant DEFAULT_RECORDING_DIR] down to
+## [param resolved_path] (the directory itself included), or "" if there is
+## none. [method resolve_recording_path] is lexical, so this is the filesystem
+## half of the sandbox; a component that does not exist yet is not a link.
+static func find_symlink_in_recording_path(resolved_path: String) -> String:
+	var dir: DirAccess = DirAccess.open("user://")
+	if dir == null:
+		return ""
+	var current: String = DEFAULT_RECORDING_DIR
+	if dir.is_link(current):
+		return current
+	for part: String in resolved_path.trim_prefix(DEFAULT_RECORDING_DIR + "/").split("/"):
+		current = current + "/" + part
+		if dir.is_link(current):
+			return current
+	return ""
 
 
 static func _invalid_recording_path(path: String, reason: String) -> Dictionary:
