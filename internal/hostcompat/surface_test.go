@@ -120,7 +120,7 @@ func TestAssertNodeCountMustStayStructural(t *testing.T) {
 		wantErr bool
 	}{
 		{"greater_than", map[string]any{"selector": "class:Window", "operator": "greater_than", "expected": 0}, false},
-		{"gte", map[string]any{"selector": "class:Window", "operator": "gte", "expected": 1}, false},
+		{"gte is not a runner operator", map[string]any{"selector": "class:Window", "operator": "gte", "expected": 1}, true},
 		{"equals pins a layout", map[string]any{"selector": "class:Window", "operator": "equals", "expected": 3}, true},
 		{"less_than pins a layout", map[string]any{"selector": "class:Window", "operator": "less_than", "expected": 9}, true},
 		{"not_equals pins a layout", map[string]any{"selector": "class:Window", "operator": "not_equals", "expected": 0}, true},
@@ -133,6 +133,19 @@ func TestAssertNodeCountMustStayStructural(t *testing.T) {
 			}
 			if !tc.wantErr && err != nil {
 				t.Fatalf("unexpected rejection: %v", err)
+			}
+		})
+	}
+}
+
+// A surface operator the scenario runner rejects would pass ValidateScenario's
+// per-step check and then fail scenario.Parse. Pin the two to agree.
+func TestEveryStructuralCountOperatorParsesAsAScenario(t *testing.T) {
+	for _, op := range structuralCountOperators {
+		t.Run(op, func(t *testing.T) {
+			data := []byte(`{"name":"n","target":{"mode":"connect","port":26701},"steps":[{"action":"assert_node_count","with":{"selector":"class:Window","operator":"` + op + `","expected":0}}]}`)
+			if _, err := scenario.Parse(data); err != nil {
+				t.Fatalf("surface admits operator %q but the runner rejects it: %v", op, err)
 			}
 		})
 	}

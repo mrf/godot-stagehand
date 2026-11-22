@@ -138,8 +138,7 @@ func (o *Override) params(projectPath string) map[string]any {
 		// /root is itself a Window and `find class:Window` returns it, so a
 		// host with N subwindows has N+1 matches: "more than N". The runner's
 		// assert_node_count has no gte, so greater_than is the only "at
-		// least" it can express (surface.go also admits gte, which the
-		// runner rejects).
+		// least" it can express.
 		"subwindows_exceed": o.MinSubwindows,
 	}
 }
