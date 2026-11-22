@@ -57,7 +57,7 @@ var localSpecs = map[string]gwpop.Spec{
 	ActionAssertProperty: {
 		Action:    ActionAssertProperty,
 		Required:  []string{"selector", "property", "operator"},
-		Optional:  []string{"expected"},
+		Optional:  []string{"expected", "tolerance"},
 		Selectors: []string{"selector"},
 		Summary:   "Read a property once and assert a condition on it",
 	},
@@ -140,7 +140,25 @@ func validateAssertion(step Step) error {
 	if step.Action == ActionAssertNodes && !slices.Contains([]string{"equals", "not_equals", "greater_than", "less_than"}, operator) {
 		return fmt.Errorf("operator %q is not a numeric comparison; assert_node_count accepts equals, not_equals, greater_than, less_than", operator)
 	}
-	return validateOperator(operator, step.With, "expected")
+	if err := validateOperator(operator, step.With, "expected"); err != nil {
+		return err
+	}
+	return validateTolerance(step.With)
+}
+
+func validateTolerance(with map[string]any) error {
+	v, present := with["tolerance"]
+	if !present {
+		return nil
+	}
+	n, ok := v.(float64)
+	if !ok {
+		return fmt.Errorf("tolerance must be a number, got %T", v)
+	}
+	if n < 0 || math.IsNaN(n) || math.IsInf(n, 0) {
+		return fmt.Errorf("tolerance %v must be a finite number >= 0", n)
+	}
+	return nil
 }
 
 func validateOperator(operator string, with map[string]any, expectedKey string) error {

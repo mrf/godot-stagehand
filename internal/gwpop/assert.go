@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"reflect"
 	"strings"
 
@@ -39,19 +40,45 @@ var PerformanceMonitors = []string{
 	"AUDIO_OUTPUT_LATENCY",
 }
 
-// Compare evaluates `actual <operator> expected`. It is deliberately strict:
-// an ordering comparison on non-numbers is a scenario authoring bug, not a
-// silent false, because a silently-false assertion reads as a real regression.
+// DefaultFloatTolerance is Compare's numeric tolerance. Godot vectors and
+// colors are float32, which reach Go widened to float64 (float32(0.1) arrives
+// as 0.10000000149011612), so an exact == can never match the literal an author
+// writes. float32 epsilon is ~1.2e-7; 1e-6 leaves a few ulps of headroom.
+const DefaultFloatTolerance = 1e-6
+
+// Compare evaluates `actual <operator> expected` with DefaultFloatTolerance.
+// See CompareWithTolerance for the numeric semantics.
 func Compare(operator string, actual, expected any) (bool, error) {
+	return CompareWithTolerance(operator, actual, expected, DefaultFloatTolerance)
+}
+
+// CompareWithTolerance evaluates `actual <operator> expected`. It is
+// deliberately strict: an ordering comparison on non-numbers is a scenario
+// authoring bug, not a silent false, because a silently-false assertion reads
+// as a real regression.
+//
+// Two numbers are equal when |a-b| <= tolerance * max(1, |a|, |b|): absolute
+// near zero, relative for large magnitudes. Tolerance 0 is exact. equals,
+// not_equals and numeric elements under contains use it, and greater_than /
+// less_than additionally require the operands not be equal under it, so a
+// float32-widened 0.1 is not "greater than" 0.1. Non-numeric values compare
+// with reflect.DeepEqual.
+//
+// The addon's wait_for_property compares with GDScript's exact ==, so it does
+// not apply a tolerance; see docs/cli.md.
+func CompareWithTolerance(operator string, actual, expected any, tolerance float64) (bool, error) {
+	if math.IsNaN(tolerance) || math.IsInf(tolerance, 0) || tolerance < 0 {
+		return false, fmt.Errorf("tolerance must be a finite number >= 0, got %v", tolerance)
+	}
 	switch operator {
 	case "exists":
 		return actual != nil, nil
 	case "equals":
-		return valuesEqual(actual, expected), nil
+		return valuesEqual(actual, expected, tolerance), nil
 	case "not_equals":
-		return !valuesEqual(actual, expected), nil
+		return !valuesEqual(actual, expected, tolerance), nil
 	case "contains":
-		return containsValue(operator, actual, expected)
+		return containsValue(operator, actual, expected, tolerance)
 	case "greater_than", "less_than":
 		left, ok := asFloat(actual)
 		if !ok {
@@ -60,6 +87,9 @@ func Compare(operator string, actual, expected any) (bool, error) {
 		right, ok := asFloat(expected)
 		if !ok {
 			return false, fmt.Errorf("operator %q needs a numeric expected value, got %s", operator, describe(expected))
+		}
+		if withinTolerance(left, right, tolerance) {
+			return false, nil
 		}
 		if operator == "greater_than" {
 			return left > right, nil
@@ -164,16 +194,24 @@ func Capture(ctx context.Context, c Caller, nodeSelector string) (visual.Shot, e
 	return shot, nil
 }
 
-func valuesEqual(actual, expected any) bool {
+func valuesEqual(actual, expected any, tolerance float64) bool {
 	if left, ok := asFloat(actual); ok {
 		if right, ok := asFloat(expected); ok {
-			return left == right
+			return withinTolerance(left, right, tolerance)
 		}
 	}
 	return reflect.DeepEqual(actual, expected)
 }
 
-func containsValue(operator string, actual, expected any) (bool, error) {
+func withinTolerance(left, right, tolerance float64) bool {
+	if left == right {
+		return true
+	}
+	scale := math.Max(1, math.Max(math.Abs(left), math.Abs(right)))
+	return math.Abs(left-right) <= tolerance*scale
+}
+
+func containsValue(operator string, actual, expected any, tolerance float64) (bool, error) {
 	switch container := actual.(type) {
 	case string:
 		needle, ok := expected.(string)
@@ -183,7 +221,7 @@ func containsValue(operator string, actual, expected any) (bool, error) {
 		return strings.Contains(container, needle), nil
 	case []any:
 		for _, item := range container {
-			if valuesEqual(item, expected) {
+			if valuesEqual(item, expected, tolerance) {
 				return true, nil
 			}
 		}

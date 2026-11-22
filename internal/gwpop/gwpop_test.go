@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"strings"
 	"testing"
 
@@ -533,6 +534,76 @@ func TestCompareOperators(t *testing.T) {
 		}
 		if got != testCase.want {
 			t.Errorf("Compare(%s, %v, %v) = %v, want %v", testCase.operator, testCase.actual, testCase.expected, got, testCase.want)
+		}
+	}
+}
+
+// Godot vectors are float32, so get_property widens e.g. float32(0.1) to
+// 0.10000000149011612; the author's literal 0.1 must still match.
+func TestCompareFloat32WidenedValuesMatchByDefault(t *testing.T) {
+	widened := float64(float32(0.1))
+	cases := []struct {
+		operator string
+		actual   any
+		expected any
+		want     bool
+	}{
+		{"equals", widened, 0.1, true},
+		{"not_equals", widened, 0.1, false},
+		{"equals", widened, 0.2, false},
+		{"equals", float64(float32(1234.5678)), 1234.5678, true},
+		{"contains", []any{widened}, 0.1, true},
+		{"greater_than", widened, 0.1, false},
+		{"less_than", float64(float32(0.3)), 0.3, false},
+		{"greater_than", 0.1001, 0.1, true},
+		{"less_than", 0.0999, 0.1, true},
+	}
+	for _, testCase := range cases {
+		got, err := Compare(testCase.operator, testCase.actual, testCase.expected)
+		if err != nil {
+			t.Fatalf("Compare(%s): %v", testCase.operator, err)
+		}
+		if got != testCase.want {
+			t.Errorf("Compare(%s, %v, %v) = %v, want %v", testCase.operator, testCase.actual, testCase.expected, got, testCase.want)
+		}
+	}
+}
+
+func TestCompareWithToleranceZeroIsExact(t *testing.T) {
+	widened := float64(float32(0.1))
+	got, err := CompareWithTolerance("equals", widened, 0.1, 0)
+	if err != nil {
+		t.Fatalf("CompareWithTolerance: %v", err)
+	}
+	if got {
+		t.Error("tolerance 0 matched float32(0.1) against 0.1; it must be an exact comparison")
+	}
+	got, err = CompareWithTolerance("greater_than", widened, 0.1, 0)
+	if err != nil || !got {
+		t.Errorf("tolerance 0 greater_than = %v, %v; want exact ordering (true)", got, err)
+	}
+}
+
+func TestCompareWithToleranceWidensTheBand(t *testing.T) {
+	got, err := CompareWithTolerance("equals", 0.0, 0.4, 0.5)
+	if err != nil || !got {
+		t.Errorf("equals within tolerance 0.5 = %v, %v; want true", got, err)
+	}
+	got, err = CompareWithTolerance("equals", 0.0, 0.6, 0.5)
+	if err != nil || got {
+		t.Errorf("equals outside tolerance 0.5 = %v, %v; want false", got, err)
+	}
+	// Relative for large magnitudes: 1% of 1000 is 10.
+	got, err = CompareWithTolerance("equals", 1000.0, 1009.0, 0.01)
+	if err != nil || !got {
+		t.Errorf("equals within relative tolerance = %v, %v; want true", got, err)
+	}
+}
+
+func TestCompareWithToleranceRejectsInvalidTolerance(t *testing.T) {
+	for _, tol := range []float64{-1, math.NaN(), math.Inf(1)} {
+		if _, err := CompareWithTolerance("equals", 1.0, 1.0, tol); err == nil {
+			t.Errorf("CompareWithTolerance accepted tolerance %v", tol)
 		}
 	}
 }

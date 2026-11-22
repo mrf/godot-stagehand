@@ -407,7 +407,8 @@ func (r *runState) doAssertProperty(ctx context.Context, step Step) (stepOutcome
 
 	operator := asString(step.With["operator"])
 	expected := step.With["expected"]
-	ok, err := gwpop.Compare(operator, actual, expected)
+	tolerance := asFloatOr(step.With["tolerance"], gwpop.DefaultFloatTolerance)
+	ok, err := gwpop.CompareWithTolerance(operator, actual, expected, tolerance)
 	outcome := stepOutcome{result: mustJSON(map[string]any{
 		"selector": step.With["selector"],
 		"property": step.With["property"],
@@ -442,7 +443,7 @@ func (r *runState) doAssertNodeCount(ctx context.Context, step Step) (stepOutcom
 
 	operator := asString(step.With["operator"])
 	expected := step.With["expected"]
-	ok, err := gwpop.Compare(operator, float64(count), expected)
+	ok, err := gwpop.CompareWithTolerance(operator, float64(count), expected, 0)
 	outcome := stepOutcome{result: mustJSON(map[string]any{
 		"selector": step.With["selector"],
 		"operator": operator,

@@ -179,6 +179,62 @@ func TestRunFailsAssertionAndSkipsRemainingSteps(t *testing.T) {
 	}
 }
 
+func TestRunAssertPropertyToleratesFloat32Widening(t *testing.T) {
+	godot := &stubGodot{results: map[string]any{
+		"get_property": map[string]any{"value": float64(float32(0.1)), "type": "float"},
+	}}
+	cases := []struct {
+		name string
+		with string
+		pass bool
+	}{
+		{"default tolerance absorbs float32 widening", `"expected": 0.1`, true},
+		{"tolerance 0 is exact", `"expected": 0.1, "tolerance": 0`, false},
+		{"explicit tolerance widens the band", `"expected": 0.15, "tolerance": 0.06`, true},
+		{"explicit tolerance still fails outside the band", `"expected": 0.2, "tolerance": 0.06`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sc := mustParse(t, `{
+				"name": "float",
+				"target": {"mode": "launch", "project_path": "proj"},
+				"steps": [{"action": "assert_property", "with": {"selector": "name:N", "property": "scale:x", "operator": "equals", `+tc.with+`}}]
+			}`)
+			report, err := Run(context.Background(), sc, stubOptions(t, godot))
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			if report.Passed() != tc.pass {
+				t.Fatalf("Passed() = %v, want %v (failure = %+v)", report.Passed(), tc.pass, report.Failure)
+			}
+		})
+	}
+}
+
+func TestParseValidatesAssertPropertyTolerance(t *testing.T) {
+	step := func(tolerance string) string {
+		return `{
+			"target": {"mode": "launch", "project_path": "p"},
+			"steps": [{"action": "assert_property", "with": {"selector": "name:X", "property": "p", "operator": "equals", "expected": 1, "tolerance": ` + tolerance + `}}]
+		}`
+	}
+	if _, err := Parse([]byte(step("0.001"))); err != nil {
+		t.Errorf("Parse rejected a valid tolerance: %v", err)
+	}
+	for _, bad := range []string{"-0.1", `"loose"`} {
+		if _, err := Parse([]byte(step(bad))); err == nil {
+			t.Errorf("Parse accepted tolerance %s", bad)
+		}
+	}
+	_, err := Parse([]byte(`{
+		"target": {"mode": "launch", "project_path": "p"},
+		"steps": [{"action": "assert_node_count", "with": {"selector": "name:X", "operator": "equals", "expected": 1, "tolerance": 0.1}}]
+	}`))
+	if err == nil {
+		t.Error("assert_node_count accepted a tolerance parameter")
+	}
+}
+
 func TestRunContinueOnFailureKeepsGoing(t *testing.T) {
 	godot := &stubGodot{results: map[string]any{
 		"get_property": map[string]any{"value": "Loading", "type": "String"},
