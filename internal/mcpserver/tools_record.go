@@ -3,7 +3,6 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -69,14 +68,23 @@ var replayTool = mcp.NewTool("godot_replay",
 		mcp.Description("Deprecated alias for recording_path"),
 	),
 	mcp.WithNumber("speed",
-		mcp.Description("Playback speed multiplier. 2.0 replays twice as fast; use it to shorten CI runs. Must be greater than 0."),
+		mcp.Description("Playback speed multiplier. 2.0 replays twice as fast; use it to shorten CI runs. Between 0.01 and 100."),
 		mcp.DefaultNumber(1),
+		mcp.Min(minReplaySpeed),
+		mcp.Max(maxReplaySpeed),
 	),
 	mcp.WithBoolean("wait_for_ready",
 		mcp.Description("Wait for the current scene to finish loading before injecting the first event."),
 		mcp.DefaultBool(true),
 	),
 	instanceIDOpt,
+)
+
+// A near-zero replay speed stretches a recording into an effectively endless
+// replay, so it is rejected rather than clamped.
+const (
+	minReplaySpeed = 0.01
+	maxReplaySpeed = 100.0
 )
 
 // recordingKey identifies a recording within one Godot instance's user://.
@@ -132,9 +140,9 @@ func (s *Server) handleReplay(ctx context.Context, req mcp.CallToolRequest) (*mc
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	speed := req.GetFloat("speed", 1.0)
-	if speed <= 0 {
-		return mcp.NewToolResultError(fmt.Sprintf("speed must be greater than 0, got %v", speed)), nil
+	speed, errResult := boundedNumber(req, "speed", 1.0, minReplaySpeed, maxReplaySpeed)
+	if errResult != nil {
+		return errResult, nil
 	}
 
 	waitForReady := req.GetBool("wait_for_ready", true)

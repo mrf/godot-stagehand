@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"testing"
 
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mrf/godot-stagehand/internal/launch"
 )
 
@@ -44,6 +46,50 @@ func TestLaunchWithAutoPortRetriesOnPortCollision(t *testing.T) {
 	}
 	if len(pickedPorts) != 3 {
 		t.Errorf("expected 3 distinct ports to be picked (never reusing the collided port), got %d: %v", len(pickedPorts), pickedPorts)
+	}
+}
+
+// TestFailedLaunchKeepsExistingInstance: a typo'd project_path must not
+// destroy the working instance already registered under the same id.
+func TestFailedLaunchKeepsExistingInstance(t *testing.T) {
+	s := New()
+	s.instances.add("default", "127.0.0.1", 26700, nil, nil)
+
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{
+		"project_path": filepath.Join(t.TempDir(), "no-such-project"),
+		"godot_bin":    filepath.Join(t.TempDir(), "no-such-godot"),
+	}
+	res, err := s.handleLaunch(context.Background(), req)
+	if err != nil {
+		t.Fatalf("transport error: %v", err)
+	}
+	if res == nil || !res.IsError {
+		t.Fatalf("expected the launch to fail, got %+v", res)
+	}
+	if s.instances.get("default") == nil {
+		t.Fatal("failed launch removed the existing instance")
+	}
+}
+
+// TestLaunchReleasesOldInstancePortWhenPinned: relaunching onto the port the
+// old instance holds can only succeed once the old one is gone, so that one
+// case still replaces before launching.
+func TestLaunchReleasesOldInstancePortWhenPinned(t *testing.T) {
+	s := New()
+	s.instances.add("default", "127.0.0.1", 26700, nil, nil)
+
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{
+		"project_path": filepath.Join(t.TempDir(), "no-such-project"),
+		"godot_bin":    filepath.Join(t.TempDir(), "no-such-godot"),
+		"port":         26700.0,
+	}
+	if _, err := s.handleLaunch(context.Background(), req); err != nil {
+		t.Fatalf("transport error: %v", err)
+	}
+	if s.instances.get("default") != nil {
+		t.Fatal("old instance still registered although the new launch pinned its port")
 	}
 }
 

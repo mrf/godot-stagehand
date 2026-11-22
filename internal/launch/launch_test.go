@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -280,5 +281,34 @@ func TestWaitForProcessExitTimesOut(t *testing.T) {
 
 	if exited {
 		t.Fatal("expected waitForProcessExit to report timeout, not exit")
+	}
+}
+
+// TestKillAfterExitStillRemovesUserDataDir pins that a process which already
+// exited (os.ErrProcessDone from Process.Kill) is a successful kill, not an
+// early return that leaks the temp user-data dir.
+func TestKillAfterExitStillRemovesUserDataDir(t *testing.T) {
+	cmd := exec.Command("true")
+	if err := cmd.Start(); err != nil {
+		t.Skipf("cannot start true: %v", err)
+	}
+	wait := make(chan error, 1)
+	go func() { wait <- cmd.Wait() }()
+	// Let the process be reaped so Process.Kill reports it as finished.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && len(wait) == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	owned := filepath.Join(t.TempDir(), "godot-stagehand-userdata-x")
+	if err := os.Mkdir(owned, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	r := &LaunchResult{Process: cmd, waitChan: wait, ownedUserDataDir: owned}
+	if err := r.Kill(); err != nil {
+		t.Fatalf("Kill after exit = %v, want nil", err)
+	}
+	if _, err := os.Stat(owned); !os.IsNotExist(err) {
+		t.Errorf("owned user data dir still present after Kill (stat err = %v)", err)
 	}
 }
