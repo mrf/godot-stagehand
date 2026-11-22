@@ -126,6 +126,7 @@ func (r *runState) execute(ctx context.Context) *Report {
 
 	report.EngineVersion = session.Engine
 	report.AddonVersion = session.Addon
+	report.Warnings = session.Warnings
 	if session.Protocol != "" {
 		report.Protocol = session.Protocol
 	}

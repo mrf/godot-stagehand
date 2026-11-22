@@ -50,8 +50,10 @@ type Report struct {
 	AddonVersion     string `json:"addon_version,omitempty"`
 
 	Target ReportTarget `json:"target"`
+	// Warnings are launch-time notices that did not fail the run.
+	Warnings []string `json:"warnings,omitempty"`
 
-	Steps    []StepResult `json:"steps"`
+	Steps   []StepResult `json:"steps"`
 	Teardown []StepResult `json:"teardown,omitempty"`
 
 	Failure   *Failure          `json:"failure,omitempty"`
@@ -145,6 +147,9 @@ func (r *Report) Summary() string {
 		r.Name, r.Status, passed, failed, skipped,
 		time.Duration(r.DurationMs)*time.Millisecond, r.RPC.Count,
 	)
+	for _, warning := range r.Warnings {
+		summary += "\n  warning: " + warning
+	}
 	if len(r.Teardown) > 0 {
 		tPassed, tFailed, tSkipped := tallyStatuses(r.Teardown)
 		summary += fmt.Sprintf("\n  teardown: %d passed, %d failed, %d skipped", tPassed, tFailed, tSkipped)
