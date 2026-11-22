@@ -154,7 +154,12 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 		result, err = launch.Launch(ctx, cfg)
 	}
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to launch Godot: %v", err)), nil
+		text := fmt.Sprintf("Failed to launch Godot: %v", err)
+		var timeoutErr *launch.ReadinessTimeoutError
+		if errors.As(err, &timeoutErr) {
+			text += "\n\n" + readinessTimeoutGuidance(timeoutErr, timeoutMs)
+		}
+		return mcp.NewToolResultError(text), nil
 	}
 
 	// Store the new connection + launch metadata.
@@ -189,6 +194,19 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 		return mcp.NewToolResultText(text), nil
 	}
 	return mcp.NewToolResultText(string(jsonBytes)), nil
+}
+
+// readinessTimeoutGuidance tells the caller how to recover from a readiness
+// timeout. When the game may have survived the kill, the token it was started
+// with is the only way to attach to it once it binds.
+func readinessTimeoutGuidance(e *launch.ReadinessTimeoutError, timeoutMs int) string {
+	text := fmt.Sprintf("Godot did not accept a connection within timeout_ms=%d. The first launch after a fresh import can take minutes; relaunch with a larger timeout_ms (for example 240000).", timeoutMs)
+	if !e.GameMayStillRun {
+		return text
+	}
+	return text + fmt.Sprintf(" The game (pid %d) may still be starting: a Windows godot.exe launched from WSL can outlive the kill. "+
+		"If it binds %s:%d, attach with godot_connect host=%q port=%d auth_token=%q instead of relaunching, which would collide with it on a pinned port.",
+		e.PID, e.Host, e.Port, e.Host, e.Port, e.AuthToken)
 }
 
 // launchWarnings collects everything the godot_launch caller must be told
