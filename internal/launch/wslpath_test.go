@@ -62,7 +62,7 @@ func TestWslUNCToLocalPath(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			gotLocal, gotOK := wslUNCToLocalPath(tc.input)
+			gotLocal, gotOK := wslUNCToLocalPath(tc.input, "Ubuntu-24.04")
 			if gotOK != tc.wantOK {
 				t.Fatalf("wslUNCToLocalPath(%q) ok = %v, want %v", tc.input, gotOK, tc.wantOK)
 			}
@@ -70,6 +70,27 @@ func TestWslUNCToLocalPath(t *testing.T) {
 				t.Fatalf("wslUNCToLocalPath(%q) = %q, want %q", tc.input, gotLocal, tc.wantLocal)
 			}
 		})
+	}
+}
+
+func TestWslUNCToLocalPathChecksDistro(t *testing.T) {
+	const unc = `\\wsl$\Other\home\x`
+	if got, ok := wslUNCToLocalPath(unc, "Ubuntu-24.04"); ok {
+		t.Fatalf("UNC into distro Other translated to %q while running in Ubuntu-24.04", got)
+	}
+	if got, ok := wslUNCToLocalPath(unc, "other"); !ok || got != "/home/x" {
+		t.Fatalf("matching distro (case-insensitive) = %q, %v; want /home/x, true", got, ok)
+	}
+	if got, ok := wslUNCToLocalPath(unc, ""); !ok || got != "/home/x" {
+		t.Fatalf("unknown current distro = %q, %v; want /home/x, true", got, ok)
+	}
+}
+
+func TestLocalProjectPathRejectsOtherDistro(t *testing.T) {
+	t.Setenv("WSL_DISTRO_NAME", "Ubuntu-24.04")
+	const unc = `\\wsl.localhost\Other\home\x`
+	if got := localProjectPath(unc); got != unc {
+		t.Fatalf("localProjectPath(%q) = %q, want it unchanged", unc, got)
 	}
 }
 
@@ -96,6 +117,7 @@ func TestLocalProjectPath(t *testing.T) {
 		},
 	}
 
+	t.Setenv("WSL_DISTRO_NAME", "Ubuntu-24.04")
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := localProjectPath(tc.input); got != tc.want {

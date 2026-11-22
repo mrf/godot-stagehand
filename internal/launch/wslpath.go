@@ -1,6 +1,9 @@
 package launch
 
-import "strings"
+import (
+	"os"
+	"strings"
+)
 
 // A Windows Godot binary launched from WSL requires project_path in UNC form
 // (\\wsl.localhost\<Distro>\... or the forward-slash equivalent), because a
@@ -11,15 +14,19 @@ import "strings"
 // verbatim resolves to a bogus location at the WSL filesystem root (e.g.
 // "mkdir /wsl.localhost: permission denied"). wslUNCToLocalPath translates
 // that UNC form back to the local path it refers to, when the UNC host is
-// wsl.localhost (or its legacy wsl$ alias) — the only host that maps back
-// onto this process's own filesystem.
+// wsl.localhost (or its legacy wsl$ alias) and the UNC distro is the one this
+// process runs in — the only form that maps back onto this process's own
+// filesystem.
 
 // wslUNCToLocalPath translates a \\wsl.localhost\<Distro>\<rest> (or
 // //wsl.localhost/<Distro>/<rest>) UNC path into the absolute Linux path
 // /<rest> it refers to. ok is false for any path this cannot translate: a
-// plain non-UNC path, or a UNC path whose host isn't wsl.localhost/wsl$ (we
-// have no way to map an arbitrary UNC share back onto a local path).
-func wslUNCToLocalPath(p string) (local string, ok bool) {
+// plain non-UNC path, a UNC path whose host isn't wsl.localhost/wsl$ (we have
+// no way to map an arbitrary UNC share back onto a local path), or one naming
+// a distro other than currentDistro. An empty currentDistro (not running
+// under WSL, or WSL_DISTRO_NAME unset) means the distro cannot be checked, so
+// any distro is accepted.
+func wslUNCToLocalPath(p, currentDistro string) (local string, ok bool) {
 	normalized := strings.ReplaceAll(p, `\`, "/")
 	rest, isUNC := strings.CutPrefix(normalized, "//")
 	if !isUNC {
@@ -29,8 +36,11 @@ func wslUNCToLocalPath(p string) (local string, ok bool) {
 	if len(segments) < 3 {
 		return "", false
 	}
-	host, _, remainder := segments[0], segments[1], segments[2]
+	host, distro, remainder := segments[0], segments[1], segments[2]
 	if !strings.EqualFold(host, "wsl.localhost") && !strings.EqualFold(host, "wsl$") {
+		return "", false
+	}
+	if currentDistro != "" && !strings.EqualFold(distro, currentDistro) {
 		return "", false
 	}
 	return "/" + remainder, true
@@ -42,7 +52,7 @@ func wslUNCToLocalPath(p string) (local string, ok bool) {
 // any other form (a plain path, or a UNC form we cannot translate) is
 // returned unchanged.
 func localProjectPath(projectPath string) string {
-	if local, ok := wslUNCToLocalPath(projectPath); ok {
+	if local, ok := wslUNCToLocalPath(projectPath, os.Getenv("WSL_DISTRO_NAME")); ok {
 		return local
 	}
 	return projectPath

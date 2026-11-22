@@ -377,3 +377,44 @@ func TestRun_NoStaleWarningWhenInstalledVersionUnparseable(t *testing.T) {
 		t.Errorf("did not expect a stale warning with an unparseable installed version:\n%s", out.String())
 	}
 }
+
+func TestRun_GuidanceQuotesPathsWithSpaces(t *testing.T) {
+	base := t.TempDir()
+	project := filepath.Join(base, "my game")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, "project.godot"), []byte(readFixture(t, "fresh.godot")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	opts := Options{ProjectPath: project, BinaryPath: "/bin/godot-stagehand", AddonFS: fakeAddon(), IsWSL: true}
+	if err := Run(&out, opts); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	quoted := "'" + project + "'"
+	for _, want := range []string{
+		"godot --path " + quoted + " --stagehand",
+		"STAGEHAND_ENABLED=1 godot --path " + quoted,
+		"$(wslpath -w " + quoted + ")",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output missing quoted command %q:\n%s", want, out.String())
+		}
+	}
+}
+
+func TestShellQuote(t *testing.T) {
+	cases := map[string]string{
+		"/home/u/proj": "/home/u/proj",
+		"/home/u/my g": "'/home/u/my g'",
+		"/home/u/it's": `'/home/u/it'\''s'`,
+		"/home/u/$x":   "'/home/u/$x'",
+		"":             "''",
+	}
+	for in, want := range cases {
+		if got := shellQuote(in); got != want {
+			t.Errorf("shellQuote(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

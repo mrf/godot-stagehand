@@ -445,6 +445,55 @@ func TestLauncherRemovesOtherVersionsAfterInstall(t *testing.T) {
 	}
 }
 
+// Another session's in-progress install lives in a sibling version directory
+// as a .download.* temp file; deleting that directory would break its install.
+func TestLauncherKeepsOtherVersionsWithInProgressDownloads(t *testing.T) {
+	release := newFakeRelease(t)
+	release.publish(version.Version, fakeStagehandBinary(version.Version), "")
+	env := newLauncherEnv(t, "plugin/bin/godot-stagehand", "Linux", "x86_64")
+	data := filepath.Join(env.root, "plugin-data")
+	env.vars["CLAUDE_PLUGIN_DATA"] = data
+	env.vars["STAGEHAND_RELEASE_BASE"] = release.server.URL
+	busy := filepath.Join(data, "bin", "0.0.2")
+	writeExecutable(t, filepath.Join(busy, ".download.AbC123"), []byte("partial"))
+	stale := filepath.Join(data, "bin", "0.0.1")
+	writeExecutable(t, filepath.Join(stale, launcherTestAsset), fakeStagehandBinary("0.0.1"))
+
+	if _, stderr, err := env.run(); err != nil {
+		t.Fatalf("launcher failed: %v\nstderr:\n%s", err, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(busy, ".download.AbC123")); err != nil {
+		t.Errorf("in-progress download of another session was deleted: %v", err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("idle old version directory survived (stat err: %v)", err)
+	}
+}
+
+// A failed cleanup must not fail a run whose install already succeeded.
+func TestLauncherSurvivesUndeletableOldVersion(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	release := newFakeRelease(t)
+	release.publish(version.Version, fakeStagehandBinary(version.Version), "")
+	env := newLauncherEnv(t, "plugin/bin/godot-stagehand", "Linux", "x86_64")
+	data := filepath.Join(env.root, "plugin-data")
+	env.vars["CLAUDE_PLUGIN_DATA"] = data
+	env.vars["STAGEHAND_RELEASE_BASE"] = release.server.URL
+	stale := filepath.Join(data, "bin", "0.0.1")
+	writeExecutable(t, filepath.Join(stale, launcherTestAsset), fakeStagehandBinary("0.0.1"))
+	if err := os.Chmod(stale, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(stale, 0o755) })
+
+	stdout, stderr, err := env.run("ok")
+	if err != nil || stdout != wantExecLine("ok") {
+		t.Fatalf("launcher failed after install: err=%v stdout=%q stderr=%s", err, stdout, stderr)
+	}
+}
+
 func TestLauncherConcurrentFirstRunsBothSucceed(t *testing.T) {
 	release := newFakeRelease(t)
 	release.publish(version.Version, fakeStagehandBinary(version.Version), "")
