@@ -5,14 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mrf/godot-stagehand/internal/gwp"
 	"github.com/mrf/godot-stagehand/internal/launch"
 )
 
-// maxAutoPortAttempts bounds the retry loop in launchWithAutoPort. findFreePort
+// maxAutoPortAttempts bounds the retry loop in launchWithAutoPort. launch.FreePort
 // closes its probe listener before Godot actually binds, so a concurrent
 // launch (or any other process) can win the race for that port in the gap; a
 // few attempts absorbs that without looping forever on a genuinely exhausted
@@ -148,7 +147,7 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 	var result *launch.LaunchResult
 	if port == 0 {
 		// Auto-assigned: a lost port race is retryable with a fresh port.
-		result, err = launchWithAutoPort(ctx, cfg, findFreePort, launch.Launch)
+		result, err = launchWithAutoPort(ctx, cfg, launch.FreePort, launch.Launch)
 	} else {
 		// Caller pinned an explicit port: a collision is a one-shot, clean error.
 		result, err = launch.Launch(ctx, cfg)
@@ -231,16 +230,6 @@ func launchWarnings(result *launch.LaunchResult, headless bool) []string {
 		warnings = append(warnings, result.Handshake.Summary())
 	}
 	return warnings
-}
-
-// findFreePort returns a free TCP port on 127.0.0.1.
-func findFreePort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
 // launchWithAutoPort picks a free port and launches Godot on it, retrying up

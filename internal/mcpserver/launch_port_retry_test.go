@@ -12,7 +12,7 @@ import (
 )
 
 // TestLaunchWithAutoPortRetriesOnPortCollision reproduces the TOCTOU race
-// described in the port-picker: findFreePort's probe listener closes before
+// described in the port-picker: launch.FreePort's probe listener closes before
 // Godot actually binds, so another process can grab the same port in that
 // window. launch.Launch surfaces that as launch.ErrPortUnavailable; a caller
 // that auto-assigned the port should retry with a freshly picked one instead

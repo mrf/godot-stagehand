@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"time"
@@ -80,7 +79,7 @@ func launchSession(ctx context.Context, sc *Scenario, opts Options, logs io.Writ
 		port = *target.Port
 	}
 	if port == 0 {
-		free, err := freePort()
+		free, err := launch.FreePort()
 		if err != nil {
 			return nil, fmt.Errorf("find a free port: %w", err)
 		}
@@ -187,15 +186,6 @@ func (s *Scenario) resolve(path string) string {
 		return path
 	}
 	return filepath.Join(s.dir, path)
-}
-
-func freePort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
 // connectDeadline bounds a connect-mode handshake.
