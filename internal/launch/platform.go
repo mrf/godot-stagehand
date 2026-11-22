@@ -17,20 +17,6 @@ func isWindowsBinaryFromNonWindowsHost(hostGOOS, godotBin string) bool {
 	return hostGOOS != "windows" && strings.HasSuffix(strings.ToLower(godotBin), ".exe")
 }
 
-// isLoopbackHost reports whether host resolves to the local loopback
-// interface. An empty host is treated as loopback since that is what
-// normalizeHost defaults it to. Non-IP hostnames other than "localhost" are
-// not resolved via DNS and are conservatively treated as non-loopback.
-func isLoopbackHost(host string) bool {
-	if host == "" || strings.EqualFold(host, "localhost") {
-		return true
-	}
-	if ip := net.ParseIP(host); ip != nil {
-		return ip.IsLoopback()
-	}
-	return false
-}
-
 // RemoteLaunchOptInEnv is the environment variable that must be "1" on the
 // launching process (the MCP server or CLI) before a launch may bind the game
 // off-loopback. The host comes from the caller; whether the game may be
@@ -50,15 +36,23 @@ type bindPlan struct {
 	warning string
 }
 
-// planBind decides where the launched addon listens for host. Loopback hosts
-// keep the addon's own loopback default. Any other host must be an IP literal
-// (there is no address to bind a hostname to) and requires optIn; the addon is
-// then bound to exactly that IP — never every interface.
+// planBind decides where the launched addon listens for host. "localhost" and
+// 127.0.0.1 keep the addon's own default bind. Any other host must be an IP
+// literal (there is no address to bind a hostname to); the addon is bound to
+// exactly that IP — never every interface. Loopback literals (::1, 127.0.0.2)
+// need no optIn — the addon accepts them without ALLOW_REMOTE — but must still
+// be passed, since the addon's default is 127.0.0.1 and the launcher dials host.
 func planBind(host string, optIn bool) (bindPlan, error) {
-	if isLoopbackHost(host) {
+	if host == "" || strings.EqualFold(host, "localhost") {
 		return bindPlan{}, nil
 	}
 	ip := net.ParseIP(host)
+	if ip != nil && ip.IsLoopback() {
+		if ip.Equal(net.IPv4(127, 0, 0, 1)) {
+			return bindPlan{}, nil
+		}
+		return bindPlan{env: []string{"STAGEHAND_BIND_ADDRESS=" + ip.String()}}, nil
+	}
 	if ip == nil {
 		return bindPlan{}, fmt.Errorf("host %q is neither loopback nor an IP literal: the launched game binds the address it is dialed on, so pass 127.0.0.1, localhost, or a numeric IP such as the WSL gateway", host)
 	}
