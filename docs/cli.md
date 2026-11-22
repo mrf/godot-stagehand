@@ -252,7 +252,10 @@ progress and the summary go to stderr, so the two never mix.
 
 In JUnit terms, an assertion failure is a `<failure>` (the game behaved wrongly)
 while a connection, usage or timeout problem is an `<error>` (the test never got
-to judge the game). CI dashboards triage those differently.
+to judge the game). CI dashboards triage those differently. A run that fails
+before the first step (launch, connect) emits a synthetic `setup` testcase with
+an `<error>`, and each failed teardown step emits an `<error>` testcase; passing
+teardown steps are not counted.
 
 ## Using it in CI
 
