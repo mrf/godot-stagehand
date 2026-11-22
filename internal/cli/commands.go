@@ -520,6 +520,12 @@ var cmdScreenshot = &command{
 
 			default:
 				result := map[string]any{"width": shot.Width, "height": shot.Height, "mime_type": shot.MimeType}
+				if shot.Frame != 0 {
+					result["frame"] = shot.Frame
+				}
+				if shot.Warning != "" {
+					result["warning"] = shot.Warning
+				}
 				if out != "" {
 					result["path"] = out
 				} else {

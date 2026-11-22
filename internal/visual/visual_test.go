@@ -69,6 +69,94 @@ func TestDecodeRejectsDimensionMismatch(t *testing.T) {
 	}
 }
 
+func freshnessShot(t *testing.T, extra map[string]any) Shot {
+	t.Helper()
+	payload := map[string]any{
+		"data": base64.StdEncoding.EncodeToString(visualtest.SolidPNG(4, 4, visualtest.Opaque)),
+	}
+	for key, value := range extra {
+		payload[key] = value
+	}
+	shot, err := Decode(screenshotJSON(t, payload))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	return shot
+}
+
+func TestDecodeCarriesTheCapturedFrame(t *testing.T) {
+	shot := freshnessShot(t, map[string]any{"frame": 3551, "fresh_draws": 2})
+
+	if shot.Frame != 3551 {
+		t.Errorf("shot.Frame = %d, want 3551", shot.Frame)
+	}
+	summary := shot.Summary()
+	for _, want := range []string{"3551", "2"} {
+		if !strings.Contains(summary, want) {
+			t.Errorf("summary %q does not name %q", summary, want)
+		}
+	}
+	if strings.Contains(summary, "WARNING") {
+		t.Errorf("a fresh frame must not warn: %q", summary)
+	}
+}
+
+func TestDecodeWarnsOnImageUnchangedAcrossCameraMove(t *testing.T) {
+	shot := freshnessShot(t, map[string]any{
+		"frame": 3551, "fresh_draws": 8, "unchanged_after_camera_move": true,
+	})
+
+	if shot.Warning == "" {
+		t.Fatal("shot.Warning is empty for a frame the addon marked unchanged")
+	}
+	if !strings.Contains(shot.Summary(), shot.Warning) {
+		t.Errorf("summary %q drops the warning %q", shot.Summary(), shot.Warning)
+	}
+}
+
+// An older addon reports no frame. A version mix inside one protocol generation
+// is supported, so that is an empty summary rather than "frame 0".
+func TestSummaryIsEmptyWhenTheAddonReportsNoFrame(t *testing.T) {
+	if summary := freshnessShot(t, nil).Summary(); summary != "" {
+		t.Errorf("summary = %q, want empty", summary)
+	}
+}
+
+func TestSaveBaselineCarriesFrameAndWarning(t *testing.T) {
+	shot := freshnessShot(t, map[string]any{
+		"frame": 12, "fresh_draws": 8, "unchanged_after_camera_move": true,
+	})
+
+	outcome, err := SaveBaseline(t.TempDir(), "menu", "", shot)
+	if err != nil {
+		t.Fatalf("SaveBaseline: %v", err)
+	}
+	if outcome.Frame != 12 || outcome.Warning != shot.Warning {
+		t.Errorf("outcome frame/warning = %d/%q, want 12/%q", outcome.Frame, outcome.Warning, shot.Warning)
+	}
+}
+
+func TestCompareBaselineCarriesFrameAndWarning(t *testing.T) {
+	dir := t.TempDir()
+	shot := freshnessShot(t, map[string]any{
+		"frame": 12, "fresh_draws": 8, "unchanged_after_camera_move": true,
+	})
+	if _, err := SaveBaseline(dir, "menu", "", shot); err != nil {
+		t.Fatalf("SaveBaseline: %v", err)
+	}
+
+	outcome, err := CompareBaseline(DiffConfig{BaselineDir: dir, ArtifactDir: t.TempDir(), Name: "menu"}, shot)
+	if err != nil {
+		t.Fatalf("CompareBaseline: %v", err)
+	}
+	if outcome.Frame != 12 || outcome.Warning != shot.Warning {
+		t.Errorf("outcome frame/warning = %d/%q, want 12/%q", outcome.Frame, outcome.Warning, shot.Warning)
+	}
+	if !strings.Contains(outcome.Report(), shot.Warning) {
+		t.Errorf("report %q drops the warning", outcome.Report())
+	}
+}
+
 func TestDecodeReturnsShot(t *testing.T) {
 	pngBytes := visualtest.SolidPNG(4, 4, color.RGBA{R: 10, G: 20, B: 30, A: 255})
 	raw := screenshotJSON(t, map[string]any{

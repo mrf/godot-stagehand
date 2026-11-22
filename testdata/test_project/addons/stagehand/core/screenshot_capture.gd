@@ -7,11 +7,67 @@ const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd
 
 const DEFAULT_READY_FRAME_TIMEOUT: int = 8
 const MAX_READY_FRAME_TIMEOUT: int = 60
+## Draws that must land after the request before a read counts as fresh. The
+## second is a whole process-to-draw cycle that began after the request, so
+## anything an earlier call left queued (deferred calls, transform
+## notifications) has reached the renderer.
+const FRESH_DRAWS_REQUIRED: int = 2
+
+## The digest of the last image handed back and the camera pose it was requested
+## at. A read that repeats the digest from a different pose has not caught up.
+static var _previous_capture: Dictionary = {}
+
+
+## Everything the capture reads off the engine, gathered in one object so a
+## headless test can script a renderer that --headless cannot provide.
+class RenderView:
+	extends RefCounted
+
+	func read_image(viewport: Viewport) -> Image:
+		var texture: ViewportTexture = viewport.get_texture()
+		if texture == null:
+			return null
+		return texture.get_image()
+
+	func frames_drawn() -> int:
+		return Engine.get_frames_drawn()
+
+	## Whether [param window]'s own render target is being updated. The frame
+	## counter cannot answer this: a minimized game was measured advancing it
+	## while its image stayed byte-identical.
+	func can_draw(window: Window) -> bool:
+		var id: int = window.get_window_id()
+		return (
+			DisplayServer.window_can_draw(id)
+			and DisplayServer.window_get_mode(id) != DisplayServer.WINDOW_MODE_MINIMIZED
+		)
+
+	func window_mode_of(window: Window) -> DisplayServer.WindowMode:
+		return DisplayServer.window_get_mode(window.get_window_id())
+
+	## low_processor_usage_mode skips the draw when nothing changed, and then the
+	## held image is the current one.
+	func is_idle_and_current() -> bool:
+		return OS.low_processor_usage_mode and not RenderingServer.has_changed()
+
+	## An exact encoding of the active camera's pose, empty when there is none.
+	## Bytes rather than the value, because the 3D and 2D poses are different
+	## types and comparing those raises at runtime.
+	func camera_pose(viewport: Viewport) -> PackedByteArray:
+		var camera_3d: Camera3D = viewport.get_camera_3d()
+		if camera_3d != null:
+			return var_to_bytes(camera_3d.global_transform)
+		var camera_2d: Camera2D = viewport.get_camera_2d()
+		if camera_2d != null:
+			return var_to_bytes(camera_2d.get_screen_center_position())
+		return PackedByteArray()
 
 
 ## Capture the viewport as a PNG base64 string.
 ## Optionally crops to a node's bounding rect if [param selector] is provided.
-static func capture(tree: SceneTree, params: Dictionary) -> Dictionary:
+static func capture(tree: SceneTree, params: Dictionary, render: RenderView = null) -> Dictionary:
+	if render == null:
+		render = RenderView.new()
 	var viewport: Viewport = tree.root
 	if viewport == null:
 		return ERRORS.make(ERRORS.INTERNAL, "No viewport available", {
@@ -39,7 +95,7 @@ static func capture(tree: SceneTree, params: Dictionary) -> Dictionary:
 		crop_rect = rect_result["rect"]
 		has_crop = true
 
-	var image_result: Dictionary = await _capture_ready_image(tree, viewport, _get_ready_frame_timeout(params))
+	var image_result: Dictionary = await _capture_ready_image(tree, viewport, _get_ready_frame_timeout(params), render)
 	if ERRORS.is_error(image_result):
 		return image_result
 	var img: Image = image_result["image"]
@@ -70,32 +126,93 @@ static func capture(tree: SceneTree, params: Dictionary) -> Dictionary:
 			"next_action": "Retry the capture and check Godot logs for encoder errors.",
 		})
 
-	return {
+	var response: Dictionary = {
 		"data": base64,
 		"mime_type": "image/png",
 		"width": img.get_width(),
 		"height": img.get_height(),
+		"frame": image_result["frame"],
+		"fresh_draws": image_result["fresh_draws"],
 	}
+	if image_result.has("unchanged_after_camera_move"):
+		response["unchanged_after_camera_move"] = true
+	return response
 
 
-static func _capture_ready_image(tree: SceneTree, viewport: Viewport, max_frames: int) -> Dictionary:
+## Wait for a frame drawn after this request and read it. Three outcomes, so a
+## held image never passes for a fresh one: the fresh image, a repeat of the
+## previous capture marked as such, or an error naming why nothing was drawn.
+static func _capture_ready_image(tree: SceneTree, viewport: Viewport, max_frames: int, render: RenderView) -> Dictionary:
+	var drawn_at_request: int = render.frames_drawn()
+	var pose: PackedByteArray = render.camera_pose(viewport)
 	for _frame_index: int in range(max_frames):
 		# process_frame is guaranteed to fire in headless mode; frame_post_draw
 		# can hang indefinitely when the renderer is unavailable.
 		await tree.process_frame
-		var texture: ViewportTexture = viewport.get_texture()
-		if texture == null:
+		if not render.can_draw(tree.root):
 			continue
-		var img: Image = texture.get_image()
-		if img != null and not img.is_empty():
-			return {
-				"image": img,
-			}
+		if render.frames_drawn() - drawn_at_request < FRESH_DRAWS_REQUIRED:
+			continue
+		var img: Image = render.read_image(viewport)
+		if img == null or img.is_empty():
+			continue
+		var digest: String = _digest(img)
+		if _repeats_previous_capture(digest, pose):
+			continue
+		return _accept_image(img, digest, pose, render, drawn_at_request)
+	return _read_with_budget_spent(tree, viewport, max_frames, render, drawn_at_request, pose)
 
-	return ERRORS.make(ERRORS.RENDERER_UNAVAILABLE, "Failed to capture viewport image after %d frame(s): image was null or zero-size" % max_frames, {
+
+## The wait ran out, so this read is the last word. A full-screen menu over a
+## moving 3D camera really does repeat its pixels, which is why a repeat comes
+## back marked rather than refused.
+static func _read_with_budget_spent(tree: SceneTree, viewport: Viewport, max_frames: int, render: RenderView, drawn_at_request: int, pose: PackedByteArray) -> Dictionary:
+	var img: Image = render.read_image(viewport)
+	if img == null or img.is_empty():
+		return ERRORS.make(ERRORS.RENDERER_UNAVAILABLE, "Failed to capture viewport image after %d frame(s): image was null or zero-size" % max_frames, {
+			"frames_waited": max_frames,
+			"next_action": "Use a headed Godot process with a visible window for screenshot workflows; headless/no-GPU sessions may not render pixels.",
+		})
+
+	var draws: int = render.frames_drawn() - drawn_at_request
+	if render.can_draw(tree.root) and (draws > 0 or render.is_idle_and_current()):
+		return _accept_image(img, _digest(img), pose, render, drawn_at_request)
+
+	return ERRORS.make(ERRORS.STALE_FRAME, "Viewport was not redrawn during the %d frame(s) this capture waited; its image predates the request" % max_frames, {
 		"frames_waited": max_frames,
-		"next_action": "Use a headed Godot process with a visible window for screenshot workflows; headless/no-GPU sessions may not render pixels.",
+		"frames_drawn": draws,
+		"window_mode": render.window_mode_of(tree.root),
+		"next_action": "Un-minimize the game window (DisplayServer.window_set_mode) and check that the render loop is enabled, then capture again.",
 	})
+
+
+static func _accept_image(img: Image, digest: String, pose: PackedByteArray, render: RenderView, drawn_at_request: int) -> Dictionary:
+	var frame: int = render.frames_drawn()
+	var accepted: Dictionary = {
+		"image": img,
+		"frame": frame,
+		"fresh_draws": frame - drawn_at_request,
+	}
+	# A repeat keeps the pose its image really came from, so retrying from the
+	# new pose stays flagged for as long as the image does not change.
+	if _repeats_previous_capture(digest, pose):
+		accepted["unchanged_after_camera_move"] = true
+	else:
+		_previous_capture = {"digest": digest, "pose": pose}
+	return accepted
+
+
+static func _repeats_previous_capture(digest: String, pose: PackedByteArray) -> bool:
+	if _previous_capture.is_empty():
+		return false
+	return _previous_capture["digest"] == digest and _previous_capture["pose"] != pose
+
+
+static func _digest(img: Image) -> String:
+	var context: HashingContext = HashingContext.new()
+	var _started: Error = context.start(HashingContext.HASH_MD5)
+	var _updated: Error = context.update(img.get_data())
+	return context.finish().hex_encode()
 
 
 static func _get_ready_frame_timeout(params: Dictionary) -> int:
