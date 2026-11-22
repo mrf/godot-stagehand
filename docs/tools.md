@@ -75,6 +75,21 @@ Nodes are targeted with selectors — see the [selector guide](selectors.md).
   button-held motion events (device `InputEvent.DEVICE_ID_EMULATION`), so a
   tap presses a `Button`. Other fingers send touch events only.
 
+## Parameter validation and limits
+
+The addon checks every parameter's JSON type. A wrong type (for example
+`selector: 5`) is answered with an `invalid_params` error (JSON-RPC `-32602`)
+naming the parameter, never an engine error. Numbers may arrive as integers or
+floats; `null`, `NaN` and infinities are rejected. Counts and depths are
+bounded (`core/params.gd`):
+
+| Limit | Value | Applies to | Over the limit |
+|---|---|---|---|
+| `MAX_TREE_DEPTH` | 64 | `max_depth` of `godot_get_tree` / accessibility tree | clamped |
+| `MAX_QUERY_LIMIT` | 1000 | `limit` of `godot_find_nodes` | clamped |
+| `MAX_SAMPLE_COUNT` | 10000 | `sample_count` (and the count derived from `duration_ms`) of `godot_assert_performance` | clamped |
+| `MAX_ARRAY_ITEMS` | 256 | array parameters (`properties`, `monitors`, `args`, `modifiers`) | `invalid_params` |
+
 ## Derived call deadlines
 
 Most calls get the ordinary 30-second deadline (see

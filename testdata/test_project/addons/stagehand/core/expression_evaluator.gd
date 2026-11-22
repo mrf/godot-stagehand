@@ -37,6 +37,7 @@ class_name StagehandExpressionEvaluator
 extends RefCounted
 
 const ERRORS := preload("res://addons/stagehand/core/errors.gd")
+const PARAMS := preload("res://addons/stagehand/core/params.gd")
 const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
 const TREE_SERIALIZER := preload("res://addons/stagehand/core/tree_serializer.gd")
 
@@ -70,11 +71,14 @@ static func _ensure_singletons() -> void:
 
 ## Evaluate an expression with the matched node available as `self`.
 static func evaluate(tree: SceneTree, params: Dictionary) -> Dictionary:
-	var expression_str: String = params.get("expression", "")
+	var invalid: Dictionary = PARAMS.check(params, {"expression": TYPE_STRING, "context_node": TYPE_STRING})
+	if not invalid.is_empty():
+		return invalid
+	var expression_str: String = PARAMS.get_string(params, "expression", "")
 	if expression_str.is_empty():
 		return ERRORS.missing_param("expression")
 
-	var context_node: String = params.get("context_node", "")
+	var context_node: String = PARAMS.get_string(params, "context_node", "")
 
 	# Resolve the base node for expression context. If no context_node is
 	# given, use the scene tree root.

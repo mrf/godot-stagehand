@@ -3,11 +3,15 @@ class_name StagehandSceneHandler
 extends RefCounted
 
 const ERRORS := preload("res://addons/stagehand/core/errors.gd")
+const PARAMS := preload("res://addons/stagehand/core/params.gd")
 
 ## Load and switch to a new scene.
 ## Params: { scene_path: string }
 static func change_scene(tree: SceneTree, params: Dictionary) -> Dictionary:
-	var scene_path: String = params.get("scene_path", "")
+	var invalid: Dictionary = PARAMS.check(params, {"scene_path": TYPE_STRING})
+	if not invalid.is_empty():
+		return invalid
+	var scene_path: String = PARAMS.get_string(params, "scene_path", "")
 	if scene_path.is_empty():
 		return ERRORS.missing_param("scene_path")
 

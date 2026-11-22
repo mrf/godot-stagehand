@@ -6,6 +6,7 @@ class_name StagehandMethodHandler
 extends RefCounted
 
 const ERRORS := preload("res://addons/stagehand/core/errors.gd")
+const PARAMS := preload("res://addons/stagehand/core/params.gd")
 const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
 const SELF_PROTECTION := preload("res://addons/stagehand/core/self_protection.gd")
 const TREE_SERIALIZER := preload("res://addons/stagehand/core/tree_serializer.gd")
@@ -41,8 +42,13 @@ const BLOCKED_METHODS: PackedStringArray = [
 ## When allow_multiple is true, calls the method on all matched nodes and returns
 ## a "results" array with one entry per node; otherwise operates on the first match.
 static func call_method(tree: SceneTree, params: Dictionary) -> Dictionary:
-	var selector: String = params.get("selector", "")
-	var method: String = params.get("method", "")
+	var invalid: Dictionary = PARAMS.check(params, {
+		"selector": TYPE_STRING, "method": TYPE_STRING, "args": TYPE_ARRAY, "allow_multiple": TYPE_BOOL,
+	})
+	if not invalid.is_empty():
+		return invalid
+	var selector: String = PARAMS.get_string(params, "selector", "")
+	var method: String = PARAMS.get_string(params, "method", "")
 
 	if selector.is_empty():
 		return ERRORS.missing_param("selector")
@@ -60,8 +66,8 @@ static func call_method(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if nodes.is_empty():
 		return ERRORS.node_not_found(selector)
 
-	var args: Array = params.get("args", [])
-	var allow_multiple: bool = params.get("allow_multiple", false)
+	var args: Array = PARAMS.get_array(params, "args")
+	var allow_multiple: bool = PARAMS.get_bool(params, "allow_multiple", false)
 
 	var targets: Array[Node] = nodes
 	if not allow_multiple:

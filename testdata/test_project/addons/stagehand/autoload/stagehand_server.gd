@@ -92,6 +92,7 @@ const INPUT_SIMULATOR := preload("res://addons/stagehand/core/input_simulator.gd
 const JSON_RPC := preload("res://addons/stagehand/protocol/json_rpc.gd")
 const EXPRESSION_EVALUATOR := preload("res://addons/stagehand/core/expression_evaluator.gd")
 const METHOD_HANDLER := preload("res://addons/stagehand/core/method_handler.gd")
+const PARAMS := preload("res://addons/stagehand/core/params.gd")
 const PERFORMANCE_SAMPLER := preload("res://addons/stagehand/core/performance_sampler.gd")
 const PROPERTY_HANDLER := preload("res://addons/stagehand/core/property_handler.gd")
 const SCENE_HANDLER := preload("res://addons/stagehand/core/scene_handler.gd")
@@ -415,7 +416,7 @@ func _authenticate_peer(peer_id: int, id: Variant, params: Variant) -> void:
 		_reject_authentication(peer_id, id)
 		return
 	var supplied_token: String = supplied
-	if supplied_token != _auth_token:
+	if not _tokens_match(supplied_token, _auth_token):
 		_reject_authentication(peer_id, id)
 		return
 	_authenticated_peers[peer_id] = true
@@ -424,6 +425,18 @@ func _authenticate_peer(peer_id: int, id: Variant, params: Variant) -> void:
 		var _auth_send_error: Error = _send_to_peer(peer_id, JSON_RPC.make_response(
 			id, {"authenticated": true}
 		))
+
+
+## Whether [param supplied] equals [param expected]. Both sides are reduced to
+## fixed-length SHA-256 digests and compared without an early exit, so response
+## timing reveals neither the token's content nor its length.
+static func _tokens_match(supplied: String, expected: String) -> bool:
+	var supplied_digest: PackedByteArray = supplied.sha256_buffer()
+	var expected_digest: PackedByteArray = expected.sha256_buffer()
+	var difference: int = 0
+	for i: int in range(supplied_digest.size()):
+		difference |= supplied_digest[i] ^ expected_digest[i]
+	return difference == 0
 
 
 ## Answers a failed `authenticate`, then closes the peer: one wrong guess per
@@ -622,12 +635,14 @@ static func _root_not_found(root_path: String) -> Dictionary:
 
 func _handle_get_tree(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	var root_path: String = p.get("root_path", "/root")
-	var max_depth: int = p.get("max_depth", 10)
-	var include_properties: Array[String] = []
-	if p.has("properties"):
-		for item: Variant in p["properties"]:
-			include_properties.append(str(item))
+	var invalid: Dictionary = PARAMS.check(p, {
+		"root_path": TYPE_STRING, "max_depth": TYPE_INT, "properties": TYPE_ARRAY,
+	})
+	if not invalid.is_empty():
+		return invalid
+	var root_path: String = PARAMS.get_string(p, "root_path", "/root")
+	var max_depth: int = PARAMS.get_int(p, "max_depth", 10, 0, PARAMS.MAX_TREE_DEPTH)
+	var include_properties: Array[String] = PARAMS.get_string_array(p, "properties")
 
 	var root: Node = get_tree().root.get_node_or_null(NodePath(root_path))
 	if root == null:
@@ -638,14 +653,16 @@ func _handle_get_tree(params: Variant) -> Dictionary:
 
 func _handle_query_nodes(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	var selector: String = p.get("selector", "")
+	var invalid: Dictionary = PARAMS.check(p, {
+		"selector": TYPE_STRING, "properties": TYPE_ARRAY, "limit": TYPE_INT,
+	})
+	if not invalid.is_empty():
+		return invalid
+	var selector: String = PARAMS.get_string(p, "selector", "")
 	if selector.is_empty():
 		return ERRORS.missing_param("selector")
-	var properties: Array[String] = []
-	if p.has("properties"):
-		for item: Variant in p["properties"]:
-			properties.append(str(item))
-	var limit: int = p.get("limit", 50)
+	var properties: Array[String] = PARAMS.get_string_array(p, "properties")
+	var limit: int = PARAMS.get_int(p, "limit", 50, 0, PARAMS.MAX_QUERY_LIMIT)
 	return TREE_SERIALIZER.query_nodes(get_tree(), selector, properties, limit)
 
 
@@ -655,8 +672,11 @@ func _handle_query_nodes(params: Variant) -> Dictionary:
 ## source="derived". Errors on engines older than 4.5.
 func _handle_get_accessibility_tree(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	var root_path: String = p.get("root_path", "/root")
-	var max_depth: int = p.get("max_depth", 10)
+	var invalid: Dictionary = PARAMS.check(p, {"root_path": TYPE_STRING, "max_depth": TYPE_INT})
+	if not invalid.is_empty():
+		return invalid
+	var root_path: String = PARAMS.get_string(p, "root_path", "/root")
+	var max_depth: int = PARAMS.get_int(p, "max_depth", 10, 0, PARAMS.MAX_TREE_DEPTH)
 
 	var root: Node = get_tree().root.get_node_or_null(NodePath(root_path))
 	if root == null:
@@ -692,13 +712,18 @@ func _handle_change_scene(params: Variant) -> Dictionary:
 
 func _handle_wait_signal(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	var selector: String = p.get("selector", "")
+	var invalid: Dictionary = PARAMS.check(p, {
+		"selector": TYPE_STRING, "signal_name": TYPE_STRING, "timeout_ms": TYPE_INT,
+	})
+	if not invalid.is_empty():
+		return invalid
+	var selector: String = PARAMS.get_string(p, "selector", "")
 	if selector.is_empty():
 		return ERRORS.missing_param("selector")
-	var signal_name: String = p.get("signal_name", "")
+	var signal_name: String = PARAMS.get_string(p, "signal_name", "")
 	if signal_name.is_empty():
 		return ERRORS.missing_param("signal_name")
-	var timeout_ms: int = p.get("timeout_ms", 5000)
+	var timeout_ms: int = PARAMS.get_int(p, "timeout_ms", 5000)
 	var waiter: WAITER = WAITER.new()
 	add_child(waiter)
 	var result: Dictionary = await waiter.wait_for_signal(selector, signal_name, timeout_ms)
@@ -708,7 +733,10 @@ func _handle_wait_signal(params: Variant) -> Dictionary:
 
 func _handle_get_performance(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	var requested: Array = p.get("monitors", [])
+	var invalid: Dictionary = PARAMS.check(p, {"monitors": TYPE_ARRAY})
+	if not invalid.is_empty():
+		return invalid
+	var requested: Array = PARAMS.get_array(p, "monitors")
 	var to_query: Array = requested if not requested.is_empty() else PERFORMANCE_SAMPLER.DEFAULT_MONITORS
 	var metrics: Dictionary = {}
 	for item: Variant in to_query:
@@ -730,7 +758,13 @@ func _handle_get_performance(params: Variant) -> Dictionary:
 ## regression gating.
 func _handle_assert_performance(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	var monitor: String = p.get("monitor", "")
+	var invalid: Dictionary = PARAMS.check(p, {
+		"monitor": TYPE_STRING, "threshold": TYPE_FLOAT, "op": TYPE_STRING, "statistic": TYPE_STRING,
+		"warmup_ms": TYPE_INT, "sample_interval_ms": TYPE_INT, "duration_ms": TYPE_INT, "sample_count": TYPE_INT,
+	})
+	if not invalid.is_empty():
+		return invalid
+	var monitor: String = PARAMS.get_string(p, "monitor", "")
 	if monitor.is_empty():
 		return ERRORS.missing_param("monitor")
 	if not PERFORMANCE_SAMPLER.MONITORS.has(monitor):
@@ -739,26 +773,26 @@ func _handle_assert_performance(params: Variant) -> Dictionary:
 			"known_monitors": PERFORMANCE_SAMPLER.MONITORS.keys(),
 		})
 
-	var threshold: float = _to_float(p.get("threshold", 0.0))
-	var op: String = p.get("op", PERFORMANCE_SAMPLER.DEFAULT_OP)
+	var threshold: float = PARAMS.get_float(p, "threshold", 0.0)
+	var op: String = PARAMS.get_string(p, "op", PERFORMANCE_SAMPLER.DEFAULT_OP)
 	if not PERFORMANCE_SAMPLER.OPERATORS.has(op):
 		return ERRORS.make(ERRORS.INVALID_PARAMS, "Unknown operator: %s" % op, {
 			"operator": op,
 			"known_operators": PERFORMANCE_SAMPLER.OPERATORS,
 		})
 
-	var statistic: String = p.get("statistic", PERFORMANCE_SAMPLER.DEFAULT_STATISTIC)
+	var statistic: String = PARAMS.get_string(p, "statistic", PERFORMANCE_SAMPLER.DEFAULT_STATISTIC)
 	if not PERFORMANCE_SAMPLER.STATISTICS.has(statistic):
 		return ERRORS.make(ERRORS.INVALID_PARAMS, "Unknown statistic: %s" % statistic, {
 			"statistic": statistic,
 			"known_statistics": PERFORMANCE_SAMPLER.STATISTICS,
 		})
 
-	var warmup_ms: int = p.get("warmup_ms", PERFORMANCE_SAMPLER.DEFAULT_WARMUP_MS)
+	var warmup_ms: int = PARAMS.get_int(p, "warmup_ms", PERFORMANCE_SAMPLER.DEFAULT_WARMUP_MS)
 	if warmup_ms < 0:
 		return ERRORS.make(ERRORS.INVALID_PARAMS, "warmup_ms must not be negative", {"warmup_ms": warmup_ms})
 
-	var sample_interval_ms: int = p.get("sample_interval_ms", PERFORMANCE_SAMPLER.DEFAULT_SAMPLE_INTERVAL_MS)
+	var sample_interval_ms: int = PARAMS.get_int(p, "sample_interval_ms", PERFORMANCE_SAMPLER.DEFAULT_SAMPLE_INTERVAL_MS)
 	if sample_interval_ms < 0:
 		return ERRORS.make(ERRORS.INVALID_PARAMS, "sample_interval_ms must not be negative", {
 			"sample_interval_ms": sample_interval_ms,
@@ -769,7 +803,7 @@ func _handle_assert_performance(params: Variant) -> Dictionary:
 
 	var sample_count: int
 	if p.has("duration_ms"):
-		var duration_ms: int = p.get("duration_ms", 0)
+		var duration_ms: int = PARAMS.get_int(p, "duration_ms", 0)
 		if duration_ms < 0:
 			return ERRORS.make(ERRORS.INVALID_PARAMS, "duration_ms must not be negative", {"duration_ms": duration_ms})
 		if sample_interval_ms <= 0:
@@ -778,9 +812,10 @@ func _handle_assert_performance(params: Variant) -> Dictionary:
 			})
 		sample_count = maxi(1, floori(float(duration_ms) / float(sample_interval_ms)))
 	else:
-		sample_count = p.get("sample_count", PERFORMANCE_SAMPLER.DEFAULT_SAMPLE_COUNT)
+		sample_count = PARAMS.get_int(p, "sample_count", PERFORMANCE_SAMPLER.DEFAULT_SAMPLE_COUNT)
 	if sample_count < 1:
 		return ERRORS.make(ERRORS.INVALID_PARAMS, "sample_count must be at least 1", {"sample_count": sample_count})
+	sample_count = mini(sample_count, PARAMS.MAX_SAMPLE_COUNT)
 
 	if warmup_ms > 0:
 		await get_tree().create_timer(warmup_ms * 0.001, true, false, true).timeout
@@ -839,12 +874,17 @@ func _handle_get_game_state(_unused_params: Variant) -> Dictionary:
 
 func _handle_wait_for_node(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	var selector: String = p.get("selector", "")
+	var invalid: Dictionary = PARAMS.check(p, {
+		"selector": TYPE_STRING, "state": TYPE_STRING, "timeout_ms": TYPE_INT, "poll_interval_ms": TYPE_INT,
+	})
+	if not invalid.is_empty():
+		return invalid
+	var selector: String = PARAMS.get_string(p, "selector", "")
 	if selector.is_empty():
 		return ERRORS.missing_param("selector")
-	var state: String = p.get("state", "exists")
-	var timeout_ms: int = p.get("timeout_ms", 10000)
-	var poll_interval_ms: int = p.get("poll_interval_ms", 100)
+	var state: String = PARAMS.get_string(p, "state", "exists")
+	var timeout_ms: int = PARAMS.get_int(p, "timeout_ms", 10000)
+	var poll_interval_ms: int = PARAMS.get_int(p, "poll_interval_ms", 100)
 
 	var waiter: WAITER = WAITER.new()
 	add_child(waiter)
@@ -855,17 +895,23 @@ func _handle_wait_for_node(params: Variant) -> Dictionary:
 
 func _handle_wait_for_property(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
-	var selector: String = p.get("selector", "")
+	var invalid: Dictionary = PARAMS.check(p, {
+		"selector": TYPE_STRING, "property": TYPE_STRING, "operator": TYPE_STRING,
+		"timeout_ms": TYPE_INT, "poll_interval_ms": TYPE_INT,
+	})
+	if not invalid.is_empty():
+		return invalid
+	var selector: String = PARAMS.get_string(p, "selector", "")
 	if selector.is_empty():
 		return ERRORS.missing_param("selector")
-	var property: String = p.get("property", "")
+	var property: String = PARAMS.get_string(p, "property", "")
 	if property.is_empty():
 		return ERRORS.missing_param("property")
-	var operator: String = p.get("operator", "")
+	var operator: String = PARAMS.get_string(p, "operator", "")
 	if operator.is_empty():
 		return ERRORS.missing_param("operator")
-	var timeout_ms: int = p.get("timeout_ms", 10000)
-	var poll_interval_ms: int = p.get("poll_interval_ms", 100)
+	var timeout_ms: int = PARAMS.get_int(p, "timeout_ms", 10000)
+	var poll_interval_ms: int = PARAMS.get_int(p, "poll_interval_ms", 100)
 	var expected_value: Variant = p.get("expected_value")
 
 	var waiter: WAITER = WAITER.new()
@@ -877,10 +923,13 @@ func _handle_wait_for_property(params: Variant) -> Dictionary:
 
 func _handle_record_start(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
+	var invalid: Dictionary = PARAMS.check(p, {"output_path": TYPE_STRING, "include_mouse_move": TYPE_BOOL})
+	if not invalid.is_empty():
+		return invalid
 	# An absent or empty output_path means "pick one" — the recorder writes to a
 	# session-named file under user:// so a caller need not invent a path.
-	var output_path: String = p.get("output_path", "")
-	var include_mouse_move: bool = p.get("include_mouse_move", false)
+	var output_path: String = PARAMS.get_string(p, "output_path", "")
+	var include_mouse_move: bool = PARAMS.get_bool(p, "include_mouse_move", false)
 	_ensure_recorder()
 	return _recorder.start_recording(output_path, include_mouse_move)
 
@@ -892,19 +941,20 @@ func _handle_record_stop(_unused_params: Variant) -> Dictionary:
 
 func _handle_replay(params: Variant) -> Dictionary:
 	var p: Dictionary = _params(params)
+	var invalid: Dictionary = PARAMS.check(p, {
+		"recording_path": TYPE_STRING, "input_path": TYPE_STRING, "speed": TYPE_FLOAT, "wait_for_ready": TYPE_BOOL,
+	})
+	if not invalid.is_empty():
+		return invalid
 	# `input_path` is the pre-vrj.6 spelling, still accepted so an older client
 	# can drive this addon.
-	var recording_path: String = p.get("recording_path", "")
+	var recording_path: String = PARAMS.get_string(p, "recording_path", "")
 	if recording_path.is_empty():
-		recording_path = p.get("input_path", "")
+		recording_path = PARAMS.get_string(p, "input_path", "")
 	if recording_path.is_empty():
 		return ERRORS.missing_param("recording_path")
-	# JSON has a single number type, so a speed of 1.0 arrives as an int;
-	# _to_float widens it rather than letting the typed assignment drop it.
-	var speed: float = RECORDER_SPEED_DEFAULT
-	if p.has("speed"):
-		speed = _to_float(p.get("speed"))
-	var wait_for_ready: bool = p.get("wait_for_ready", true)
+	var speed: float = PARAMS.get_float(p, "speed", RECORDER_SPEED_DEFAULT)
+	var wait_for_ready: bool = PARAMS.get_bool(p, "wait_for_ready", true)
 	_ensure_recorder()
 	return await _recorder.start_replay(recording_path, speed, wait_for_ready)
 
