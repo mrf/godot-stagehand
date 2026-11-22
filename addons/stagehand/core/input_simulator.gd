@@ -3,6 +3,7 @@ class_name StagehandInputSimulator
 extends RefCounted
 
 const ERRORS := preload("res://addons/stagehand/core/errors.gd")
+const PARAMS := preload("res://addons/stagehand/core/params.gd")
 const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
 
 const BUTTON_MAP: Dictionary = {
@@ -51,6 +52,11 @@ static func _not_supported(
 ## [param button] is "left", "right", or "middle".
 ## [param double_click] triggers a double-click event.
 static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
+	var invalid: Dictionary = PARAMS.check(params, {
+		"selector": TYPE_STRING, "button": TYPE_STRING, "double_click": TYPE_BOOL, "hold_ms": TYPE_INT,
+	}, ["position"])
+	if not invalid.is_empty():
+		return invalid
 	var has_selector: bool = params.has("selector")
 	var has_position: bool = params.has("position")
 
@@ -100,9 +106,9 @@ static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
 	if blocker != null:
 		return _modal_blocked(blocker, target.position, "this click")
 
-	var btn_str: String = params.get("button", "left")
+	var btn_str: String = PARAMS.get_string(params, "button", "left")
 	var btn: int = _v_int(BUTTON_MAP.get(btn_str, MOUSE_BUTTON_LEFT))
-	var double_click: bool = _v_bool(params.get("double_click", false))
+	var double_click: bool = PARAMS.get_bool(params, "double_click", false)
 
 	# A leading motion event mirrors how a real pointer always moves before it
 	# clicks, so it is always sent regardless of whether this is a
@@ -126,7 +132,7 @@ static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
 		)
 
 	_push_mouse_button(target.viewport, target.position, btn, true, double_click)
-	var hold_ms: int = _v_int(params.get("hold_ms", 100))
+	var hold_ms: int = PARAMS.get_int(params, "hold_ms", 100)
 	_release_mouse_after(tree, target.viewport, target.position, btn, hold_ms / 1000.0)
 
 	var result: Dictionary = {
@@ -145,13 +151,18 @@ static func input_mouse(tree: SceneTree, params: Dictionary) -> Dictionary:
 
 ## Simulate pressing and releasing an input action.
 static func input_action(tree: SceneTree, params: Dictionary) -> Dictionary:
-	var action: String = params.get("action", "")
+	var invalid: Dictionary = PARAMS.check(params, {
+		"action": TYPE_STRING, "strength": TYPE_FLOAT, "hold_ms": TYPE_INT,
+	})
+	if not invalid.is_empty():
+		return invalid
+	var action: String = PARAMS.get_string(params, "action", "")
 	if action.is_empty():
 		return ERRORS.missing_param("action")
 	if not InputMap.has_action(StringName(action)):
 		return _unknown_action(action)
-	var strength: float = _v_float(params.get("strength", 1.0))
-	var hold_ms: int = _v_int(params.get("hold_ms", 100))
+	var strength: float = PARAMS.get_float(params, "strength", 1.0)
+	var hold_ms: int = PARAMS.get_int(params, "hold_ms", 100)
 
 	_press_action(action, strength)
 	_release_action_after(tree, action, hold_ms / 1000.0)
@@ -203,7 +214,12 @@ static func _unknown_action(action: String) -> Dictionary:
 
 ## Simulate pressing and releasing a keyboard key.
 static func input_key(tree: SceneTree, params: Dictionary) -> Dictionary:
-	var key_str: String = params.get("key", "")
+	var invalid: Dictionary = PARAMS.check(params, {
+		"key": TYPE_STRING, "modifiers": TYPE_ARRAY, "hold_ms": TYPE_INT,
+	})
+	if not invalid.is_empty():
+		return invalid
+	var key_str: String = PARAMS.get_string(params, "key", "")
 	if key_str.is_empty():
 		return ERRORS.missing_param("key")
 
@@ -228,9 +244,9 @@ static func input_key(tree: SceneTree, params: Dictionary) -> Dictionary:
 			}
 		)
 
-	var modifiers: Array = params.get("modifiers", [])
+	var modifiers: Array = PARAMS.get_array(params, "modifiers")
 	var mod_mask: int = _parse_modifiers(modifiers)
-	var hold_ms: int = _v_int(params.get("hold_ms", 100))
+	var hold_ms: int = PARAMS.get_int(params, "hold_ms", 100)
 
 	_press_key(keycode, mod_mask)
 	_release_key_after(tree, keycode, mod_mask, hold_ms / 1000.0)
@@ -267,6 +283,9 @@ static func input_key(tree: SceneTree, params: Dictionary) -> Dictionary:
 ## stuck — see [method _unfocused_modal]. That makes the recovery a zero-argument
 ## call for the case the refusal above reports.
 static func focus_window(tree: SceneTree, params: Dictionary) -> Dictionary:
+	var invalid: Dictionary = PARAMS.check(params, {"selector": TYPE_STRING})
+	if not invalid.is_empty():
+		return invalid
 	var window: Window = null
 	var auto_selected: bool = not params.has("selector")
 	if auto_selected:
@@ -560,11 +579,16 @@ static func _parse_modifiers(modifiers: Array) -> int:
 
 ## Types text into the currently focused control
 static func input_text(tree: SceneTree, params: Dictionary) -> Dictionary:
-	var text: String = params.get("text", "")
+	var invalid: Dictionary = PARAMS.check(params, {
+		"text": TYPE_STRING, "delay_ms": TYPE_INT, "selector": TYPE_STRING,
+	})
+	if not invalid.is_empty():
+		return invalid
+	var text: String = PARAMS.get_string(params, "text", "")
 	if text.is_empty():
 		return ERRORS.missing_param("text")
 
-	var delay_ms: int = _v_int(params.get("delay_ms", 50))
+	var delay_ms: int = PARAMS.get_int(params, "delay_ms", 50)
 	# Optional selector to click first to gain focus
 	if params.has("selector"):
 		var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, str(params["selector"]))
@@ -617,15 +641,20 @@ static func input_text(tree: SceneTree, params: Dictionary) -> Dictionary:
 
 ## Simulate a touch screen event.
 static func input_touch(tree: SceneTree, params: Dictionary) -> Dictionary:
+	var invalid: Dictionary = PARAMS.check(params, {
+		"index": TYPE_INT, "action": TYPE_STRING, "duration_ms": TYPE_INT,
+	}, ["position", "drag_to"])
+	if not invalid.is_empty():
+		return invalid
 	if not params.has("position"):
 		return ERRORS.missing_param("position")
 
 	var viewport: Viewport = tree.root
 	var p: Dictionary = params["position"]
 	var pos: Vector2 = Vector2(_v_float(p.get("x", 0.0)), _v_float(p.get("y", 0.0)))
-	var index: int = _v_int(params.get("index", 0))
-	var action: String = params.get("action", "tap")
-	var duration_ms: int = _v_int(params.get("duration_ms", 100))
+	var index: int = PARAMS.get_int(params, "index", 0)
+	var action: String = PARAMS.get_string(params, "action", "tap")
+	var duration_ms: int = PARAMS.get_int(params, "duration_ms", 100)
 
 	var blocker: Window = _blocking_modal(viewport, pos)
 	if blocker != null:
@@ -726,6 +755,9 @@ static func _touch_drag(viewport: Viewport, from: Vector2, to: Vector2, index: i
 
 ## Moves mouse cursor to specified position without clicking
 static func input_mouse_move(tree: SceneTree, params: Dictionary) -> Dictionary:
+	var invalid: Dictionary = PARAMS.check(params, {"selector": TYPE_STRING}, ["coordinates"])
+	if not invalid.is_empty():
+		return invalid
 	var target: ClickTarget
 	if params.has("selector"):
 		var nodes: Array[Node] = SELECTOR_ENGINE.query(tree, str(params["selector"]))
@@ -1010,9 +1042,3 @@ static func _v_float(v: Variant) -> float:
 		var i: int = v
 		return float(i)
 	return 0.0
-
-
-static func _v_bool(v: Variant) -> bool:
-	if v is bool:
-		return v
-	return false

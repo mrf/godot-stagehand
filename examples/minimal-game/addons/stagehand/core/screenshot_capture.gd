@@ -3,6 +3,7 @@ class_name StagehandScreenshotCapture
 extends RefCounted
 
 const ERRORS := preload("res://addons/stagehand/core/errors.gd")
+const PARAMS := preload("res://addons/stagehand/core/params.gd")
 const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
 
 const DEFAULT_READY_FRAME_TIMEOUT: int = 8
@@ -74,10 +75,12 @@ static func capture(tree: SceneTree, params: Dictionary, render: RenderView = nu
 			"next_action": "Capture from a running game process; there is no viewport before the scene tree exists.",
 		})
 
-	var full_page: bool = true
-	var full_page_raw: Variant = params.get("full_page", true)
-	if full_page_raw is bool:
-		full_page = full_page_raw
+	var invalid: Dictionary = PARAMS.check(params, {
+		"full_page": TYPE_BOOL, "selector": TYPE_STRING, "capture_timeout_frames": TYPE_INT,
+	})
+	if not invalid.is_empty():
+		return invalid
+	var full_page: bool = PARAMS.get_bool(params, "full_page", true)
 	var has_crop: bool = false
 	var crop_rect: Rect2i = Rect2i()
 
@@ -216,15 +219,7 @@ static func _digest(img: Image) -> String:
 
 
 static func _get_ready_frame_timeout(params: Dictionary) -> int:
-	var frames: int = DEFAULT_READY_FRAME_TIMEOUT
-	var raw_frames: Variant = params.get("capture_timeout_frames", DEFAULT_READY_FRAME_TIMEOUT)
-	if raw_frames is int:
-		frames = raw_frames
-	if frames < 1:
-		frames = 1
-	if frames > MAX_READY_FRAME_TIMEOUT:
-		frames = MAX_READY_FRAME_TIMEOUT
-	return frames
+	return PARAMS.get_int(params, "capture_timeout_frames", DEFAULT_READY_FRAME_TIMEOUT, 1, MAX_READY_FRAME_TIMEOUT)
 
 
 static func _validate_crop_rect(crop_rect: Rect2i, image_size: Vector2i) -> Dictionary:

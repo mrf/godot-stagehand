@@ -3,6 +3,7 @@ class_name StagehandPropertyHandler
 extends RefCounted
 
 const ERRORS := preload("res://addons/stagehand/core/errors.gd")
+const PARAMS := preload("res://addons/stagehand/core/params.gd")
 const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd")
 const SELF_PROTECTION := preload("res://addons/stagehand/core/self_protection.gd")
 const TREE_SERIALIZER := preload("res://addons/stagehand/core/tree_serializer.gd")
@@ -11,8 +12,11 @@ const TREE_SERIALIZER := preload("res://addons/stagehand/core/tree_serializer.gd
 ## Get a property from a node matched by a selector.
 ## Supports dot notation (e.g. "position.x").
 static func get_property(tree: SceneTree, params: Dictionary) -> Dictionary:
-	var selector: String = params.get("selector", "")
-	var property: String = params.get("property", "")
+	var invalid: Dictionary = PARAMS.check(params, {"selector": TYPE_STRING, "property": TYPE_STRING})
+	if not invalid.is_empty():
+		return invalid
+	var selector: String = PARAMS.get_string(params, "selector", "")
+	var property: String = PARAMS.get_string(params, "property", "")
 
 	var nodes: Array[Node] = []
 	var refusal: Dictionary = _resolve_target(tree, selector, property, nodes)
@@ -36,8 +40,11 @@ static func get_property(tree: SceneTree, params: Dictionary) -> Dictionary:
 ## property, or a type mismatch can make `Object.set()` a silent no-op, and a
 ## found-only check would misreport that as success (godot-stagehand-jzs).
 static func set_property(tree: SceneTree, params: Dictionary) -> Dictionary:
-	var selector: String = params.get("selector", "")
-	var property: String = params.get("property", "")
+	var invalid: Dictionary = PARAMS.check(params, {"selector": TYPE_STRING, "property": TYPE_STRING})
+	if not invalid.is_empty():
+		return invalid
+	var selector: String = PARAMS.get_string(params, "selector", "")
+	var property: String = PARAMS.get_string(params, "property", "")
 
 	var nodes: Array[Node] = []
 	var refusal: Dictionary = _resolve_target(tree, selector, property, nodes)
