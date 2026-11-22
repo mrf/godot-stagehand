@@ -140,7 +140,7 @@ is a closed allowlist enforced by `hostcompat.ValidateScenario`, not a guideline
 | --- | --- |
 | `ping` | the connection came up and the addon answered |
 | `tree`, `find`, `wait_for_node` | we can enumerate somebody else's scene |
-| `assert_node_count` (`greater_than` / `gte` only) | "Stagehand can see at least one node of this kind" |
+| `assert_node_count` (`greater_than` only) | "Stagehand can see at least one node of this kind" |
 | `click`, `press_key`, `press_action`, `type_text`, `mouse_move`, `touch` | input reaches the game |
 | `screenshot` | we can capture a frame of a real app |
 | `sleep`, `get_performance` | pacing and engine counters — not host state |

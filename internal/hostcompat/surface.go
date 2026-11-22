@@ -44,7 +44,7 @@ var allowedActions = []string{
 // structuralCountOperators are the only assert_node_count operators in surface.
 // "at least one node of this kind is visible to Stagehand" is a claim about our
 // enumeration; an exact count is a claim about the host's UI layout.
-var structuralCountOperators = []string{"greater_than", "gte"}
+var structuralCountOperators = []string{"greater_than"}
 
 // AllowedActions returns the host-compat action allowlist.
 func AllowedActions() []string { return slices.Clone(allowedActions) }
