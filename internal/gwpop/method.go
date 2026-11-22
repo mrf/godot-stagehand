@@ -6,7 +6,8 @@ import (
 )
 
 // blockedMethods lists Godot methods that must not be called remotely.
-// The GDScript side enforces the same list; this is defense-in-depth, and it
+// The GDScript side enforces the same list (TestBlockedMethodsMatchAddon keeps
+// them in sync); this is defense-in-depth, and it
 // lives here so every frontend (MCP tools, CLI, scenario runner) enforces the
 // identical set rather than each keeping its own copy.
 var blockedMethods = map[string]bool{
@@ -20,6 +21,13 @@ var blockedMethods = map[string]bool{
 	"propagate_notification": true,
 	"set_process":            true,
 	"set_physics_process":    true,
+	"call":                   true,
+	"callv":                  true,
+	"call_deferred":          true,
+	"set":                    true,
+	"set_indexed":            true,
+	"propagate_call":         true,
+	"reparent":               true,
 }
 
 // ValidateMethodName returns an error when method may not be invoked remotely.

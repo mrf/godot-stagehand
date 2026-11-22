@@ -10,7 +10,12 @@ const SELECTOR_ENGINE := preload("res://addons/stagehand/core/selector_engine.gd
 const SELF_PROTECTION := preload("res://addons/stagehand/core/self_protection.gd")
 const TREE_SERIALIZER := preload("res://addons/stagehand/core/tree_serializer.gd")
 
-## Methods that are always blocked regardless of context.
+## Methods that are always blocked regardless of context. A safety net against
+## mistakes, not a sandbox: call_method already requires unsafe mode, and any
+## game method can be destructive. Dynamic dispatch (call, callv, ...) is listed
+## because it would reach every other entry indirectly. Mirrored by
+## blockedMethods in internal/gwpop/method.go; TestBlockedMethodsMatchAddon
+## keeps the two in sync.
 const BLOCKED_METHODS: PackedStringArray = [
 	"free",
 	"queue_free",
@@ -22,6 +27,13 @@ const BLOCKED_METHODS: PackedStringArray = [
 	"propagate_notification",
 	"set_process",
 	"set_physics_process",
+	"call",
+	"callv",
+	"call_deferred",
+	"set",
+	"set_indexed",
+	"propagate_call",
+	"reparent",
 ]
 
 

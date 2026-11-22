@@ -8,8 +8,8 @@ extends RefCounted
 ## See docs/security.md ("Self-protection"):
 ##   1. No selector-driven property read/write or method call may target a node
 ##      in [constant PROTECTED_GROUP], or any descendant of one.
-##   2. get_property/set_property never touch a `_`-prefixed member or `script`,
-##      on any node.
+##   2. get_property/set_property/wait_for_property never touch a `_`-prefixed
+##      member or `script`, on any node.
 
 const ERRORS := preload("res://addons/stagehand/core/errors.gd")
 

@@ -23,18 +23,21 @@ func wait_condition(condition_func: Callable, timeout_ms: int = 10000, poll_inte
 	return false
 
 
-## Evaluate different types of property conditions.
+## Evaluate different types of property conditions. Reads a property, a
+## `.`/`:` sub-path, or metadata — never a get_<name>() method, which could run
+## arbitrary game code in safe mode.
 func evaluate_property_condition(node: Node, property_name: String, operator: String, expected_value: Variant) -> bool:
-	if not node.has_meta(property_name) and not node.has_method("get_" + property_name) and not (property_name in node):
-		return false
-
 	var actual_value: Variant = null
-	if node.has_method("get_" + property_name):
-		actual_value = node.call("get_" + property_name)
-	elif property_name in node:
+	if property_name in node:
 		actual_value = node.get(property_name)
+	elif property_name.contains(".") or property_name.contains(":"):
+		actual_value = node.get_indexed(NodePath(property_name.replace(".", ":")))
+		if actual_value == null:
+			return false
 	elif node.has_meta(property_name):
 		actual_value = node.get_meta(property_name)
+	else:
+		return false
 
 	match operator:
 		"equals":
@@ -197,6 +200,8 @@ func wait_for_signal(selector: String, signal_name: String, timeout_ms: int = 50
 
 ## Wait for a node's property to satisfy a condition.
 func wait_for_property(selector: String, property: String, operator: String, expected_value: Variant, timeout_ms: int = 10000, poll_interval_ms: int = 100) -> Dictionary:
+	if SELF_PROTECTION.is_forbidden_property(property):
+		return SELF_PROTECTION.forbidden_property_error(selector, property)
 	# A condition on Stagehand's own node is a read oracle for its private state
 	# (godot-stagehand-ext-review-2026-11-327t.1): refuse it up front, and never
 	# let a match that only resolves to one later satisfy the wait.

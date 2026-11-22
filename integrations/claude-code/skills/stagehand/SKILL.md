@@ -420,7 +420,7 @@ Call a method on a node. Some destructive/private methods are blocked for safety
 | `args` | no | `[]` | Arguments to pass |
 | `allow_multiple` | no | `false` | Allow calling on multiple matched nodes |
 
-Blocked methods: `free`, `queue_free`, `set_script`, `add_child`, `remove_child`, `queue_redraw`, `notification`, `propagate_notification`, `set_process`, `set_physics_process`, and any method starting with `_`.
+Blocked methods: `free`, `queue_free`, `set_script`, `add_child`, `remove_child`, `queue_redraw`, `notification`, `propagate_notification`, `set_process`, `set_physics_process`, the dynamic-dispatch methods `call`, `callv`, `call_deferred`, `set`, `set_indexed`, `propagate_call`, `reparent`, and any method starting with `_`. The list is a safety net against mistakes, not a sandbox — any game method can still be destructive.
 
 ```
 godot_call_method(selector="class:AudioManager", method="play_sfx", args=["click"])
