@@ -166,10 +166,16 @@ type DiffOutcome struct {
 	PixelSensitivity float64 `json:"pixel_sensitivity"`
 	Width            int     `json:"width"`
 	Height           int     `json:"height"`
-	BaselinePath     string  `json:"baseline_path"`
-	ActualImagePath  string  `json:"actual_image_path,omitempty"`
-	DiffImagePath    string  `json:"diff_image_path,omitempty"`
-	Selector         string  `json:"selector,omitempty"`
+	// BaselineWidth and BaselineHeight are the stored baseline's size.
+	// SizeMismatch is set when it differs from Width x Height; the pixel
+	// counts are then zero because no pixel comparison was possible.
+	BaselineWidth   int    `json:"baseline_width"`
+	BaselineHeight  int    `json:"baseline_height"`
+	SizeMismatch    bool   `json:"size_mismatch,omitempty"`
+	BaselinePath    string `json:"baseline_path"`
+	ActualImagePath string `json:"actual_image_path,omitempty"`
+	DiffImagePath   string `json:"diff_image_path,omitempty"`
+	Selector        string `json:"selector,omitempty"`
 	// ArtifactError records a failure to persist the failure artifacts. The
 	// diff verdict itself still stands; only the evidence is missing.
 	ArtifactError string `json:"artifact_error,omitempty"`
@@ -221,8 +227,9 @@ func SaveBaseline(dir, name, selector string, shot Shot) (BaselineOutcome, error
 
 // CompareBaseline diffs shot against the stored baseline. A returned error
 // means the comparison could not be performed at all (missing or unreadable
-// baseline, mismatched bounds); a failed comparison is reported as an outcome
-// with Pass false plus persisted artifacts.
+// baseline); a failed comparison, including a frame whose size differs from
+// the baseline, is reported as an outcome with Pass false plus persisted
+// artifacts.
 func CompareBaseline(cfg DiffConfig, shot Shot) (DiffOutcome, error) {
 	baselinePath, err := baselinePath(cfg.BaselineDir, cfg.Name)
 	if err != nil {
@@ -241,12 +248,32 @@ func CompareBaseline(cfg DiffConfig, shot Shot) (DiffOutcome, error) {
 		return DiffOutcome{}, fmt.Errorf("failed to decode screenshot: %v", err)
 	}
 
+	bounds := currentImg.Bounds()
+	baselineBounds := baselineImg.Bounds()
+	if baselineBounds.Dx() != bounds.Dx() || baselineBounds.Dy() != bounds.Dy() {
+		outcome := DiffOutcome{
+			Name:             cfg.Name,
+			Threshold:        cfg.Threshold,
+			PixelSensitivity: cfg.PixelSensitivity,
+			Width:            bounds.Dx(),
+			Height:           bounds.Dy(),
+			BaselineWidth:    baselineBounds.Dx(),
+			BaselineHeight:   baselineBounds.Dy(),
+			SizeMismatch:     true,
+			BaselinePath:     baselinePath,
+			Selector:         cfg.Selector,
+			Frame:            shot.Frame,
+			Warning:          shot.Warning,
+		}
+		outcome.persistArtifacts(cfg, shot, nil)
+		return outcome, nil
+	}
+
 	result, err := imgdiff.Compare(baselineImg, currentImg, cfg.PixelSensitivity)
 	if err != nil {
 		return DiffOutcome{}, fmt.Errorf("image comparison failed: %v", err)
 	}
 
-	bounds := currentImg.Bounds()
 	outcome := DiffOutcome{
 		Name:             cfg.Name,
 		Pass:             result.DiffRatio <= cfg.Threshold,
@@ -258,6 +285,8 @@ func CompareBaseline(cfg DiffConfig, shot Shot) (DiffOutcome, error) {
 		PixelSensitivity: cfg.PixelSensitivity,
 		Width:            bounds.Dx(),
 		Height:           bounds.Dy(),
+		BaselineWidth:    baselineBounds.Dx(),
+		BaselineHeight:   baselineBounds.Dy(),
 		BaselinePath:     baselinePath,
 		Selector:         cfg.Selector,
 		Frame:            shot.Frame,
@@ -267,21 +296,34 @@ func CompareBaseline(cfg DiffConfig, shot Shot) (DiffOutcome, error) {
 		return outcome, nil
 	}
 
-	actualPath, diffPath, werr := writeDiffArtifacts(cfg.ArtifactDir, cfg.Name, shot.PNG, result.DiffImage)
-	outcome.ActualImagePath = actualPath
-	outcome.DiffImagePath = diffPath
-	if werr != nil {
-		outcome.ArtifactError = werr.Error()
-	}
+	outcome.persistArtifacts(cfg, shot, result.DiffImage)
 	return outcome, nil
+}
+
+// persistArtifacts writes the failure evidence and records where it landed. A
+// write error stays on the outcome instead of being returned: the verdict
+// stands, only the evidence is missing.
+func (d *DiffOutcome) persistArtifacts(cfg DiffConfig, shot Shot, diffImg image.Image) {
+	actualPath, diffPath, err := writeDiffArtifacts(cfg.ArtifactDir, cfg.Name, shot.PNG, diffImg)
+	d.ActualImagePath = actualPath
+	d.DiffImagePath = diffPath
+	if err != nil {
+		d.ArtifactError = err.Error()
+	}
 }
 
 // Report renders the outcome as the human-readable block both frontends print.
 func (d DiffOutcome) Report() string {
-	report := fmt.Sprintf(
-		"Baseline: %q\nTotal pixels: %d\nDiff pixels:  %d\nDiff ratio:   %.4f (threshold %.4f)\nMax delta:    %.4f\nPixel sensitivity: %.4f",
-		d.Name, d.TotalPixels, d.DiffPixels, d.DiffRatio, d.Threshold, d.MaxDelta, d.PixelSensitivity,
-	)
+	var report string
+	if d.SizeMismatch {
+		report = fmt.Sprintf("Baseline: %q\nSize mismatch: baseline is %dx%d, actual frame is %dx%d",
+			d.Name, d.BaselineWidth, d.BaselineHeight, d.Width, d.Height)
+	} else {
+		report = fmt.Sprintf(
+			"Baseline: %q\nTotal pixels: %d\nDiff pixels:  %d\nDiff ratio:   %.4f (threshold %.4f)\nMax delta:    %.4f\nPixel sensitivity: %.4f",
+			d.Name, d.TotalPixels, d.DiffPixels, d.DiffRatio, d.Threshold, d.MaxDelta, d.PixelSensitivity,
+		)
+	}
 	if d.ActualImagePath != "" {
 		report += fmt.Sprintf("\nActual frame: %s\nDiff image:   %s", d.ActualImagePath, d.DiffImagePath)
 	}
@@ -321,9 +363,12 @@ func writeDiffArtifacts(dir, name string, actualPNG []byte, diffImg image.Image)
 	if cErr != nil {
 		return actualPath, "", fmt.Errorf("failed to create diff image: %w", cErr)
 	}
-	defer f.Close()
 	if eErr := png.Encode(f, diffImg); eErr != nil {
+		_ = f.Close()
 		return actualPath, "", fmt.Errorf("failed to encode diff image: %w", eErr)
+	}
+	if clErr := f.Close(); clErr != nil {
+		return actualPath, "", fmt.Errorf("failed to write diff image: %w", clErr)
 	}
 	return actualPath, diffPath, nil
 }

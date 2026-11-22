@@ -25,11 +25,11 @@ never changes; new failure classes get new numbers.
 | Code | Meaning |
 |------|---------|
 | 0 | Success — the command ran, or every scenario step passed |
-| 1 | Internal — artifact I/O, a malformed response, a runner bug |
+| 1 | Internal — artifact I/O (including a baseline that cannot be written), a malformed response, a runner bug. An artifact error on a run that already failed does not change that run's code: it is printed to stderr as `artifact error: …` and the scenario's own code (5, 6, …) is kept |
 | 2 | Usage — bad flags, unknown action, scenario failed validation. Nothing was sent to Godot |
 | 3 | Connection — could not launch, reach, or authenticate with Godot |
 | 4 | Godot error — a well-formed request the addon rejected (node not found, blocked method) |
-| 5 | **Assertion failed** — the game was reachable and answered, but an assertion or visual diff did not hold. This is the "real regression" code |
+| 5 | **Assertion failed** — the game was reachable and answered, but an assertion or visual diff did not hold, including a frame whose size differs from its baseline (the message names both sizes). This is the "real regression" code |
 | 6 | Timeout — a wait or deadline expired, including the run's own `--timeout` |
 | 7 | Cancelled — the process received SIGINT or SIGTERM (e.g. a cancelled CI job). Teardown and artifact writes still ran; `report.json` carries `failure.kind: "cancelled"` |
 

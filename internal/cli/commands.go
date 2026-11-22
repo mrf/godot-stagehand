@@ -496,9 +496,13 @@ var cmdScreenshot = &command{
 
 			switch {
 			case baseline != "":
+				// A bad name is the caller's mistake; a failed disk write is not.
+				if err := visual.ValidateName(baseline); err != nil {
+					return usagef(err)
+				}
 				outcome, err := visual.SaveBaseline(baselineDir, baseline, nodeSelector, shot)
 				if err != nil {
-					return usagef(err)
+					return err
 				}
 				return emit(e.stdout, outcome)
 

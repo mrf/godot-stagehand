@@ -113,7 +113,7 @@ func (r *runState) execute(ctx context.Context) *Report {
 		return r.finish(report, &Failure{Phase: "setup", Kind: KindInternal, Message: err.Error()})
 	}
 	if logs != nil {
-		defer logs.Close()
+		defer func() { _ = logs.Close() }()
 		report.Artifacts["godot_log"] = logPath
 	}
 

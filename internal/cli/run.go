@@ -71,8 +71,10 @@ var cmdRun = &command{
 			}
 			fmt.Fprintln(e.stderr, report.Summary())
 
+			// An artifact error must not replace the scenario's exit code. Run
+			// only records it as the report's failure when the scenario passed.
 			if err != nil {
-				return err
+				fmt.Fprintf(e.stderr, "artifact error: %v\n", err)
 			}
 			if !report.Passed() {
 				return &scenarioFailure{code: exitCodeForFailure(report.Failure), report: report}
