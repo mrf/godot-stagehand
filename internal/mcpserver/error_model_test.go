@@ -248,7 +248,6 @@ func TestErrorModel_CallTimeout(t *testing.T) {
 
 	srv := New()
 	t.Cleanup(srv.clearConn)
-	srv.callTimeout = 100 * time.Millisecond
 	connResult, err := srv.handleConnect(context.Background(), toolReq(map[string]any{
 		"host":       host,
 		"port":       float64(port),
@@ -257,6 +256,8 @@ func TestErrorModel_CallTimeout(t *testing.T) {
 	if err != nil || connResult.IsError {
 		t.Fatalf("connect failed: err=%v result=%+v", err, connResult)
 	}
+	// Shorten only after connecting (handleConnect's handshake uses callTimeout).
+	srv.callTimeout = 100 * time.Millisecond
 
 	result, err := srv.handleWaitForNode(context.Background(), toolReq(map[string]any{
 		"selector":   "name:Player",

@@ -156,9 +156,9 @@ func slowAnswerStubGodot(t *testing.T, delay time.Duration, results map[string]s
 func TestTypeTextOutlivesOrdinaryDeadline(t *testing.T) {
 	host, port := slowAnswerStubGodot(t, 250*time.Millisecond, nil)
 	srv := New()
-	srv.callTimeout = 50 * time.Millisecond
 	t.Cleanup(srv.clearConn)
 	connectDeadlineStub(t, srv, host, port)
+	srv.callTimeout = 50 * time.Millisecond // after connect: the handshake uses callTimeout too
 
 	// 10 chars x 100 ms = 1 s of typing: well past the 50 ms ordinary deadline,
 	// and the stub answers after 250 ms.
@@ -174,9 +174,9 @@ func TestAssertPerformanceOutlivesOrdinaryDeadline(t *testing.T) {
 	passed := `{"passed":true,"monitor":"TIME_FPS","value":60,"threshold":30,"op":"gte"}`
 	host, port := slowAnswerStubGodot(t, 250*time.Millisecond, map[string]string{"assert_performance": passed})
 	srv := New()
-	srv.callTimeout = 50 * time.Millisecond
 	t.Cleanup(srv.clearConn)
 	connectDeadlineStub(t, srv, host, port)
+	srv.callTimeout = 50 * time.Millisecond // after connect: the handshake uses callTimeout too
 
 	result, _ := srv.handleAssertPerformance(context.Background(), toolReq(map[string]any{
 		"monitor": "TIME_FPS", "threshold": float64(30), "op": "gte",

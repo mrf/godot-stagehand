@@ -1425,7 +1425,6 @@ func TestE2E_WaitGoSideTimeoutOnFrozenGodot(t *testing.T) {
 
 			srv := New()
 			t.Cleanup(srv.clearConn)
-			srv.callTimeout = 20 * time.Millisecond
 			connResult, err := srv.handleConnect(context.Background(), toolReq(map[string]any{
 				"host":       host,
 				"port":       float64(port),
@@ -1434,6 +1433,9 @@ func TestE2E_WaitGoSideTimeoutOnFrozenGodot(t *testing.T) {
 			if err != nil || connResult.IsError {
 				t.Fatalf("connect failed: err=%v result=%+v", err, connResult)
 			}
+			// Shorten only after connecting: handleConnect applies callTimeout to
+			// its dial/auth/ping handshake, which a tiny budget makes load-sensitive.
+			srv.callTimeout = 20 * time.Millisecond
 
 			// The Go-side deadline is timeout_ms (50ms) + a fixed buffer.
 			// Total should be well under 3 seconds.
