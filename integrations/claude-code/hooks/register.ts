@@ -352,7 +352,7 @@ export function register(on: On): void {
     const { Box, Text, Button } = $.ui.resolve(e)
 
     const rows = [
-      Text({ bold: true, wrap: 'truncate-end', children: [statusLine() ?? 'stagehand · no game connected'] }),
+      Text({ weight: 'semibold', wrap: 'truncate-end', children: [statusLine() ?? 'stagehand · no game connected'] }),
     ]
     if (frame === undefined) {
       rows.push(Text({ dimColor: true, children: ['No frame yet. Press r, or ask Claude for a screenshot.'] }))
