@@ -868,6 +868,20 @@ func TestRunRejectsMalformedScenarioAsUsage(t *testing.T) {
 	}
 }
 
+func TestRunRejectsEscapingBaselineDirAsUsage(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "escape.json")
+	if err := os.WriteFile(path, []byte(`{"target":{"mode":"launch","project_path":"p"},"baseline_dir":"../outside","steps":[{"action":"tree"}]}`), 0o644); err != nil {
+		t.Fatalf("write scenario: %v", err)
+	}
+	code, _, stderr := invoke(t, "run", path, "--quiet", "--baseline-dir="+t.TempDir())
+	if code != ExitUsage {
+		t.Fatalf("exit = %d, want %d", code, ExitUsage)
+	}
+	if !strings.Contains(stderr, "baseline_dir") {
+		t.Errorf("stderr %q does not name baseline_dir", stderr)
+	}
+}
+
 func TestRunRejectsMissingScenarioFile(t *testing.T) {
 	code, _, _ := invoke(t, "run", filepath.Join(t.TempDir(), "absent.json"))
 	if code != ExitUsage {

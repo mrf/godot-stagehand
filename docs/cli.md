@@ -151,7 +151,7 @@ echo $?   # 0 pass, 5 an assertion failed, 3 could not reach Godot, ...
 | `name` | Report and JUnit suite name. Defaults to the file stem |
 | `description` | Carried into the report |
 | `target` | How to obtain the session (below) |
-| `baseline_dir` | Screenshot baselines. Relative to the scenario file. Default `stagehand-baselines` |
+| `baseline_dir` | Screenshot baselines. A relative, forward-slash path inside the scenario file's directory — absolute paths, `..` escapes, backslashes and drive letters are rejected (exit 2). Default `stagehand-baselines`. To keep baselines elsewhere, omit it and pass `--baseline-dir` |
 | *(diff dir)* | Not a scenario field. `screenshot_diff` failure artifacts default to `stagehand-diffs` relative to the scenario file — same resolution as `baseline_dir` — unless `--out-dir` is set, in which case they go to `<out-dir>/diffs` instead (see [Artifacts](#artifacts)) |
 | `steps` | Ordered operations. The first failure stops the run |
 | `teardown` | Always runs, including after a failure |
@@ -223,8 +223,15 @@ Comparison operators: `equals`, `not_equals`, `contains`, `exists`,
 authoring error, not a silent false — a silently-false assertion reads as a
 real regression.
 
-`screenshot`'s `output` and the baseline `name` may not escape the run's
-directories. Scenario files are data and may arrive in a pull request.
+`screenshot`'s `output`, the baseline `name` and `baseline_dir` may not escape
+the run's directories.
+
+**Treat scenario files like code.** Path containment limits where a scenario
+writes; it does not make the file safe to run. A launch-mode scenario's
+`target.godot_bin` is executed as the Godot binary, and `target.allow_unsafe`
+enables `evaluate` and arbitrary `call_method` in the game it launches. Review a
+scenario in a pull request as you would a script, and do not run one from an
+untrusted source — see [security.md](security.md#scenario-files-are-code).
 
 ### Artifacts
 

@@ -187,6 +187,36 @@ func TestParseRejectsOutOfRangePortInLaunchMode(t *testing.T) {
 	}
 }
 
+func TestParseRejectsBaselineDirOutsideScenarioDir(t *testing.T) {
+	for _, dir := range []string{"../x", "a/../../x", "/abs", `C:\abs`, `\abs`} {
+		t.Run(dir, func(t *testing.T) {
+			_, err := Parse(fmt.Appendf(nil, `{
+				"target": {"mode": "launch", "project_path": "p"},
+				"baseline_dir": %q,
+				"steps": [{"action": "tree"}]
+			}`, dir))
+			if err == nil {
+				t.Fatalf("Parse accepted baseline_dir %q outside the scenario directory", dir)
+			}
+			if !strings.Contains(err.Error(), "baseline_dir") || !strings.Contains(err.Error(), "--baseline-dir") {
+				t.Errorf("error %q should name baseline_dir and point at --baseline-dir", err)
+			}
+		})
+	}
+}
+
+func TestParseAllowsBaselineDirInsideScenarioDir(t *testing.T) {
+	for _, dir := range []string{"baselines", "ci/baselines", "a/../baselines"} {
+		if _, err := Parse(fmt.Appendf(nil, `{
+			"target": {"mode": "launch", "project_path": "p"},
+			"baseline_dir": %q,
+			"steps": [{"action": "tree"}]
+		}`, dir)); err != nil {
+			t.Errorf("Parse rejected contained baseline_dir %q: %v", dir, err)
+		}
+	}
+}
+
 func TestParseRejectsLaunchSettingsInConnectMode(t *testing.T) {
 	_, err := Parse([]byte(`{
 		"target": {"mode": "connect", "port": 26701, "project_path": "p"},

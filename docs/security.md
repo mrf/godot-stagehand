@@ -71,3 +71,21 @@ in. Treat it like any other local dev/debug port.
 Release exports ignore the ordinary CLI flag and `STAGEHAND_ENABLED` unless
 `STAGEHAND_ALLOW_RELEASE=1` is also set deliberately — see
 [Configuration](configuration.md).
+
+## Scenario files are code
+
+Running `godot-stagehand run <scenario.json>` can execute arbitrary programs: a
+launch-mode scenario's `target.godot_bin` is run as the Godot binary, and
+`target.allow_unsafe` turns on expression evaluation and arbitrary method calls
+in the launched game. A pull request that adds `"godot_bin": "./evil.sh"` runs
+that script in any CI job that runs the scenario. Review scenario changes as
+you would a script, and never run a scenario from an untrusted source. The same
+applies to an MCP caller of `godot_launch`, which can pass `godot_bin` and
+`allow_unsafe` too.
+
+What the runner does confine is where a scenario writes: `baseline_dir` must be
+a relative path inside the scenario file's directory, and screenshot outputs and
+baseline names cannot escape the run's directories (see [CLI](cli.md)). The
+check is lexical, so a symlink committed inside the scenario directory is
+followed. Baselines outside the scenario directory need the operator's
+`--baseline-dir` flag.
