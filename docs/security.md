@@ -47,8 +47,17 @@ reach automation; unsafe opt-in controls what an authenticated peer may execute.
 `properties` refuse (`not_supported`) any selector that resolves to
 `/root/StagehandServer` or any node under it, and `get_tree` lists those nodes
 without their property values. Separately, `get_property` and `set_property`
-refuse private (`_`-prefixed) members and `script` on every node. Unsafe mode can
-only be enabled by relaunching with `STAGEHAND_ALLOW_UNSAFE=1`.
+refuse private (`_`-prefixed) members and `script` on every node, and so does
+`wait_for_property`, which reads only a property, a `.`/`:` sub-path, or
+metadata — never a `get_<name>()` method, which would run game code in safe
+mode. Unsafe mode can only be enabled by relaunching with
+`STAGEHAND_ALLOW_UNSAFE=1`.
+
+**The `call_method` blocklist is a safety net, not a sandbox.** `call_method`
+already requires unsafe mode; the blocklist (`free`, `queue_free`, `set_script`,
+tree surgery, `call`/`callv`/`set` and the other dynamic-dispatch methods, plus
+any `_`-prefixed name) only guards against an automation mistake. Any game
+method can still be destructive.
 
 Input recording is confined the same way. `record_start` writes, and `replay`
 reads, only files under `user://stagehand_recordings/`: a path is either

@@ -107,6 +107,22 @@ func test_blocklist_covers_the_destructive_lifecycle_methods() -> void:
 			.is_true()
 
 
+func test_blocklist_covers_dynamic_dispatch_and_reparenting() -> void:
+	# call/callv would reach any blocked method indirectly (callv("free", [])).
+	_make_target(&"doublers_indirect")
+	for method: String in [
+		"call", "callv", "call_deferred", "set", "set_indexed", "propagate_call", "reparent",
+	]:
+		var result: Dictionary = StagehandMethodHandler.call_method(get_tree(), {
+			"selector": "group:doublers_indirect",
+			"method": method,
+			"args": ["free", []],
+		})
+		assert_str(str(result.get("error", ""))) \
+			.override_failure_message("expected '%s' to be blocked" % method) \
+			.contains("destructive")
+
+
 func test_private_method_is_rejected() -> void:
 	_make_target(&"doublers_private")
 	var result: Dictionary = StagehandMethodHandler.call_method(get_tree(), {

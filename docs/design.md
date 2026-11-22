@@ -252,7 +252,10 @@ The whole tool is gated: the addon rejects `call_method` outright unless
 unsafe is allowed, private (`_`-prefixed) and a fixed set of destructive
 methods (`free`, `queue_free`, `set_script`, `add_child`, …) stay blocked as
 defense-in-depth — the same list (`internal/gwpop/method.go`) is enforced by
-the MCP tools, the CLI, and the scenario runner.
+the MCP tools, the CLI, and the scenario runner. It is a safety net against
+mistakes, not a sandbox: it also blocks dynamic dispatch (`call`, `callv`,
+`call_deferred`, `set`, `set_indexed`, `propagate_call`) so a blocked method
+cannot be reached indirectly, but any game method can still be destructive.
 
 Returns: `{ result }`
 

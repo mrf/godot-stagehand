@@ -193,6 +193,41 @@ func test_greater_than_operator_on_numbers() -> void:
 	).is_false()
 
 
+func test_property_condition_never_invokes_get_method() -> void:
+	var node: Node = auto_free(Node.new())
+	node.set_script(preload("res://scripts/getter_side_effect.gd"))
+	add_child(node)
+	assert_bool(_waiter.evaluate_property_condition(node, "boom", "exists", null)).is_false()
+	var calls: int = node.get("boom_calls")
+	assert_int(calls).is_equal(0)
+
+
+func test_property_condition_reads_nested_path() -> void:
+	var node: Node2D = auto_free(Node2D.new())
+	node.position = Vector2(3.0, 4.0)
+	add_child(node)
+	assert_bool(_waiter.evaluate_property_condition(node, "position.x", "equals", 3.0)).is_true()
+
+
+func test_property_condition_reads_meta() -> void:
+	_probe.set_meta(&"score", 7)
+	assert_bool(_waiter.evaluate_property_condition(_probe, "score", "equals", 7)).is_true()
+
+
+func test_wait_for_property_rejects_private_and_script() -> void:
+	var holder: Node = auto_free(Node.new())
+	holder.set_script(preload("res://scripts/property_target.gd"))
+	holder.add_to_group(&"waiter_private_probe")
+	add_child(holder)
+	for property: String in ["_private_prop", "script", "script._x"]:
+		var result: Dictionary = await _waiter.wait_for_property(
+			"group:waiter_private_probe", property, "exists", null, TIMEOUT_MS, POLL_MS
+		)
+		assert_str(str(result.get("error_code", ""))) \
+			.override_failure_message("expected '%s' to be refused" % property) \
+			.is_equal("not_supported")
+
+
 func test_numeric_operator_on_non_numeric_value_is_false() -> void:
 	# A String property can't be ordered against a number.
 	assert_bool(
