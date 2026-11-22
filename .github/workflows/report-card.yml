@@ -62,10 +62,16 @@ jobs:
           source scripts/ci-install-godot.sh
           echo "GODOT_BIN=${GODOT_BIN}" >> "$GITHUB_ENV"
 
+      # The godot-tagged suite contains headed tests (hostcompat's template
+      # run takes a screenshot); TestReportCardTestsCheckHasDisplay keeps the
+      # generator under xvfb-run.
+      - name: Install Xvfb
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb
+
       - name: Generate static report
         id: report
         run: >-
-          python3 reportcard/generate.py
+          xvfb-run -a python3 reportcard/generate.py
           --config reportcard/config.toml
           --output _site
           --github-output "$GITHUB_OUTPUT"

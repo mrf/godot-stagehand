@@ -36,31 +36,56 @@ func TestCIScenarioSmokeRunsFullGodotTaggedSuite(t *testing.T) {
 // guarantee Xvfb, so the job must install it as well as run under it.
 func TestCIScenarioSmokeGodotSuiteHasDisplay(t *testing.T) {
 	body := scenarioSmokeJobBody(t)
-	invocation := scenarioSmokeGodotTestInvocation(t, body)
+	assertRunsUnderXvfb(t, "scenario-smoke", body, scenarioSmokeGodotTestInvocation(t, body), "go test -tags=godot")
+}
 
-	if !regexp.MustCompile(`(?:^|\s)xvfb-run -a go test -tags=godot`).MatchString(invocation) {
-		t.Errorf("scenario-smoke's godot-tagged test run must run under `xvfb-run -a` (it contains headed tests): %q", invocation)
+// TestReportCardTestsCheckHasDisplay is the report card's counterpart: its
+// tests check runs the same godot-tagged suite (reportcard/config.toml's
+// extra_args), so the generator must run under a display too, or the headed
+// test fails and coverage_percent comes back null.
+func TestReportCardTestsCheckHasDisplay(t *testing.T) {
+	body := workflowJobBody(t, "report-card.yml", "analyze", "publish-badges")
+	matches := regexp.MustCompile(`[^\n]*python3 reportcard/generate\.py[^\n]*`).FindAllString(body, -1)
+	if len(matches) != 1 {
+		t.Fatalf("expected exactly one reportcard/generate.py invocation in the report card's analyze job, found %d: %v", len(matches), matches)
+	}
+	assertRunsUnderXvfb(t, "report card analyze", body, matches[0], "python3 reportcard/generate.py")
+}
+
+// assertRunsUnderXvfb fails unless invocation runs command under
+// `xvfb-run -a` and the job body installs the xvfb package.
+func assertRunsUnderXvfb(t *testing.T, job, body, invocation, command string) {
+	t.Helper()
+	if !regexp.MustCompile(`(?:^|\s)xvfb-run -a ` + regexp.QuoteMeta(command)).MatchString(invocation) {
+		t.Errorf("%s's %q must run under `xvfb-run -a` (the godot-tagged suite contains headed tests): %q", job, command, invocation)
 	}
 	if !regexp.MustCompile(`apt-get install[^\n]*\bxvfb\b`).MatchString(body) {
-		t.Error("scenario-smoke must install the xvfb package explicitly; ubuntu-latest does not guarantee it")
+		t.Errorf("%s must install the xvfb package explicitly; ubuntu-latest does not guarantee it", job)
 	}
 }
 
 // scenarioSmokeJobBody returns the scenario-smoke job's YAML, up to the next job.
 func scenarioSmokeJobBody(t *testing.T) string {
 	t.Helper()
-	workflow, err := os.ReadFile(filepath.Join(addonInstallRepoRoot(t), ".github", "workflows", "ci.yml"))
+	return workflowJobBody(t, "ci.yml", "scenario-smoke", "build-matrix")
+}
+
+// workflowJobBody returns job's YAML from .github/workflows/<file>, up to
+// nextJob (or the end of the file if nextJob is absent).
+func workflowJobBody(t *testing.T, file, job, nextJob string) string {
+	t.Helper()
+	workflow, err := os.ReadFile(filepath.Join(addonInstallRepoRoot(t), ".github", "workflows", file))
 	if err != nil {
-		t.Fatalf("read CI workflow: %v", err)
+		t.Fatalf("read workflow %s: %v", file, err)
 	}
 
-	const jobKey = "\n  scenario-smoke:\n"
+	jobKey := "\n  " + job + ":\n"
 	start := strings.Index(string(workflow), jobKey)
 	if start < 0 {
-		t.Fatal("scenario-smoke job not found in CI workflow")
+		t.Fatalf("%s job not found in %s", job, file)
 	}
 	body := string(workflow)[start+len(jobKey):]
-	if end := strings.Index(body, "\n  build-matrix:"); end >= 0 {
+	if end := strings.Index(body, "\n  "+nextJob+":"); end >= 0 {
 		body = body[:end]
 	}
 	return body
