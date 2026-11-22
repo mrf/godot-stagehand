@@ -90,7 +90,7 @@ func Run(out io.Writer, opts Options) error {
 
 	updated, changed := ConfigureProject(string(content))
 	if changed {
-		if err := os.WriteFile(projectFile, []byte(updated), 0o644); err != nil {
+		if err := writeFileAtomic(projectFile, []byte(updated)); err != nil {
 			return fmt.Errorf("write project.godot: %w", err)
 		}
 	}
@@ -101,6 +101,43 @@ func Run(out io.Writer, opts Options) error {
 	// 3. Print MCP client config + run guidance.
 	printGuidance(out, opts)
 	return nil
+}
+
+// writeFileAtomic replaces the existing file at path with data via a temp file
+// in the same directory and a rename, so a crash mid-write can never leave a
+// truncated file. The file's mode is preserved and a symlink is followed, so
+// the link itself survives.
+func writeFileAtomic(path string, data []byte) (err error) {
+	if resolved, rerr := filepath.EvalSymlinks(path); rerr == nil {
+		path = resolved
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tmp.Close()
+			_ = os.Remove(tmp.Name())
+		}
+	}()
+	if _, err = tmp.Write(data); err != nil {
+		return err
+	}
+	if err = tmp.Chmod(info.Mode().Perm()); err != nil {
+		return err
+	}
+	if err = tmp.Sync(); err != nil {
+		return err
+	}
+	if err = tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
 
 // checkWritable verifies path can be opened for writing without modifying its
