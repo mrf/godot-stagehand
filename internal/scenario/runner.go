@@ -216,7 +216,7 @@ func (r *runState) runStep(ctx context.Context, phase string, index int, step St
 		StartedAt: start.UTC().Format(time.RFC3339Nano),
 	}
 
-	outcome, err := r.dispatch(ctx, step)
+	outcome, err := r.dispatch(ctx, phase, index, step)
 	result.DurationMs = r.opts.now().Sub(start).Milliseconds()
 	result.Result = outcome.result
 	result.Artifacts = outcome.artifacts
@@ -272,12 +272,12 @@ func classify(err error) string {
 }
 
 // dispatch runs one step: a runner-local action, or a pass-through GWP call.
-func (r *runState) dispatch(ctx context.Context, step Step) (stepOutcome, error) {
+func (r *runState) dispatch(ctx context.Context, phase string, index int, step Step) (stepOutcome, error) {
 	switch step.Action {
 	case ActionSleep:
 		return stepOutcome{}, r.doSleep(ctx, step)
 	case ActionScreenshot:
-		return r.doScreenshot(ctx, step)
+		return r.doScreenshot(ctx, phase, index, step)
 	case ActionSaveBaseline:
 		return r.doSaveBaseline(ctx, step)
 	case ActionScreenshotDiff:
@@ -309,7 +309,7 @@ func (r *runState) dispatch(ctx context.Context, step Step) (stepOutcome, error)
 }
 
 func (r *runState) doSleep(ctx context.Context, step Step) error {
-	ms, _ := asPositiveInt(step.With["duration_ms"])
+	ms, _ := asSleepMs(step.With["duration_ms"])
 	timer := time.NewTimer(time.Duration(ms) * time.Millisecond)
 	defer timer.Stop()
 	select {
@@ -320,14 +320,20 @@ func (r *runState) doSleep(ctx context.Context, step Step) error {
 	}
 }
 
-func (r *runState) doScreenshot(ctx context.Context, step Step) (stepOutcome, error) {
+func (r *runState) doScreenshot(ctx context.Context, phase string, index int, step Step) (stepOutcome, error) {
 	shot, err := gwpop.Capture(ctx, r.trace, asString(step.With["selector"]))
 	if err != nil {
 		return stepOutcome{}, err
 	}
 	name := asString(step.With["output"])
-	if name == "" {
-		name = fmt.Sprintf("%s.png", sanitize(step.Label()))
+	switch {
+	case name != "":
+	case step.Name != "":
+		name = sanitize(step.Name) + ".png"
+	default:
+		// Unnamed shots would all collapse to "screenshot.png" and overwrite
+		// each other; phase+index is unique across steps and teardown.
+		name = fmt.Sprintf("%s-%d.png", phase, index)
 	}
 	if r.artifactDir == "" {
 		return stepOutcome{result: mustJSON(map[string]any{"width": shot.Width, "height": shot.Height})}, nil

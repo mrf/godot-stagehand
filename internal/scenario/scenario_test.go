@@ -441,3 +441,37 @@ func TestOverrideProjectPathRejectsConnectModeAndEmpty(t *testing.T) {
 		t.Error("empty override was accepted")
 	}
 }
+
+func TestParseRejectsHeadlessScreenshotInTeardown(t *testing.T) {
+	_, err := Parse([]byte(`{
+		"target": {"mode": "launch", "project_path": "p"},
+		"steps": [{"action": "sleep", "with": {"duration_ms": 1}}],
+		"teardown": [{"action": "screenshot"}]
+	}`))
+	if err == nil {
+		t.Fatal("Parse accepted a headless scenario that captures a frame in teardown")
+	}
+	if !strings.Contains(err.Error(), "headless") {
+		t.Errorf("error %q does not explain the headless conflict", err)
+	}
+}
+
+func TestParseRejectsNonIntegerOrOutOfRangeSleepDuration(t *testing.T) {
+	for _, duration := range []string{"0.5", "1.5", "1e20", "3600001", "0", "-1", `"10"`} {
+		_, err := Parse([]byte(`{
+			"target": {"mode": "launch", "project_path": "p"},
+			"steps": [{"action": "sleep", "with": {"duration_ms": ` + duration + `}}]
+		}`))
+		if err == nil {
+			t.Errorf("Parse accepted sleep duration_ms %s", duration)
+		}
+	}
+	for _, duration := range []string{"1", "250", "3600000"} {
+		if _, err := Parse([]byte(`{
+			"target": {"mode": "launch", "project_path": "p"},
+			"steps": [{"action": "sleep", "with": {"duration_ms": ` + duration + `}}]
+		}`)); err != nil {
+			t.Errorf("Parse rejected sleep duration_ms %s: %v", duration, err)
+		}
+	}
+}

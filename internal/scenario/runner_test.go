@@ -726,3 +726,29 @@ func TestRunTimeoutStillRunsTeardown(t *testing.T) {
 		t.Error("teardown ran under the expired context")
 	}
 }
+
+func TestRunNamesUnnamedScreenshotsByPhaseAndIndex(t *testing.T) {
+	godot := &stubGodot{results: map[string]any{
+		"screenshot": map[string]any{"data": visualtest.SolidPNGBase64(4, 4, visualtest.Opaque), "width": 4, "height": 4},
+	}}
+	opts := stubOptions(t, godot)
+
+	sc := mustParse(t, `{
+		"name": "shots",
+		"target": {"mode": "launch", "project_path": "proj", "headless": false},
+		"steps": [{"action": "screenshot"}, {"action": "screenshot"}],
+		"teardown": [{"action": "screenshot"}]
+	}`)
+	report, err := Run(context.Background(), sc, opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !report.Passed() {
+		t.Fatalf("scenario failed: %+v", report.Failure)
+	}
+	for _, name := range []string{"step-0.png", "step-1.png", "teardown-0.png"} {
+		if _, err := os.Stat(filepath.Join(opts.OutDir, "screenshots", name)); err != nil {
+			t.Errorf("missing screenshot %s: %v", name, err)
+		}
+	}
+}

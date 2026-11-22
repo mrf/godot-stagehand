@@ -2,6 +2,7 @@ package scenario
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 
@@ -85,8 +86,8 @@ func capturesScreenshot(action string) bool {
 func validateStepSemantics(step Step) error {
 	switch step.Action {
 	case ActionSleep:
-		if _, ok := asPositiveInt(step.With["duration_ms"]); !ok {
-			return fmt.Errorf("duration_ms must be a positive number of milliseconds")
+		if _, ok := asSleepMs(step.With["duration_ms"]); !ok {
+			return fmt.Errorf("duration_ms must be a whole number of milliseconds between 1 and %d", maxSleepMs)
 		}
 	case ActionScreenshot:
 		if output, ok := step.With["output"]; ok {
@@ -173,15 +174,21 @@ func validateArtifactPath(path string) error {
 	return nil
 }
 
-func asPositiveInt(v any) (int, bool) {
+// maxSleepMs bounds a sleep step to one hour: well past any sane wait, and far
+// below the point where the millisecond count overflows a time.Duration.
+const maxSleepMs = 3_600_000
+
+// asSleepMs reads a sleep duration: a whole number of milliseconds in
+// [1, maxSleepMs]. A fraction would truncate to a shorter sleep than written.
+func asSleepMs(v any) (int, bool) {
 	switch n := v.(type) {
 	case float64:
-		if n <= 0 {
+		if n <= 0 || n != math.Trunc(n) || n > maxSleepMs {
 			return 0, false
 		}
 		return int(n), true
 	case int:
-		if n <= 0 {
+		if n <= 0 || n > maxSleepMs {
 			return 0, false
 		}
 		return n, true

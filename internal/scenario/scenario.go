@@ -181,14 +181,13 @@ func (s *Scenario) Validate() error {
 		if err := validateStep(step); err != nil {
 			return fmt.Errorf("steps[%d] (%s): %w", i, step.Label(), err)
 		}
-		if capturesScreenshot(step.Action) {
-			capturesFrames = true
-		}
+		capturesFrames = capturesFrames || capturesScreenshot(step.Action)
 	}
 	for i, step := range s.Teardown {
 		if err := validateStep(step); err != nil {
 			return fmt.Errorf("teardown[%d] (%s): %w", i, step.Label(), err)
 		}
+		capturesFrames = capturesFrames || capturesScreenshot(step.Action)
 	}
 	if capturesFrames && s.Target.Mode == ModeLaunch && s.Target.headless() {
 		return fmt.Errorf("scenario captures screenshots but launches headless; headless Godot cannot render a real frame — set target.headless to false and run against a display (Xvfb in CI)")
