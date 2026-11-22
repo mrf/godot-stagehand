@@ -31,8 +31,11 @@ var _copy_button: Button
 var _snippet_edit: TextEdit
 var _log_label: RichTextLabel
 
+var _sums_http: HTTPRequest
 var _http: HTTPRequest
 var _file_dialog: FileDialog
+## SHA256SUMS text for the in-flight binary download.
+var _pending_sums: String = ""
 
 
 func _init() -> void:
@@ -44,6 +47,10 @@ func _init() -> void:
 
 
 func _ready() -> void:
+	_sums_http = HTTPRequest.new()
+	var _sums_connect_err: int = _sums_http.request_completed.connect(_on_sums_completed)
+	add_child(_sums_http)
+
 	_http = HTTPRequest.new()
 	var _http_connect_err: int = _http.request_completed.connect(_on_download_completed)
 	add_child(_http)
@@ -196,11 +203,7 @@ func _describe_target() -> String:
 
 
 func _default_binary_path() -> String:
-	var dir: String = ProjectSettings.globalize_path("res://")
-	var file_name: String = "godot-stagehand"
-	if OS.get_name() == "Windows":
-		file_name += ".exe"
-	return dir.path_join(file_name)
+	return StagehandReleaseAssets.default_binary_path(OS.get_name(), OS.get_data_dir())
 
 
 func _binary_path() -> String:
@@ -231,8 +234,7 @@ func _on_save_path_selected(path: String) -> void:
 
 
 func _on_download_pressed() -> void:
-	var url: String = StagehandReleaseAssets.current_download_url()
-	if url.is_empty():
+	if StagehandReleaseAssets.current_asset_name().is_empty():
 		_log("[color=#e05050]No prebuilt binary for %s / %s. Build from source instead.[/color]" % [
 			OS.get_name(), Engine.get_architecture_name()
 		])
@@ -241,12 +243,41 @@ func _on_download_pressed() -> void:
 	if dest.is_empty():
 		_log("[color=#e05050]Choose a destination path first.[/color]")
 		return
+	var dir_err: Error = DirAccess.make_dir_recursive_absolute(dest.get_base_dir())
+	if dir_err != OK:
+		_log("[color=#e05050]Could not create %s: %s[/color]" % [dest.get_base_dir(), error_string(dir_err)])
+		return
 
 	_download_button.disabled = true
+	var sums_url: String = StagehandReleaseAssets.checksums_url()
+	_log("Fetching %s …" % sums_url)
+	var err: Error = _sums_http.request(sums_url)
+	if err != OK:
+		_download_button.disabled = false
+		_log("[color=#e05050]Could not start download: %s[/color]" % error_string(err))
+
+
+func _on_sums_completed(
+	result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray
+) -> void:
+	var failure: String = _http_failure(result, response_code)
+	if failure.is_empty():
+		_pending_sums = body.get_string_from_utf8()
+		if StagehandReleaseAssets.expected_sha256(
+			_pending_sums, StagehandReleaseAssets.current_asset_name()
+		).is_empty():
+			failure = "SHA256SUMS has no line for %s" % StagehandReleaseAssets.current_asset_name()
+	if not failure.is_empty():
+		_download_button.disabled = false
+		_log("[color=#e05050]Could not fetch SHA256SUMS: %s.[/color]" % failure)
+		return
+
+	var url: String = StagehandReleaseAssets.current_download_url()
 	_log("Downloading %s …" % url)
-	_http.download_file = dest
+	_http.download_file = _binary_path() + StagehandReleaseAssets.PART_SUFFIX
 	var err: Error = _http.request(url)
 	if err != OK:
+		_http.download_file = ""
 		_download_button.disabled = false
 		_log("[color=#e05050]Could not start download: %s[/color]" % error_string(err))
 
@@ -254,33 +285,43 @@ func _on_download_pressed() -> void:
 func _on_download_completed(
 	result: int, response_code: int, _headers: PackedStringArray, _body: PackedByteArray
 ) -> void:
+	var part_path: String = _http.download_file
+	# The destination chosen at download start, even if the path field was
+	# edited while the request was in flight.
+	var dest: String = part_path.trim_suffix(StagehandReleaseAssets.PART_SUFFIX)
 	_download_button.disabled = false
 	_http.download_file = ""
 
-	if result != HTTPRequest.RESULT_SUCCESS:
-		_log("[color=#e05050]Download failed (result %d). Check your network or build from source.[/color]" % result)
-		_recompute_state()
-		return
-	if response_code == 404:
-		_log("[color=#e05050]404 Not Found — no published release asset yet (tracked by vrj.12). Build from source for now.[/color]")
-		_recompute_state()
-		return
-	if response_code < 200 or response_code >= 300:
-		_log("[color=#e05050]Download failed: HTTP %d[/color]" % response_code)
-		_recompute_state()
-		return
-
-	if not _binary_exists():
-		_log("[color=#e05050]Download reported success but no file at %s.[/color]" % _binary_path())
+	var failure: String = _http_failure(result, response_code)
+	if failure.is_empty():
+		failure = StagehandReleaseAssets.install_verified(
+			part_path, dest, _pending_sums, StagehandReleaseAssets.current_asset_name()
+		)
+	elif FileAccess.file_exists(part_path):
+		var _remove_err: Error = DirAccess.remove_absolute(part_path)
+	_pending_sums = ""
+	if not failure.is_empty():
+		_log("[color=#e05050]Download failed: %s (existing binary left untouched).[/color]" % failure)
 		_recompute_state()
 		return
 
 	if StagehandReleaseAssets.needs_executable_bit(OS.get_name()):
-		_mark_executable(_binary_path())
+		_mark_executable(dest)
 
-	_log("[color=#3ac06a]Downloaded to %s[/color]" % _binary_path())
+	_log("[color=#3ac06a]Downloaded and verified (SHA-256) to %s[/color]" % dest)
 	_refresh_snippet()
 	_recompute_state()
+
+
+## Returns "" for a successful 2xx response, otherwise a user-facing reason.
+func _http_failure(result: int, response_code: int) -> String:
+	if result != HTTPRequest.RESULT_SUCCESS:
+		return "result %d — check your network or build from source" % result
+	if response_code == 404:
+		return "404 Not Found — release %s has no published assets yet; build from source for now" % StagehandReleaseAssets.RELEASE_TAG
+	if response_code < 200 or response_code >= 300:
+		return "HTTP %d" % response_code
+	return ""
 
 
 func _mark_executable(path: String) -> void:
