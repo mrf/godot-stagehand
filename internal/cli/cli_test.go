@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -940,6 +941,32 @@ func TestHostcompatProbeLaunchFailureIsAConnectionError(t *testing.T) {
 		"--godot-bin="+filepath.Join(dir, "no-such-godot"))
 	if code != ExitConnection {
 		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitConnection, stderr)
+	}
+}
+
+func TestHostcompatProbeEnvOnlyActivationFlagOmitsStagehandArg(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake Godot binary is a POSIX shell script")
+	}
+	dir := t.TempDir()
+	argvPath := filepath.Join(t.TempDir(), "argv")
+	binPath := filepath.Join(t.TempDir(), "fake-godot")
+	script := "#!/bin/sh\ncase \"$*\" in *--import*) exit 0;; esac\n" +
+		"printf '%s\\n' \"$@\" > '" + argvPath + "'\nexec sleep 30\n"
+	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr := invoke(t, "hostcompat-probe", "--project-path="+dir, "--godot-bin="+binPath,
+		"--timeout=1s", "--env-only-activation")
+	if code != ExitConnection {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitConnection, stderr)
+	}
+	data, err := os.ReadFile(argvPath)
+	if err != nil {
+		t.Fatalf("fake Godot never recorded its argv: %v", err)
+	}
+	if strings.Contains(string(data), "--stagehand") {
+		t.Errorf("argv %q must not carry --stagehand with --env-only-activation", data)
 	}
 }
 

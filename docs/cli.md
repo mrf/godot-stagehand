@@ -312,7 +312,7 @@ set `"headless": false` and provide a display (Xvfb). See
 
 ```bash
 godot-stagehand hostcompat-probe --project-path .hostcompat/pixelorama \
-  --godot-bin "$GODOT_BIN" [--game-args a,b] [--headed] [--timeout 10m]
+  --godot-bin "$GODOT_BIN" [--game-args a,b] [--headed] [--env-only-activation] [--timeout 10m]
 ```
 
 Launches a host project and prints what it measurably is as JSON: content scale

@@ -23,6 +23,9 @@ type LaunchConfig struct {
 	Headed bool
 	// ExtraArgs are passed to the game after "--", e.g. a host's own flags.
 	ExtraArgs []string
+	// EnvOnlyActivation drops --stagehand for a host that parses its own argv
+	// and rejects unknown flags; STAGEHAND_ENABLED alone activates the addon.
+	EnvOnlyActivation bool
 	// TimeoutMs bounds the launch, including a cold import. Zero uses the
 	// launcher's default, which is too short for a large project's first run.
 	TimeoutMs int
@@ -52,13 +55,14 @@ func LaunchAndProbe(ctx context.Context, cfg LaunchConfig) (*Probe, error) {
 
 	start := time.Now()
 	result, err := launch.Launch(ctx, launch.Config{
-		ProjectPath: cfg.ProjectPath,
-		GodotBin:    cfg.GodotBin,
-		Port:        port,
-		Headless:    !cfg.Headed,
-		ExtraArgs:   cfg.ExtraArgs,
-		TimeoutMs:   cfg.TimeoutMs,
-		LogWriter:   cfg.LogWriter,
+		ProjectPath:       cfg.ProjectPath,
+		GodotBin:          cfg.GodotBin,
+		Port:              port,
+		Headless:          !cfg.Headed,
+		ExtraArgs:         cfg.ExtraArgs,
+		TimeoutMs:         cfg.TimeoutMs,
+		LogWriter:         cfg.LogWriter,
+		EnvOnlyActivation: cfg.EnvOnlyActivation,
 	})
 	if err != nil {
 		return nil, &LaunchError{err: err}

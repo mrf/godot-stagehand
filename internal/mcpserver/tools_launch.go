@@ -62,6 +62,11 @@ var launchTool = mcp.NewTool("godot_launch",
 			"Set false to keep staged game state alive across disconnects; the instance then runs until it is stopped explicitly."),
 		mcp.DefaultBool(true),
 	),
+	mcp.WithBoolean("env_only_activation",
+		mcp.Description("Activate the addon by STAGEHAND_ENABLED=1 alone and omit the --stagehand argument. "+
+			"Set true for a host project that parses its own command line and rejects unknown flags."),
+		mcp.DefaultBool(false),
+	),
 	mcp.WithArray("extra_args",
 		mcp.Description("Extra command-line arguments to pass to the Godot binary"),
 		mcp.WithStringItems(),
@@ -120,15 +125,16 @@ func (s *Server) handleLaunch(ctx context.Context, req mcp.CallToolRequest) (*mc
 	defer release()
 
 	cfg := launch.Config{
-		ProjectPath:     projectPath,
-		GodotBin:        godotBin,
-		Host:            host,
-		Port:            port,
-		Headless:        headless,
-		AllowUnsafe:     allowUnsafe,
-		ExtraArgs:       extraArgs,
-		TimeoutMs:       timeoutMs,
-		ImportTimeoutMs: importTimeoutMs,
+		ProjectPath:       projectPath,
+		GodotBin:          godotBin,
+		Host:              host,
+		Port:              port,
+		Headless:          headless,
+		AllowUnsafe:       allowUnsafe,
+		ExtraArgs:         extraArgs,
+		TimeoutMs:         timeoutMs,
+		ImportTimeoutMs:   importTimeoutMs,
+		EnvOnlyActivation: req.GetBool("env_only_activation", false),
 		// Isolation is on by default: two agents launching the same project
 		// must not share user://, and the shared res://.godot import cache is
 		// populated by one serialized headless import before the game starts.
