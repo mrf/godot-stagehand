@@ -144,6 +144,7 @@ func Connect(ctx context.Context, host string, port int, token string) (*godotco
 		_ = conn.Close()
 		return nil, nil, err
 	}
+	conn.PinHandshake(info)
 	return conn, info, nil
 }
 

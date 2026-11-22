@@ -95,6 +95,8 @@ func (s *Server) handleConnect(ctx context.Context, req mcp.CallToolRequest) (*m
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
+	conn.PinHandshake(handshake)
+
 	// Replace any existing entry for this instanceID (closes old conn/process).
 	s.instances.add(instanceID, host, port, conn, nil)
 

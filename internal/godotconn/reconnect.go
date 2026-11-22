@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"github.com/mrf/godot-stagehand/internal/gwp"
 )
 
 // State represents the connection lifecycle state.
@@ -206,6 +208,18 @@ func (c *Connection) reconnectLoop() {
 			}
 		}
 
+		// Authenticating proves the token, not the identity: another game on the
+		// same port can share a fixed token. Re-run the handshake the session
+		// was established with before releasing queued calls.
+		if permanent, err := c.verifyPinnedPeer(); err != nil {
+			c.retireSocket(ws)
+			if permanent {
+				c.giveUpWith(err)
+				return
+			}
+			continue
+		}
+
 		// Signal waiters that reconnection succeeded — unless the socket was
 		// lost during the handshake, which handleDisconnect records by
 		// clearing c.ws.
@@ -225,6 +239,34 @@ func (c *Connection) reconnectLoop() {
 	}
 }
 
+// verifyPinnedPeer re-pings the reconnected peer and checks it against the
+// pinned handshake. permanent reports a peer that answered and is the wrong
+// one (incompatible protocol, or a different instance); a ping that merely
+// failed or timed out is an ordinary failed attempt.
+func (c *Connection) verifyPinnedPeer() (permanent bool, err error) {
+	c.mu.Lock()
+	pin := c.pinned
+	c.mu.Unlock()
+	if pin == nil {
+		return false, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), queueTimeout)
+	defer cancel()
+	resp, err := c.callCurrent(ctx, "ping", nil, true)
+	if err != nil {
+		return false, err
+	}
+	info, err := gwp.Negotiate(resp.Result)
+	if err != nil {
+		return true, err
+	}
+	if info.InstanceToken != pin.instanceToken {
+		return true, ErrInstanceChanged
+	}
+	return false, nil
+}
+
 // giveUp declares the connection permanently dead: it transitions to the
 // terminal Disconnected state, distinguishable from Reconnecting/Connecting
 // via State() and reported through godot_status, so a caller polling status
@@ -235,11 +277,17 @@ func (c *Connection) reconnectLoop() {
 // is currently no path that produces one, but future callers shouldn't have
 // to prove that) is a no-op rather than a double-close panic.
 func (c *Connection) giveUp() {
+	c.giveUpWith(nil)
+}
+
+// giveUpWith is giveUp recording why, for ReconnectError.
+func (c *Connection) giveUpWith(cause error) {
 	c.mu.Lock()
 	if c.reconnectGaveUp {
 		c.mu.Unlock()
 		return
 	}
+	c.reconnectErr = cause
 	c.state = Disconnected
 	c.reconnectGaveUp = true
 	failed := c.reconnectFailed
@@ -247,6 +295,15 @@ func (c *Connection) giveUp() {
 	if failed != nil {
 		close(failed)
 	}
+}
+
+// ReconnectError returns why the reconnect loop gave up when the cause was a
+// peer that failed re-verification (ErrInstanceChanged or a gwp.IncompatibleError);
+// nil otherwise.
+func (c *Connection) ReconnectError() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.reconnectErr
 }
 
 // ReconnectExhausted reports whether the connection reached Disconnected

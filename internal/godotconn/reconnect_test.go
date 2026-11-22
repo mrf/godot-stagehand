@@ -3,6 +3,7 @@ package godotconn
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -10,6 +11,9 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"github.com/mrf/godot-stagehand/internal/gwp"
+	"github.com/mrf/godot-stagehand/internal/gwp/gwptest"
 )
 
 func TestBackoffDuration(t *testing.T) {
@@ -241,4 +245,123 @@ func TestReconnectGivesUpOnTokenRejection(t *testing.T) {
 		t.Error("ReconnectExhausted() = false after the token was rejected")
 	}
 	assertSettled(t, conn, s, Disconnected, 2)
+}
+
+// handshakeServer authenticates every socket and answers ping with the
+// handshake handshakeFor returns for that socket's 1-based connection number.
+// Each accepted socket is sent on the returned channel so a test can drop it.
+func handshakeServer(
+	t *testing.T,
+	handshakeFor func(connNumber int) json.RawMessage,
+) (*httptest.Server, <-chan *websocket.Conn) {
+	t.Helper()
+	sockets := make(chan *websocket.Conn, 16)
+	var count atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := testUpgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+		n := int(count.Add(1))
+		sockets <- ws
+		for {
+			var req Request
+			if err := ws.ReadJSON(&req); err != nil {
+				return
+			}
+			var result json.RawMessage
+			switch req.Method {
+			case "authenticate":
+				result = json.RawMessage(`{"authenticated":true}`)
+			case "ping":
+				result = handshakeFor(n)
+			default:
+				result = json.RawMessage(`{}`)
+			}
+			_ = ws.WriteJSON(Response{JSONRPC: "2.0", ID: req.ID, Result: result})
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, sockets
+}
+
+// pinnedConnection dials srv, authenticates, negotiates, and pins the result.
+func pinnedConnection(t *testing.T, srv *httptest.Server) *Connection {
+	t.Helper()
+	host, port := serverHostPort(t, srv)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := dialWithLimits(ctx, host, port, defaultLiveness, 3)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := conn.Authenticate(ctx, testConnectionAuthToken); err != nil {
+		t.Fatalf("authenticate: %v", err)
+	}
+	resp, err := conn.Call(ctx, "ping", nil)
+	if err != nil {
+		t.Fatalf("ping: %v", err)
+	}
+	info, err := gwp.Negotiate(resp.Result)
+	if err != nil {
+		t.Fatalf("negotiate: %v", err)
+	}
+	conn.PinHandshake(info)
+	return conn
+}
+
+func TestReconnectRejectsDifferentInstanceToken(t *testing.T) {
+	srv, sockets := handshakeServer(t, func(n int) json.RawMessage {
+		token := "game-A"
+		if n > 1 {
+			token = "game-B"
+		}
+		return gwptest.Handshake(map[string]any{"instance_token": token})
+	})
+	conn := pinnedConnection(t, srv)
+
+	_ = (<-sockets).Close()
+	waitForState(t, conn, Disconnected, 5*time.Second)
+	if !conn.ReconnectExhausted() {
+		t.Fatal("a reconnect to a different instance must be a permanent give-up")
+	}
+	if _, err := conn.Call(context.Background(), "ping", nil); !errors.Is(err, ErrNotConnected) {
+		t.Fatalf("Call after rejected reconnect = %v, want ErrNotConnected", err)
+	}
+}
+
+func TestReconnectRejectsProtocolMismatch(t *testing.T) {
+	srv, sockets := handshakeServer(t, func(n int) json.RawMessage {
+		if n > 1 {
+			return gwptest.Handshake(map[string]any{"protocol_version": gwp.ProtocolVersion + 1})
+		}
+		return gwptest.Handshake(nil)
+	})
+	conn := pinnedConnection(t, srv)
+
+	_ = (<-sockets).Close()
+	waitForState(t, conn, Disconnected, 5*time.Second)
+	if !conn.ReconnectExhausted() {
+		t.Fatal("a protocol-mismatched peer must be a permanent give-up")
+	}
+}
+
+func TestReconnectAcceptsSameInstance(t *testing.T) {
+	srv, sockets := handshakeServer(t, func(int) json.RawMessage { return gwptest.Handshake(nil) })
+	conn := pinnedConnection(t, srv)
+
+	_ = (<-sockets).Close()
+	for conn.State() == Connected {
+		time.Sleep(5 * time.Millisecond)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := conn.Call(ctx, "ping", nil); err != nil {
+		t.Fatalf("call after same-instance reconnect: %v", err)
+	}
+	if conn.ReconnectExhausted() {
+		t.Fatal("same instance must not be rejected")
+	}
 }
