@@ -50,8 +50,20 @@ MCP — at the binary and it gets a live connection to your running game:
 
 Nodes are targeted with selectors — see the [selector guide](selectors.md).
 
+## Launch semantics
+
+- **`godot_launch` discards the game's stdout/stderr.** Only the scenario
+  runner captures engine output (`godot.log` under `--out-dir`, see
+  [cli.md](cli.md)).
+- **`extra_args` are user args, not engine flags.** They are appended after
+  `--`, which Godot does not interpret, so `--rendering-driver` and friends
+  have no effect there; the game reads them via `OS.get_cmdline_user_args()`.
+  Use `scene` for the boot scene.
+
 ## Input semantics
 
+- **`godot_click` success means the event was delivered**, not that the game
+  reacted to it.
 - **`godot_click` returns before the button is released.** The press is
   delivered immediately and the release follows `hold_ms` (default 100 ms)
   later, so a `Button.pressed` handler — which fires on release — may not have

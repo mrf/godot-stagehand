@@ -13,7 +13,7 @@ This document describes the selector syntax supported by Stagehand for identifyi
 | Text | `text:Start` | Nodes containing text |
 | Meta | `meta:id=player` | Nodes with metadata |
 | Unique | `unique:submit-btn` | Node by its unique name |
-| Role | `role:button` | Nodes with an accessibility role (Godot 4.5+) |
+| Role | `role:button` | Nodes with a (class-derived) accessibility role |
 | Chain | `class:Panel >> name:*Btn*` | Scoped search (find within) |
 
 The rest of this guide covers matching rules, disambiguation, and chaining
@@ -39,7 +39,9 @@ Examples:
 ### Class: `"class:Button"`
 Finds nodes that inherit from the specified class name.
 
-Example: `class:Button` matches Button, BaseButton, MarginContainer, etc.
+Matching uses `is_class()`, so subclasses match too: `class:Button` matches Button,
+CheckBox, CheckButton, OptionButton, MenuButton and ColorPickerButton, but not
+its parent `BaseButton` nor unrelated containers such as `MarginContainer`.
 
 ### Group: `"group:interactable"`
 Finds nodes that are members of the specified group.
@@ -152,12 +154,14 @@ Examples:
 - `meta:itemId` - finds elements that have itemId property (any value)
 
 ### Unique: `"unique:submit-btn"`
-Finds unique UI elements using heuristic matching of distinctive identifiers that should appear only once per screen.
+Matches a glob pattern against a node's name, `tooltip_text`, `placeholder_text`
+or `accessible_role`. It is **not** Godot's `%UniqueName` lookup and does not
+guarantee a single match — it returns every node that matches.
 
 Examples:
-- `unique:logout-link` - targets a logout link typically unique on the page
-- `unique:header-logo` - finds the site logo in header
-- `unique:navigation-menu` - identifies the main navigation
+- `unique:SubmitButton` - the node named `SubmitButton`, or one whose tooltip is that text
+- `unique:Enter your name` - a `LineEdit` with that placeholder
+- `unique:*Dialog` - any node whose name ends in `Dialog`
 
 ## Phase 3 Selector
 
@@ -175,7 +179,9 @@ refactor.
   `role:list`, `role:tab_bar`, `role:menu`, `role:dialog`, `role:image`, ...
 
 Role names are the engine's own `DisplayServer.ROLE_*` constants, lowercased and
-without the prefix. Matching is case-insensitive. Requires Godot 4.5+.
+without the prefix. Matching is case-insensitive. The `role:` selector works on any
+supported engine version (4.3+): roles are derived from the Control class, not read
+from the engine. Only `godot_get_accessibility_tree` requires Godot 4.5+.
 
 > **How roles are determined.** Godot's AccessKit integration is a *write-only*
 > push API — the engine pushes roles into the platform screen reader and exposes

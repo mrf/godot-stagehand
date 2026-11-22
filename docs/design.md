@@ -7,7 +7,7 @@ An MCP server + Godot addon that lets AI agents (and humans) automate and test r
 | Tool | What it does | The gap |
 |------|-------------|---------|
 | **GdUnit4 / GUT** | In-process GDScript unit/integration testing | Runs *inside* Godot — no external control |
-| **godot-mcp servers** (bradypp, ee0pdt, etc.) | Bridge AI assistants to the Godot *editor* | Controls the editor, not a running game |
+| **godot-mcp servers** (bradypp, ee0pdt, etc.) | Bridge AI assistants to the Godot *editor*; at least one (`godot-mcp-enhanced`) also ships an optional runtime bridge | Mostly editor-side authoring; no visual regression or CI scenario runner |
 | **Godot remote debugger** | TCP/WebSocket debug protocol (port 6007) | Used by editor, not designed for automation |
 | **Godot 4.5+ AccessKit** | Screen reader support for Control nodes | No external API to query the accessibility tree |
 | **Playwright MCP** | Full browser automation via Chrome DevTools Protocol | Nothing equivalent exists for game engines |
@@ -484,6 +484,12 @@ Auto-assigned ports retry up to 3 times on a lost port race
 host, port, engine_version, stagehand_version, unsafe_methods_enabled,
 user_data_dir, connection_guidance, protocol, capabilities, warnings? }`.
 
+The game's stdout/stderr is **discarded** by `godot_launch`; only the
+scenario runner captures it (`godot.log` under `--out-dir`, see
+[cli.md](cli.md)). `extra_args` land after `--`, so engine flags such as
+`--rendering-driver` are ignored there; the game sees them via
+`OS.get_cmdline_user_args()`. Use `scene` for the boot scene.
+
 ### Instance Management
 
 **`godot_list_instances`** — no parameters. Returns `{ instances: [{ id, host, port, pid, connected }] }` for every connection this process manages.
@@ -777,7 +783,7 @@ exceptions:
 
 Everything else — `godot_launch`, `godot_wait_for_node`/`_signal`/`_property`,
 `godot_call_method`, `godot_evaluate`, `godot_change_scene`, `godot_type_text`,
-`godot_mouse_move`, `godot_touch`, all seven selector prefixes with `>>`
+`godot_mouse_move`, `godot_touch`, all eight selector prefixes with `>>`
 chaining, screenshot baselines/diffing, performance monitors/assertions,
 record-and-replay, and GitHub Actions CI (`.github/workflows/ci.yml`,
 `release.yml`) — is implemented. The project has also grown two things the
@@ -794,7 +800,7 @@ addressed.
 |----------|-----------|
 | **WebSocket over TCP** | Provides framing (no length-prefix needed), well-supported in Go (`gorilla/websocket`) and GDScript (`WebSocketPeer`), works through proxies |
 | **JSON-RPC 2.0** | Same protocol MCP uses — consistent, `id`-based correlation for multiplexing |
-| **Polling for waits** | Simpler than signal-based. At 60fps, 16ms polling is fast enough for automation |
+| **Polling for node/property waits** | Simpler than signal-based. At 60fps, 16ms polling is fast enough for automation. `wait_for_signal` is the exception: it uses a one-shot signal connection |
 | **Go for MCP server** | User's preferred backend language, strong concurrency primitives, single binary distribution |
 | **Port 26700** | Distinct from Godot's debugger (6007). Configurable via flag/env var |
 | **Autoload over editor-plugin-only** | Addon must run inside the *game* process, not just the editor. Autoload is the simplest mechanism |

@@ -22,10 +22,11 @@ plenty of projects will want both.
 Game testing is manual. You click through menus, eyeball the results, and hope
 you caught the regressions. Godot's own testing tools (GUT, GdUnit4) run
 in-process, inside the editor or a headless engine instance, so they don't give
-an *external* process a live connection to a running game. The Godot MCP servers
-that exist are aimed at the other half of the problem: helping an agent *author*
-a project from inside the editor, which leaves the running game just as
-unobservable as before.
+an *external* process a live connection to a running game. Most Godot MCP servers
+are aimed at the other half of the problem: helping an agent *author* a project
+from inside the editor, which leaves the running game just as unobservable as
+before. A few also ship a runtime bridge; none we have found pair it with visual
+regression or a standalone CI scenario runner.
 
 Stagehand fills the runtime half of that gap.
 

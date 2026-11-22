@@ -20,8 +20,9 @@ real headless Godot binary of each version. See `scripts/test-godot-compat.sh`
 and the `gdscript-parse` job in `.github/workflows/ci.yml`, which runs this
 matrix on every push/PR to `main`.
 
-Some tools need a newer engine than the 4.3 floor: `godot_get_accessibility_tree`
-and the `role:` selector require Godot 4.5+.
+One tool needs a newer engine than the 4.3 floor: `godot_get_accessibility_tree`
+requires Godot 4.5+. The `role:` selector derives roles from the Control class
+hierarchy and works on every supported version.
 
 ## Known incompatibilities
 

@@ -57,7 +57,7 @@ Launch a Godot game with stagehand enabled and connect to it.
 | `expect_screenshots` | no | `false` | Reject `headless=true` for screenshot/baseline/diff workflows |
 | `allow_unsafe` | no | `false` | Enable `godot_evaluate` and unrestricted `godot_call_method` (blocked-method list lifted) for this launched session. Off by default — without it those requests are refused |
 | `share_user_data` | no | `false` | Use the project's real `user://` directory instead of a private throwaway one. Default: each launch gets an isolated `user://`, so concurrent instances cannot corrupt each other's saves, but nothing written survives the instance. Set `true` only when you need persistent save data and run a single instance |
-| `extra_args` | no | `[]` | Extra command-line arguments for the Godot binary |
+| `extra_args` | no | `[]` | User arguments appended after `--`; Godot ignores them (not engine flags) and the game reads them via `OS.get_cmdline_user_args()` |
 | `timeout_ms` | no | `30000` | Maximum time to wait for Godot to start (min: 1000) |
 
 ```
