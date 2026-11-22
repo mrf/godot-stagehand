@@ -74,7 +74,7 @@ jobs:
             asset: godot-stagehand-linux-amd64
           - runner: macos-15-intel
             asset: godot-stagehand-darwin-amd64
-          - runner: macos-14
+          - runner: macos-15
             asset: godot-stagehand-darwin-arm64
           - runner: windows-latest
             asset: godot-stagehand-windows-amd64.exe

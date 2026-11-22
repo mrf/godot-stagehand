@@ -96,10 +96,14 @@ func TestReleaseWorkflowDownloadsAndRunsEveryPublishedAsset(t *testing.T) {
 			t.Errorf("release smoke matrix does not include %q", assetName)
 		}
 	}
+	// macos-14 was retired 2026-11-02; GitHub refuses it before any step runs.
+	if strings.Contains(workflow, "macos-14") {
+		t.Error("release workflow uses retired runner label macos-14")
+	}
 	for _, required := range []string{
 		"gh release download",
-		"macos-15-intel",
-		"macos-14",
+		"runner: macos-15-intel\n            asset: godot-stagehand-darwin-amd64",
+		"runner: macos-15\n            asset: godot-stagehand-darwin-arm64",
 		"windows-latest",
 		"ubuntu-latest",
 	} {
