@@ -52,7 +52,7 @@ cd "$TEST_PROJECT"
 # put it back on every exit path.
 SETTINGS_SNAPSHOT="$(mktemp)"
 cp project.godot "$SETTINGS_SNAPSHOT"
-# shellcheck disable=SC2317  # invoked indirectly via the EXIT trap below
+# shellcheck disable=SC2317,SC2329  # invoked indirectly via the EXIT trap below
 restore_settings() {
     if ! cmp -s "$SETTINGS_SNAPSHOT" project.godot; then
         cp "$SETTINGS_SNAPSHOT" project.godot
